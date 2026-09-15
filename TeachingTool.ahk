@@ -4,6 +4,11 @@ Persistent()
 SetWinDelay(-1)
 CoordMode("Mouse", "Screen")
 
+; Windows 기본 타이머 정밀도(약 15~16ms)를 그대로 쓰면 클릭 애니메이션 속도를 세밀하게
+; 조절해도 특정 구간에서 뭉뚱그려져 갑자기 튀어 보인다. 1ms 단위로 더 정밀하게 요청한다.
+DllCall("winmm\timeBeginPeriod", "uint", 1)
+OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
+
 A_IconTip := "TeachingTool - 마우스 강조 / 화면 판서"
 SETTINGS_PATH := A_ScriptDir "\settings.ini"
 
@@ -29,7 +34,7 @@ DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "
 ; clickSpeed는 "클수록 빠름"(1~30)으로 저장/표시하고, 타이머 간격(ms)으로 쓸 때만 뒤집어 계산한다.
 LoadSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor
-    global clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL
+    global clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 64)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
     spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 43)))
@@ -39,10 +44,12 @@ LoadSettings() {
     CLICK_ANIM_INTERVAL := 31 - clickSpeed
     DrawThickness := Max(1, Min(12, IniRead(SETTINGS_PATH, "Draw", "Thickness", 4)))
     penColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "Color", "FF3B30"))
+    showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
+    showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 1) = 1
 }
 
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor, clickEffectEnabled, clickSpeed
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor, clickEffectEnabled, clickSpeed, showWidget, showTrayIcons
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
@@ -50,6 +57,8 @@ SaveSettings() {
     IniWrite(clickSpeed, SETTINGS_PATH, "Highlight", "ClickSpeed")
     IniWrite(DrawThickness, SETTINGS_PATH, "Draw", "Thickness")
     IniWrite(HexColor(penColor), SETTINGS_PATH, "Common", "Color")
+    IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
+    IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
 }
 
 LoadSettings()
@@ -274,7 +283,7 @@ SpotFollow() {
 ; spotGui와 별개의 작은 창을 하나 더 써서, 클릭한 순간에만 진한 테두리 원을 그려
 ; 바깥쪽에서 중심으로 줄어들게 만든 뒤 사라지게 한다.
 CLICK_RING_KEY := "FF00FF"
-CLICK_ANIM_FRAMES := 10 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
+CLICK_ANIM_FRAMES := 16 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
 
 clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "TeachingTool-Click")
 clickGui.BackColor := CLICK_RING_KEY
@@ -322,8 +331,11 @@ ClickAnimStep() {
     DllCall("DeleteObject", "ptr", bgBrush)
 
     ; 2) 오프스크린 버퍼에 현재 프레임의 링을 그린 뒤
-    progress := clickAnimFrame / CLICK_ANIM_FRAMES
-    radius := Round((SpotSize / 2) * (1 - progress))
+    ; 등속 대신 감속(ease-out) 곡선을 써서, 처음엔 빠르게 줄어들다가 중심 근처에서
+    ; 서서히 멈추는 것처럼 보이게 한다 — 등속보다 훨씬 자연스럽게 느껴진다.
+    t := clickAnimFrame / CLICK_ANIM_FRAMES
+    eased := 1 - (1 - t) ** 3
+    radius := Round((SpotSize / 2) * (1 - eased))
     cx := SpotSize // 2, cy := SpotSize // 2
     pen := DllCall("CreatePen", "int", 0, "int", SpotThickness, "uint", ToBGR(penColor), "ptr")
     oldPen := DllCall("SelectObject", "ptr", clickMemDC, "ptr", pen, "ptr")
@@ -425,9 +437,22 @@ PickColor(ownerHwnd := 0, *) {
 }
 
 ; ================= 설정 창 =================
+; 숫자 입력칸에서 Enter를 눌렀을 때만 값을 적용하기 위한 전역 키 감지.
+; (매 글자마다 적용해버리면 입력 도중 값이 강제로 재조정되면서 타이핑을 방해한다)
+sliderEditHandlers := Map()
+OnMessage(0x100, OnSliderEditKeyDown) ; WM_KEYDOWN
+OnSliderEditKeyDown(wParam, lParam, msg, hwnd) {
+    global sliderEditHandlers
+    if wParam = 13 && sliderEditHandlers.Has(hwnd) { ; VK_RETURN
+        sliderEditHandlers[hwnd]()
+        return 0
+    }
+}
+
 ; 라벨 + "-"버튼 + 슬라이더 + "+"버튼 + 숫자 직접입력 칸을 한 줄로 만들어주는 공용 함수.
-; onChange(새값)은 슬라이더/버튼/입력칸 중 무엇으로 바꾸든 동일하게 호출된다.
+; onChange(새값)은 슬라이더/버튼/입력칸(Enter 또는 포커스 이동 시) 중 무엇으로 바꾸든 동일하게 호출된다.
 AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChange) {
+    global sliderEditHandlers
     gui.AddText("x30 y" (y + 4) " w70", labelText)
     btnMinus := gui.AddButton("x100 y" y " w24 h24", "-")
     sl := gui.AddSlider("x126 y" (y + 2) " w104 Range" rangeMin "-" rangeMax, initial)
@@ -437,14 +462,16 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
         gui.AddText("x302 y" (y + 4) " w30", suffixText)
 
     apply := (v) => (v := Max(rangeMin, Min(rangeMax, v)), sl.Value := v, ed.Text := v, onChange(v))
+    applyFromEdit := () => apply(ed.Text = "" ? rangeMin : Integer(ed.Text))
     sl.OnEvent("Change", (ctrl, *) => apply(ctrl.Value))
     btnMinus.OnEvent("Click", (*) => apply(sl.Value - 1))
     btnPlus.OnEvent("Click", (*) => apply(sl.Value + 1))
-    ed.OnEvent("Change", (ctrl, *) => apply(ctrl.Text = "" ? rangeMin : Integer(ctrl.Text)))
+    ed.OnEvent("LoseFocus", (*) => applyFromEdit())
+    sliderEditHandlers[ed.Hwnd] := applyFromEdit
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, penColor, settingsGui
+    global SpotSize, spotOpacity, SpotThickness, DrawThickness, clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui
 
     if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
         settingsGui.Show()
@@ -454,7 +481,7 @@ OpenSettingsWindow(*) {
     settingsGui := Gui(, "TeachingTool 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
     settingsGui.SetFont("s10", "Malgun Gothic")
 
-    tabs := settingsGui.AddTab3("x10 y10 w320 h190", ["포인터", "왼쪽 클릭 효과", "판서"])
+    tabs := settingsGui.AddTab3("x10 y10 w320 h190", ["포인터", "왼쪽 클릭 효과", "판서", "위젯"])
 
     tabs.UseTab(1)
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -468,7 +495,10 @@ OpenSettingsWindow(*) {
     btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
 
     tabs.UseTab(2)
-    chkClick := settingsGui.AddCheckbox("x30 y50 w250 " (clickEffectEnabled ? "Checked" : ""), "애니메이션 효과")
+    ; 체크박스 라벨 텍스트까지 클릭 영역에 포함되면 실수로 누르기 쉬워서, 네모 칸만 클릭
+    ; 가능하게 하고 글자는 옆에 별도의(클릭 안 되는) 텍스트로 둔다.
+    chkClick := settingsGui.AddCheckbox("x30 y52 w20 h20 " (clickEffectEnabled ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y53 w200", "애니메이션 효과")
     chkClick.OnEvent("Click", (ctrl, *) => clickEffectEnabled := ctrl.Value)
 
     AddSliderRow(settingsGui, 90, "테두리 굵기", 2, 12, SpotThickness, "", (v) => SpotThickness := v)
@@ -477,6 +507,17 @@ OpenSettingsWindow(*) {
 
     tabs.UseTab(3)
     AddSliderRow(settingsGui, 50, "선 굵기", 1, 12, DrawThickness, "", (v) => DrawThickness := v)
+
+    tabs.UseTab(4)
+    chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y53 w200", "위젯 표시")
+    chkWidget.OnEvent("Click", (ctrl, *) => (showWidget := ctrl.Value, showWidget ? widget.Show() : widget.Hide()))
+
+    chkTray := settingsGui.AddCheckbox("x30 y92 w20 h20 " (showTrayIcons ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y93 w200", "트레이 바로가기 아이콘 표시")
+    chkTray.OnEvent("Click", (ctrl, *) => SetTrayIconsVisible(ctrl.Value))
+
+    settingsGui.AddText("x30 y128 w280 h50", "위젯/트레이 바로가기 아이콘을 모두 꺼도, 트레이의 기본 프로그램 아이콘(우클릭 메뉴)으로는 항상 조작할 수 있습니다.")
 
     tabs.UseTab()
 
@@ -501,7 +542,7 @@ widget.SetFont("s10", "Malgun Gothic")
 grip := widget.AddText("x6 y4 w14 h32 Center +0x200", "⋮")
 btnSpot := widget.AddText("x24 y4 w32 h32 Center Border", "")
 btnDraw := widget.AddText("x60 y4 w32 h32 Center Border", "")
-btnColor := widget.AddText("x96 y4 w32 h32 Center Border", " ")
+btnSettings := widget.AddText("x96 y4 w32 h32 Center Border +0x200", "⚙")
 btnClose := widget.AddText("x132 y4 w14 h32 Center +0x200", "✕")
 
 ; 버튼 배경(btnSpot/btnDraw) 위에 트레이와 같은 아이콘 그림을 겹쳐서, 텍스트 대신 아이콘으로 보여준다.
@@ -513,39 +554,33 @@ btnSpot.OnEvent("Click", ToggleSpotlight)
 btnDraw.OnEvent("Click", ToggleDraw)
 icoSpot.OnEvent("Click", ToggleSpotlight)
 icoDraw.OnEvent("Click", ToggleDraw)
-btnColor.OnEvent("Click", (*) => PickColor())
-btnClose.OnEvent("Click", (*) => ExitApp())
+btnSettings.OnEvent("Click", OpenSettingsWindow)
+; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 아이콘·메뉴로 계속 조작 가능,
+; 설정 창의 "위젯" 탭에서 다시 켤 수 있음)
+btnClose.OnEvent("Click", (*) => (showWidget := false, widget.Hide()))
 
 UpdateWidgetState() {
-    global spotlightOn, drawOn, btnSpot, btnDraw, btnColor, penColor
-    global hIconSpotOn, hIconSpotOff, hIconDrawOn, hIconDrawOff
+    global spotlightOn, drawOn, btnSpot, btnDraw
+    global hIconSpotOn, hIconSpotOff, hIconDrawOn, hIconDrawOff, showTrayIcons
     activeBg := "85C2FF" ; 0A84FF를 50% 연하게 (흰색과 혼합)
     btnSpot.SetFont(spotlightOn ? "c000000 Bold" : "c000000 Norm")
     btnSpot.Opt(spotlightOn ? "Background" activeBg : "BackgroundFFFFFF")
     btnDraw.SetFont(drawOn ? "c000000 Bold" : "c000000 Norm")
     btnDraw.Opt(drawOn ? "Background" activeBg : "BackgroundFFFFFF")
-    btnColor.Opt("Background" HexColor(penColor))
-    ; 임의 색상으로 바뀔 때는 자동 다시 그리기가 안 될 때가 있어 강제로 다시 그린다.
-    DllCall("InvalidateRect", "ptr", btnColor.Hwnd, "ptr", 0, "int", 1)
-    DllCall("UpdateWindow", "ptr", btnColor.Hwnd)
 
-    spotlightOn ? A_TrayMenu.Check("강조 켜기/끄기") : A_TrayMenu.Uncheck("강조 켜기/끄기")
-    drawOn ? A_TrayMenu.Check("판서 켜기/끄기") : A_TrayMenu.Uncheck("판서 켜기/끄기")
-
-    SetQuickTrayIcon(1, spotlightOn ? hIconSpotOn : hIconSpotOff)
-    SetQuickTrayIcon(2, drawOn ? hIconDrawOn : hIconDrawOff)
+    if showTrayIcons {
+        SetQuickTrayIcon(1, spotlightOn ? hIconSpotOn : hIconSpotOff)
+        SetQuickTrayIcon(2, drawOn ? hIconDrawOn : hIconDrawOff)
+    }
 }
 
 ; ================= 트레이 아이콘 메뉴 (작업표시줄 알림 영역) =================
-; 위젯과 동일한 기능을 트레이 메뉴에서도 쓸 수 있도록 구성. 기본 AutoHotkey 개발용 메뉴는
-; 구분선 아래에 남겨둔다(스크립트 편집/재실행이 필요할 때 대비).
-A_TrayMenu.Insert("1&", "강조 켜기/끄기", (*) => ToggleSpotlight())
-A_TrayMenu.Insert("2&", "판서 켜기/끄기", (*) => ToggleDraw())
-A_TrayMenu.Insert("3&", "색상 선택", (*) => PickColor())
-A_TrayMenu.Insert("4&", "설정...", OpenSettingsWindow)
-A_TrayMenu.Insert("5&", "종료", (*) => ExitApp())
-A_TrayMenu.Insert("6&")
-A_TrayMenu.Default := "강조 켜기/끄기"
+; 기본 AutoHotkey 개발용 메뉴(Window Spy, Reload Script 등)를 포함해 전부 지우고,
+; 설정/종료 두 개만 남긴다. 강조·판서·색상은 위젯의 ⚙(설정) 또는 트레이 바로가기 아이콘으로 접근.
+A_TrayMenu.Delete()
+A_TrayMenu.Add("설정...", OpenSettingsWindow)
+A_TrayMenu.Add("종료", (*) => ExitApp())
+A_TrayMenu.Default := "설정..."
 
 ; ================= 작업표시줄 바로가기 아이콘 (강조/판서 2개, 클릭 한 번으로 토글) =================
 ; 메뉴를 거치지 않고 바로 누를 수 있는 전용 트레이 아이콘 2개를 추가로 만든다.
@@ -648,8 +683,21 @@ hIconDrawOn := LoadIconFromPng(ICON_DRAW_PATH, TRAY_ON_COLOR)
 trayHelper := Gui("+ToolWindow", "TeachingTool-TrayHelper")
 trayHelper.Show("Hide")
 OnMessage(WM_TRAYBTN, OnQuickTrayClick)
-AddQuickTrayIcon(1, hIconSpotOff, "강조 켜기/끄기")
-AddQuickTrayIcon(2, hIconDrawOff, "판서 켜기/끄기")
+
+; 강조/판서 바로가기 트레이 아이콘 2개를 켜고 끈다. (트레이 메뉴가 있는 기본 아이콘은 항상 유지됨)
+SetTrayIconsVisible(show) {
+    global showTrayIcons, hIconSpotOff, hIconSpotOn, hIconDrawOff, hIconDrawOn, spotlightOn, drawOn
+    showTrayIcons := show
+    if show {
+        AddQuickTrayIcon(1, spotlightOn ? hIconSpotOn : hIconSpotOff, "강조 켜기/끄기")
+        AddQuickTrayIcon(2, drawOn ? hIconDrawOn : hIconDrawOff, "판서 켜기/끄기")
+    } else {
+        RemoveQuickTrayIcon(1)
+        RemoveQuickTrayIcon(2)
+    }
+}
+if showTrayIcons
+    SetTrayIconsVisible(true)
 OnExit((*) => (RemoveQuickTrayIcon(1), RemoveQuickTrayIcon(2), DllCall("gdiplus\GdiplusShutdown", "ptr", gdipToken)))
 
 UpdateWidgetState()
@@ -662,7 +710,9 @@ OnWidgetDrag(wParam, lParam, msg, hwnd) {
         PostMessage(0xA1, 2, , , widget.Hwnd) ; WM_NCLBUTTONDOWN, HTCAPTION
 }
 
-widget.Show("x" (A_ScreenWidth - widgetW - 20) " y" (A_ScreenHeight - widgetH - 60) " w" widgetW " h" widgetH)
+widget.Show("x" (A_ScreenWidth - widgetW - 20) " y" (A_ScreenHeight - widgetH - 60) " w" widgetW " h" widgetH " Hide")
+if showWidget
+    widget.Show()
 
 ; ================= 단축키 =================
 ^!h::ToggleSpotlight()
