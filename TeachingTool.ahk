@@ -130,25 +130,50 @@ ClearBackBuffer()
 drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80000", "TeachingTool-Draw") ; E0x80000 = WS_EX_LAYERED
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
-UpdateOverlay() {
-    global drawGui, memDC, vx, vy, vw, vh
-    ptDst := Buffer(8, 0)
-    NumPut("Int", vx, ptDst, 0)
-    NumPut("Int", vy, ptDst, 4)
-    sz := Buffer(8, 0)
-    NumPut("Int", vw, sz, 0)
-    NumPut("Int", vh, sz, 4)
-    ptSrc := Buffer(8, 0)
-    blend := Buffer(4, 0)
-    NumPut("UChar", 0, blend, 0)   ; AC_SRC_OVER
-    NumPut("UChar", 0, blend, 1)   ; flags
-    NumPut("UChar", 255, blend, 2) ; SourceConstantAlpha
-    NumPut("UChar", 1, blend, 3)   ; AC_SRC_ALPHA
-    DllCall("UpdateLayeredWindow", "ptr", drawGui.Hwnd, "ptr", 0, "ptr", ptDst, "ptr", sz, "ptr", memDC, "ptr", ptSrc, "uint", 0, "ptr", blend, "uint", 2) ; ULW_ALPHA
+; UpdateLayeredWindow은 부를 때마다 창 전체(가상 화면 전체 크기)를 합성하기 때문에,
+; 판서 중 10ms마다 호출하면 그만큼 CPU를 많이 먹는다. UpdateLayeredWindowIndirect는
+; "실제로 바뀐 영역(prcDirty)"만 알려줄 수 있어서, 선 하나 그릴 때 화면 전체가 아니라
+; 그 선 주변 작은 사각형만 다시 합성하면 되므로 훨씬 가볍다.
+ulwPtDst := Buffer(8, 0)
+NumPut("Int", vx, ulwPtDst, 0)
+NumPut("Int", vy, ulwPtDst, 4)
+ulwSize := Buffer(8, 0)
+NumPut("Int", vw, ulwSize, 0)
+NumPut("Int", vh, ulwSize, 4)
+ulwPtSrc := Buffer(8, 0) ; 항상 (0,0) — memDC 전체가 소스
+ulwBlend := Buffer(4, 0)
+NumPut("UChar", 0, ulwBlend, 0)   ; AC_SRC_OVER
+NumPut("UChar", 0, ulwBlend, 1)   ; flags
+NumPut("UChar", 255, ulwBlend, 2) ; SourceConstantAlpha
+NumPut("UChar", 1, ulwBlend, 3)   ; AC_SRC_ALPHA
+ulwDirtyRect := Buffer(16, 0)
+ulwInfo := Buffer(80, 0) ; UPDATELAYEREDWINDOWINFO (x64)
+NumPut("UInt", 80, ulwInfo, 0)            ; cbSize
+NumPut("Ptr", ulwPtDst.Ptr, ulwInfo, 16)  ; pptDst
+NumPut("Ptr", ulwSize.Ptr, ulwInfo, 24)   ; psize
+NumPut("Ptr", memDC, ulwInfo, 32)         ; hdcSrc
+NumPut("Ptr", ulwPtSrc.Ptr, ulwInfo, 40)  ; pptSrc
+NumPut("Ptr", ulwBlend.Ptr, ulwInfo, 56)  ; pblend
+NumPut("UInt", 2, ulwInfo, 64)            ; dwFlags = ULW_ALPHA
+
+; minX~maxY(로컬 좌표)를 생략하면 화면 전체를, 지정하면 그 영역만 다시 합성한다.
+UpdateOverlay(minX := -1, minY := -1, maxX := -1, maxY := -1) {
+    global drawGui, ulwInfo, ulwDirtyRect, vw, vh
+    if minX = -1 {
+        NumPut("Ptr", 0, ulwInfo, 72) ; prcDirty = NULL → 전체 갱신
+    } else {
+        NumPut("Int", Max(0, minX), ulwDirtyRect, 0)
+        NumPut("Int", Max(0, minY), ulwDirtyRect, 4)
+        NumPut("Int", Min(vw, maxX), ulwDirtyRect, 8)
+        NumPut("Int", Min(vh, maxY), ulwDirtyRect, 12)
+        NumPut("Ptr", ulwDirtyRect.Ptr, ulwInfo, 72)
+    }
+    DllCall("UpdateLayeredWindowIndirect", "ptr", drawGui.Hwnd, "ptr", ulwInfo)
 }
 UpdateOverlay()
 
 ; GDI로 그린 픽셀은 알파 값이 채워지지 않으므로, 그린 영역만 알파를 255로 채워준다.
+; 실제로 훑은 사각형 범위를 돌려줘서, 호출한 쪽이 그 부분만 화면에 다시 합성하면 되게 한다.
 PatchAlpha(x1, y1, x2, y2) {
     global ppvBits, vw, vh, DrawThickness
     pad := DrawThickness + 2
@@ -167,6 +192,7 @@ PatchAlpha(x1, y1, x2, y2) {
                 NumPut("UChar", 255, px, 3)
         }
     }
+    return [minX, minY, maxX + 1, maxY + 1]
 }
 
 DrawSegment(x1, y1, x2, y2) {
@@ -178,8 +204,8 @@ DrawSegment(x1, y1, x2, y2) {
     DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
     DllCall("SelectObject", "ptr", memDC, "ptr", old)
     DllCall("DeleteObject", "ptr", pen)
-    PatchAlpha(lx1, ly1, lx2, ly2)
-    UpdateOverlay()
+    box := PatchAlpha(lx1, ly1, lx2, ly2)
+    UpdateOverlay(box[1], box[2], box[3], box[4])
 }
 
 ; mode: "line" | "rect" | "ellipse". 시작점~현재점 사이의 도형을 매 프레임 다시 그린다.
@@ -204,6 +230,8 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
     DllCall("SelectObject", "ptr", memDC, "ptr", oldBrush)
     DllCall("DeleteObject", "ptr", pen)
     PatchAlpha(lx1, ly1, lx2, ly2)
+    ; 도형 미리보기는 매번 스냅샷으로 전체를 되돌리므로, 이전 프레임에 그렸던 부분도
+    ; 화면에서 지워줘야 한다 — 그래서 부분 갱신 대신 항상 전체를 다시 합성한다.
     UpdateOverlay()
 }
 
