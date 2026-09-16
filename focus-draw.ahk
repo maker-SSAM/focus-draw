@@ -9,6 +9,7 @@
 ;@Ahk2Exe-SetMainIcon focus-draw.ico
 ;@Ahk2Exe-SetName Focus & Draw
 ;@Ahk2Exe-SetDescription Focus & Draw - 마우스 강조 / 화면 판서
+;@Ahk2Exe-SetVersion 1.0.0
 
 Persistent()
 SetWinDelay(-1)
@@ -19,7 +20,12 @@ CoordMode("Mouse", "Screen")
 DllCall("winmm\timeBeginPeriod", "uint", 1)
 OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
 
-A_IconTip := "Focus & Draw - 마우스 강조 / 화면 판서"
+; 배포한 베타에서 피드백을 받을 때 "어느 빌드인지"를 구분할 수 있어야 해서 버전을 표시한다.
+; 위 SetVersion 지시문(exe 파일 속성용)과 여기 값을 항상 같이 고쳐야 한다 — 지시문은 주석이라
+; 프로그램 안에서 읽을 수 없어서, 아쉽지만 두 곳에 같은 숫자를 적어두는 수밖에 없다.
+APP_VERSION := "1.0.0"
+
+A_IconTip := "Focus & Draw v" APP_VERSION " - 마우스 강조 / 화면 판서"
 
 ; 컴파일된 exe는 위 SetMainIcon으로 넣은 아이콘을 트레이 아이콘으로도 그대로 쓰지만,
 ; .ahk 소스로 직접 실행할 때는 AutoHotkey 기본 아이콘(초록색 H)이 뜬다. 소스로 실행할 때도
@@ -653,7 +659,7 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn
+    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION
 
     if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
         settingsGui.Show()
@@ -718,6 +724,10 @@ OpenSettingsWindow(*) {
     swatch := settingsGui.AddProgress("x100 y94 w40 h24 Range0-100 -Smooth c" HexColor(penColor), 100)
     btnPick := settingsGui.AddButton("x150 y92 w110 h28", "색상 선택...")
     btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
+
+    ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
+    lblVersion := settingsGui.AddText("x30 y150 w270", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion.SetFont("s9 c999999")
 
     tabs.UseTab()
 
