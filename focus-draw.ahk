@@ -56,12 +56,22 @@ NumPut("UInt", 1, gdipStartupInput, 0) ; GdiplusVersion = 1
 gdipToken := 0
 DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "ptr", 0)
 
+; ================= 사용자가 바꿀 수 있는 전역 단축키 =================
+; `^!h::` 같은 문법은 프로그램이 켜질 때 고정으로 박혀서 실행 중에 바꿀 수 없다. 설정 창에서
+; 단축키를 바꾸려면 Hotkey() 함수로 등록/해제해야 해서, 동작과 기본값을 이름으로 묶어둔다.
+HOTKEY_DEFAULTS := Map("Spotlight", "^!h", "Draw", "^!d", "Clear", "^!c")
+HOTKEY_LABELS := Map("Spotlight", "강조", "Draw", "드로잉", "Clear", "지우기")
+hotkeyCombos := Map()     ; 지금 설정된 조합 (settings.ini에서 불러옴)
+hotkeyRegistered := Map() ; 실제로 등록에 성공해 살아있는 조합 (해제할 때 필요)
+hotkeyApplying := false   ; 값을 되돌리느라 Change가 다시 불려 무한히 반복되는 것을 막는 빗장
+
 ; ================= 설정값 (settings.ini에서 불러옴, 없으면 기본값) =================
 ; spotOpacity는 0~100(%)로 저장/표시하고, 실제 WinSetTransparent에 쓸 때만 0~255로 환산한다.
 ; clickSpeed는 "클수록 빠름"(1~30)으로 저장/표시하고, 타이머 간격(ms)으로 쓸 때만 뒤집어 계산한다.
 LoadSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor
     global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
+    global HOTKEY_DEFAULTS, hotkeyCombos
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
     spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 30)))
@@ -76,10 +86,16 @@ LoadSettings() {
     penColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "Color", "FF0000"))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 0) = 1
+    ; 저장된 단축키가 이상하면(사람이 ini를 잘못 고쳤다거나) 기본값으로 돌려서, 단축키가
+    ; 하나도 안 먹는 상태로 시작하는 일이 없게 한다.
+    for name, def in HOTKEY_DEFAULTS {
+        combo := IniRead(SETTINGS_PATH, "Hotkeys", name, def)
+        hotkeyCombos[name] := IsSafeHotkey(combo) ? combo : def
+    }
 }
 
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
@@ -92,6 +108,8 @@ SaveSettings() {
     IniWrite(HexColor(penColor), SETTINGS_PATH, "Common", "Color")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
+    for name, combo in hotkeyCombos
+        IniWrite(combo, SETTINGS_PATH, "Hotkeys", name)
 }
 
 LoadSettings()
@@ -672,6 +690,22 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
     sliderEditHandlers[ed.Hwnd] := applyFromEdit
 }
 
+; 라벨 + 단축키 입력칸 + "기본값" 버튼을 한 줄로 만든다. 입력칸은 사용자가 누른 키 조합을
+; 그대로 받아주는 전용 컨트롤이라, 직접 문자열을 타이핑하게 하는 것보다 훨씬 덜 헷갈린다.
+; (이 컨트롤은 윈도우 키 조합을 담지 못한다 — 어차피 Windows 자체 단축키와 겹쳐서 권하지 않는다)
+AddHotkeyRow(gui, y, name) {
+    global hotkeyCombos, HOTKEY_DEFAULTS, HOTKEY_LABELS
+    gui.AddText("x30 y" (y + 4) " w70", HOTKEY_LABELS[name])
+    hk := gui.AddHotkey("x100 y" y " w130 h24")
+    hk.Value := hotkeyCombos[name]
+    btnDefault := gui.AddButton("x238 y" y " w72 h24", "기본값")
+    ; 이 컨트롤은 LoseFocus 이벤트가 없어서 Change로만 받는다. 조합키만 누르고 있는 중간
+    ; 상태에서는 빈 값이 오는데, 그건 ChangeHotkey가 걸러낸다.
+    hk.OnEvent("Change", (ctrl, *) => ChangeHotkey(name, ctrl.Value, ctrl))
+    btnDefault.OnEvent("Click", (*) => ChangeHotkey(name, HOTKEY_DEFAULTS[name], hk))
+    return hk
+}
+
 OpenSettingsWindow(*) {
     global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl
 
@@ -698,9 +732,12 @@ OpenSettingsWindow(*) {
     settingsGui.BackColor := "F2F2F2"
     settingsGui.SetFont("s10", "Malgun Gothic")
 
-    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["포인터", "클릭효과", "판서", "위젯", "일반"])
+    ; 탭은 번호가 아니라 이름으로 고른다 — 나중에 순서를 바꿔도 아래 코드를 손볼 필요가 없다.
+    ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
+    ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
+    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
-    tabs.UseTab(1)
+    tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
     AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, InitSpotlightShape()))
 
@@ -708,7 +745,7 @@ OpenSettingsWindow(*) {
     settingsGui.AddText("x54 y133 w220", "활성화 시 마우스 커서 숨기기")
     chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
 
-    tabs.UseTab(2)
+    tabs.UseTab("클릭효과")
     ; 체크박스 라벨 텍스트까지 클릭 영역에 포함되면 실수로 누르기 쉬워서, 네모 칸만 클릭
     ; 가능하게 하고 글자는 옆에 별도의(클릭 안 되는) 텍스트로 둔다.
     chkClick := settingsGui.AddCheckbox("x30 y52 w20 h20 " (clickEffectEnabled ? "Checked" : ""), "")
@@ -720,11 +757,11 @@ OpenSettingsWindow(*) {
     AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v))
     AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => (clickOpacity := v, UpdateClickAppearance()))
 
-    tabs.UseTab(3)
+    tabs.UseTab("드로잉")
     AddSliderRow(settingsGui, 50, "선 굵기", 1, 12, DrawThickness, "", (v) => DrawThickness := v)
     AddSliderRow(settingsGui, 90, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()))
 
-    tabs.UseTab(4)
+    tabs.UseTab("위젯")
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
     settingsGui.AddText("x54 y53 w200", "위젯 활성화")
     chkWidget.OnEvent("Click", (ctrl, *) => SetWidgetVisible(ctrl.Value))
@@ -735,7 +772,7 @@ OpenSettingsWindow(*) {
     settingsGui.AddText("x54 y93 w200", "작업표시줄 아이콘 활성화")
     chkTray.OnEvent("Click", (ctrl, *) => SetTrayIconsVisible(ctrl.Value))
 
-    tabs.UseTab(5)
+    tabs.UseTab("일반")
     ; 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는 항상
     ; IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
     chkStartup := settingsGui.AddCheckbox("x30 y52 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
@@ -754,10 +791,19 @@ OpenSettingsWindow(*) {
     ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
     ; 제작자 표시도 같이 둔다 — 수업 화면을 가리지 않으면서 찾으려는 사람은 확실히 볼 수 있는
     ; 자리가 여기라서, 위젯이나 트레이 툴팁 대신 이곳을 골랐다.
-    lblVersion := settingsGui.AddText("x30 y150 w270", "Focus & Draw 버전 " APP_VERSION)
+    ; +0x80 = SS_NOPREFIX. 이게 없으면 Text 컨트롤이 &를 단축키 표시용 기호로 삼아 먹어버려서
+    ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
+    lblVersion := settingsGui.AddText("x30 y150 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
     lblAuthor := settingsGui.AddText("x30 y170 w270", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
+
+    tabs.UseTab("단축키")
+    AddHotkeyRow(settingsGui, 50, "Spotlight")
+    AddHotkeyRow(settingsGui, 90, "Draw")
+    AddHotkeyRow(settingsGui, 130, "Clear")
+    lblHotkeyHelp := settingsGui.AddText("x30 y172 w280 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
+    lblHotkeyHelp.SetFont("s9 c999999")
 
     tabs.UseTab()
 
@@ -1098,13 +1144,86 @@ widget.Show("x" (A_ScreenWidth - widgetW - 20) " y" (A_ScreenHeight - widgetH - 
 SetWidgetVisible(showWidget) ; 트레이 메뉴 체크 표시까지 시작 상태에 맞춰준다
 
 ; ================= 단축키 =================
-^!h::ToggleSpotlight()
-^!d::ToggleDraw()
-^!c::ClearDrawing()
+; 이름 → 실제로 실행할 동작. 설정 창에서 조합을 바꿔도 동작은 그대로이므로 여기서 한 번만 묶는다.
+HOTKEY_ACTIONS := Map("Spotlight", ToggleSpotlight, "Draw", ToggleDraw, "Clear", ClearDrawing)
+
+; 저장해둔 조합으로 전역 단축키를 켠다. 다른 프로그램이 이미 쓰는 조합이면 등록에 실패하는데,
+; 시작하자마자 오류 창을 띄우면 수업 중에 곤란하므로 조용히 건너뛴다(위젯과 트레이는 그대로 동작).
+for name, combo in hotkeyCombos
+    RegisterHotkey(name, combo)
+
 ; (Win+Shift+S 캡처 도구 드래그가 판서로 그려지는 문제는 DrawPoll에서 "드래그를 시작한 창이
 ; 판서 오버레이인지"를 보고 걸러내므로, 별도 핫키 감지가 필요 없다.)
 ; 아래 두 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어). 판서 모드 중엔 이 키가
 ; 다른 프로그램으로 전달되지 않으므로, 흔히 쓰는 키(Backspace 등)는 일부러 넣지 않았다.
 Hotkey("Esc", ExitDrawMode, "Off")   ; 내용 지우고 판서 모드 종료
 Hotkey("Delete", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
+
+; ================= 전역 단축키 등록/검증 =================
+; 글자 키 하나만 단축키로 잡으면 그 글자를 어느 프로그램에서도 칠 수 없게 된다. Shift만 더해도
+; 마찬가지(대문자를 못 침)라, Ctrl이나 Alt를 반드시 포함하게 한다. 기능키(F1~F24)는 글을 쓸 때
+; 쓰지 않으니 단독으로도 허용한다.
+IsSafeHotkey(combo) {
+    if (combo = "")
+        return false
+    if (InStr(combo, "^") || InStr(combo, "!"))
+        return true
+    return RegExMatch(combo, "i)^\+?F([1-9]|1[0-9]|2[0-4])$") > 0
+}
+
+; combo를 name 동작의 전역 단축키로 등록한다. 성공하면 true.
+; 이미 등록돼 있던 조합은 먼저 해제해서, 옛 조합이 계속 살아있는 일이 없게 한다.
+RegisterHotkey(name, combo) {
+    global HOTKEY_ACTIONS, hotkeyRegistered
+    if hotkeyRegistered.Has(name) {
+        try Hotkey(hotkeyRegistered[name], , "Off")
+        hotkeyRegistered.Delete(name)
+    }
+    if (combo = "")
+        return false
+    try {
+        Hotkey(combo, HOTKEY_ACTIONS[name], "On")
+        hotkeyRegistered[name] := combo
+        return true
+    }
+    return false ; 다른 프로그램이 선점한 조합 등
+}
+
+; 설정 창의 단축키 칸에서 값이 바뀌었을 때 불린다. 문제가 있으면 원래 조합으로 되돌리고
+; 이유를 알려준다 — 조용히 무시하면 왜 안 바뀌는지 알 수 없다.
+ChangeHotkey(name, combo, ctrl) {
+    global hotkeyCombos, hotkeyApplying, HOTKEY_LABELS
+    if hotkeyApplying
+        return
+    ; 조합키만 누르고 있는 동안에는 아직 키가 안 정해져 빈 값이 온다 — 입력 중이므로 그냥 둔다
+    if (combo = "" || combo = hotkeyCombos[name])
+        return
+
+    old := hotkeyCombos[name]
+    reason := ""
+    if !IsSafeHotkey(combo)
+        reason := "Ctrl이나 Alt를 함께 누르는 조합으로 정해주세요.`n`n글자 키 하나만 지정하면 그 글자를 어느 프로그램에서도 칠 수 없게 됩니다. (F1~F12 같은 기능키는 단독으로도 됩니다)"
+    else {
+        for otherName, otherCombo in hotkeyCombos {
+            if (otherName != name && otherCombo = combo) {
+                reason := "이미 " HOTKEY_LABELS[otherName] " 기능에 쓰고 있는 조합입니다.`n다른 조합으로 정해주세요."
+                break
+            }
+        }
+    }
+    if (reason = "" && !RegisterHotkey(name, combo)) {
+        reason := "다른 프로그램이 이미 쓰고 있어 이 조합은 등록할 수 없습니다.`n다른 조합으로 정해주세요."
+        RegisterHotkey(name, old) ; 원래 단축키를 되살려서 아무것도 안 먹는 상태를 피한다
+    }
+
+    hotkeyApplying := true ; 아래에서 Value를 바꿀 때 Change가 다시 불려도 무시되게 한다
+    if (reason != "") {
+        ctrl.Value := old
+        MsgBox(reason, "Focus & Draw - 단축키", "Icon!")
+    } else {
+        hotkeyCombos[name] := combo
+        ctrl.Value := combo
+    }
+    hotkeyApplying := false
+}
 
