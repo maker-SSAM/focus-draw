@@ -367,9 +367,9 @@ PatchAlphaPolyline(pts, segLen := 24) {
     return [uMinX, uMinY, uMaxX, uMaxY]
 }
 
-; 도형이 차지하는 범위(펜 굵기만큼 여유를 둔다). GDI+로 그릴 때는 훑을 필요가 없으므로
-; 되돌리기와 화면 갱신에 쓸 범위만 이렇게 계산해서 쓴다.
-ShapeDirtyBox(x1, y1, x2, y2) {
+; 펜이 지나간 범위(굵기만큼 여유를 둔다). GDI+로 그릴 때는 픽셀을 훑을 필요가 없으므로,
+; 되돌리기와 화면 갱신에 쓸 범위만 이렇게 계산해서 쓴다. 자유선과 도형이 함께 쓴다.
+PenDirtyBox(x1, y1, x2, y2) {
     global vw, vh, DrawThickness
     pad := DrawThickness + 4
     return [Max(0, Min(x1, x2) - pad), Max(0, Min(y1, y2) - pad)
@@ -455,16 +455,52 @@ ClearAlpha(x1, y1, x2, y2, pad) {
     return [minX, minY, maxX + 1, maxY + 1]
 }
 
+; 자유선용 GDI+ 펜. (변수 freehandPen과 이름이 겹치면 안 된다 — AutoHotkey는 대소문자를 구분하지 않는다)
+; 10ms마다 짧은 선을 긋는 작업이라 매번 새로 만들면 낭비여서, 색이나
+; 굵기가 바뀔 때만 다시 만들고 그 외에는 만들어둔 것을 재사용한다.
+freehandPen := 0, freehandPenColor := -1, freehandPenWidth := -1
+GetFreehandPen() {
+    global freehandPen, freehandPenColor, freehandPenWidth, activeDrawColor, DrawThickness
+    if (freehandPen && freehandPenColor = activeDrawColor && freehandPenWidth = DrawThickness)
+        return freehandPen
+    if freehandPen
+        DllCall("gdiplus\GdipDeletePen", "ptr", freehandPen)
+    freehandPen := 0
+    DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", DrawThickness, "int", 2, "ptr*", &freehandPen)
+    if freehandPen {
+        ; 자유선은 10ms마다 짧은 선을 이어 붙여 만드는 것이라, 선 끝이 평평하면 이음매마다
+        ; 모난 자국이 남아 획이 끊겨 보인다. 끝과 이음매를 둥글게 해야 한 획처럼 이어진다.
+        ; (GDI의 굵은 펜은 원래 끝이 둥글어서 이 문제가 없었다)
+        DllCall("gdiplus\GdipSetPenStartCap", "ptr", freehandPen, "int", 2) ; LineCapRound
+        DllCall("gdiplus\GdipSetPenEndCap", "ptr", freehandPen, "int", 2)
+        DllCall("gdiplus\GdipSetPenLineJoin", "ptr", freehandPen, "int", 2) ; LineJoinRound
+    }
+    freehandPenColor := activeDrawColor
+    freehandPenWidth := DrawThickness
+    return freehandPen
+}
+
 DrawSegment(x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, activeDrawColor
+    global memDC, vx, vy, DrawThickness, activeDrawColor, pShapeGraphics
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
-    old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
-    DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
-    DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
-    DllCall("SelectObject", "ptr", memDC, "ptr", old)
-    DllCall("DeleteObject", "ptr", pen)
-    box := PatchAlpha(lx1, ly1, lx2, ly2)
+    if pShapeGraphics {
+        ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
+        ; 테두리도 도형과 똑같이 매끄럽게 나온다.
+        DllCall("gdi32\GdiFlush") ; 지우개는 아직 GDI를 쓰므로 밀린 작업을 먼저 반영시킨다
+        pPen := GetFreehandPen()
+        if pPen
+            DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+        box := PenDirtyBox(lx1, ly1, lx2, ly2)
+    } else {
+        ; GDI+ 준비에 실패한 경우를 위한 대비책 (예전 방식: GDI로 긋고 투명도는 직접 채우기)
+        pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
+        old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
+        DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
+        DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
+        DllCall("SelectObject", "ptr", memDC, "ptr", old)
+        DllCall("DeleteObject", "ptr", pen)
+        box := PatchAlpha(lx1, ly1, lx2, ly2)
+    }
     UpdateOverlay(box[1], box[2], box[3], box[4])
 }
 
@@ -492,7 +528,7 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
         else if mode = "ellipse"
             DllCall("gdiplus\GdipDrawEllipse", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
         DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
-        box := ShapeDirtyBox(lx1, ly1, lx2, ly2)
+        box := PenDirtyBox(lx1, ly1, lx2, ly2)
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 — 예전 방식(GDI로 그리고 알파는 직접 채우기).
         ; 테두리를 따라가며 훑어서, 도형을 감싸는 네모 전체를 훑던 때보다는 훨씬 가볍다.
