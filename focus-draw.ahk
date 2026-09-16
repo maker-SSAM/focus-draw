@@ -662,34 +662,95 @@ DrawPoll() {
     }
 }
 
-; ================= 마우스 강조(스포트라이트) 창 =================
-; 매 프레임 다시 그리는 대신, 창 모양 자체를 원 모양으로 SetWindowRgn으로 잘라내고
-; WinSetTransparent로 반투명 처리 — 위치만 옮기면 되므로 훨씬 가볍다.
-spotGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "FocusDraw-Spot") ; E0x20 = 클릭 통과
-spotGui.Show("w" SpotSize " h" SpotSize " Hide")
-
-InitSpotlightShape() {
-    global spotGui, SpotSize, spotOpacity
-    rgn := DllCall("CreateEllipticRgn", "int", 0, "int", 0, "int", SpotSize, "int", SpotSize, "ptr")
-    DllCall("SetWindowRgn", "ptr", spotGui.Hwnd, "ptr", rgn, "int", true)
-    WinSetTransparent(Max(0, Min(255, Round(spotOpacity * 255 / 100))), spotGui) ; spotOpacity는 0~100(%)
+; ================= 픽셀 단위 투명도를 가진 작은 그림판 =================
+; 강조 원과 클릭 링이 함께 쓴다. 예전에는 창을 원 모양으로 잘라내거나(강조) 특정 색을
+; 투명색으로 지정하는(클릭 링) 방식이었는데, 둘 다 가장자리가 계단처럼 각져 보였다.
+; 픽셀마다 투명도를 담을 수 있는 그림판에 GDI+로 그리면 테두리가 매끄럽게 나온다.
+CreateAlphaCanvas(w, h) {
+    bi := Buffer(40, 0)
+    NumPut("UInt", 40, bi, 0), NumPut("Int", w, bi, 4), NumPut("Int", -h, bi, 8) ; 음수 = 위에서 아래로
+    NumPut("UShort", 1, bi, 12), NumPut("UShort", 32, bi, 14), NumPut("UInt", 0, bi, 16)
+    bits := 0
+    screenDC := DllCall("GetDC", "ptr", 0, "ptr")
+    dc := DllCall("CreateCompatibleDC", "ptr", screenDC, "ptr")
+    bmp := DllCall("CreateDIBSection", "ptr", screenDC, "ptr", bi, "uint", 0, "ptr*", &bits, "ptr", 0, "uint", 0, "ptr")
+    DllCall("SelectObject", "ptr", dc, "ptr", bmp)
+    DllCall("ReleaseDC", "ptr", 0, "ptr", screenDC)
+    pBitmap := 0, pGraphics := 0
+    DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", w, "int", h, "int", w * 4, "int", 0xE200B, "ptr", bits, "ptr*", &pBitmap)
+    if pBitmap {
+        DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pBitmap, "ptr*", &pGraphics)
+        if pGraphics
+            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pGraphics, "int", 4) ; 매끄럽게
+    }
+    return {w: w, h: h, dc: dc, bmp: bmp, bitmap: pBitmap, graphics: pGraphics}
 }
-InitSpotlightShape()
 
-; 설정 창에서 크기를 바꿀 때, 창 크기/모양/투명도/클릭 애니메이션 버퍼를 즉시 다시 적용한다.
+DestroyAlphaCanvas(c) {
+    if !IsObject(c)
+        return
+    if c.graphics
+        DllCall("gdiplus\GdipDeleteGraphics", "ptr", c.graphics)
+    if c.bitmap
+        DllCall("gdiplus\GdipDisposeImage", "ptr", c.bitmap)
+    if c.dc
+        DllCall("DeleteDC", "ptr", c.dc)
+    if c.bmp
+        DllCall("DeleteObject", "ptr", c.bmp)
+}
+
+; 그림판 내용을 창에 올린다. 위치와 그림을 한 번에 바꾸기 때문에, 지우고 다시 그리는 찰나가
+; 없어 깜빡이지 않는다. constAlpha는 그림 전체에 한 번 더 곱해지는 불투명도다.
+PushCanvasToWindow(hwnd, c, x, y, constAlpha := 255) {
+    static ptDst := Buffer(8, 0), size := Buffer(8, 0), ptSrc := Buffer(8, 0), blend := Buffer(4, 0)
+    NumPut("Int", x, ptDst, 0), NumPut("Int", y, ptDst, 4)
+    NumPut("Int", c.w, size, 0), NumPut("Int", c.h, size, 4)
+    NumPut("UChar", 0, blend, 0), NumPut("UChar", 0, blend, 1)
+    NumPut("UChar", constAlpha, blend, 2), NumPut("UChar", 1, blend, 3) ; AC_SRC_ALPHA
+    DllCall("UpdateLayeredWindow", "ptr", hwnd, "ptr", 0, "ptr", ptDst, "ptr", size
+        , "ptr", c.dc, "ptr", ptSrc, "uint", 0, "ptr", blend, "uint", 2) ; ULW_ALPHA
+}
+
+; ================= 마우스 강조(스포트라이트) 창 =================
+; 그림은 크기·색·투명도가 바뀔 때만 다시 그리고, 마우스를 따라다닐 때는 위치만 옮긴다.
+spotGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Spot") ; 0x80000 = 레이어드, 0x20 = 클릭 통과
+spotGui.Show("w" SpotSize " h" SpotSize " Hide")
+spotCanvas := ""
+
+RedrawSpotlight() {
+    global spotGui, spotCanvas, SpotSize, spotOpacity, penColor
+    DestroyAlphaCanvas(spotCanvas)
+    spotCanvas := CreateAlphaCanvas(SpotSize, SpotSize)
+    if !spotCanvas.graphics
+        return
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", spotCanvas.graphics, "uint", 0x00000000)
+    ; 투명도를 픽셀 자체에 담는다. 예전처럼 창 전체 투명도를 따로 지정하는 방식은 픽셀 단위
+    ; 투명도와 같이 쓸 수 없다.
+    alpha := Max(0, Min(255, Round(spotOpacity * 255 / 100)))
+    brush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", (alpha << 24) | penColor, "ptr*", &brush)
+    if brush {
+        ; 매끄럽게 처리한 가장자리가 잘리지 않도록 반 픽셀씩 안쪽으로 채운다
+        DllCall("gdiplus\GdipFillEllipse", "ptr", spotCanvas.graphics, "ptr", brush
+            , "float", 0.5, "float", 0.5, "float", SpotSize - 1, "float", SpotSize - 1)
+        DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+    }
+    DllCall("gdiplus\GdipFlush", "ptr", spotCanvas.graphics, "int", 0)
+    x := 0, y := 0
+    try WinGetPos(&x, &y, , , spotGui)
+    PushCanvasToWindow(spotGui.Hwnd, spotCanvas, x, y)
+}
+RedrawSpotlight()
+
+; 설정 창에서 크기를 바꿀 때, 강조 원과 클릭 링 그림판을 즉시 다시 만든다.
 ApplySpotlightAppearance() {
-    global spotGui, clickGui, SpotSize
-    spotGui.Move(,, SpotSize, SpotSize)
-    clickGui.Move(,, SpotSize, SpotSize)
-    InitSpotlightShape()
-    SetupClickBuffer()
+    RedrawSpotlight()
+    SetupClickCanvas()
 }
 
 UpdateSpotlightColor() {
-    global spotGui, penColor
-    spotGui.BackColor := HexColor(penColor)
+    RedrawSpotlight()
 }
-UpdateSpotlightColor()
 
 SpotFollow() {
     global spotlightOn, spotGui, SpotSize
@@ -702,86 +763,55 @@ SpotFollow() {
 ; ================= 클릭 시 원이 오므라드는 애니메이션 =================
 ; spotGui와 별개의 작은 창을 하나 더 써서, 클릭한 순간에만 진한 테두리 원을 그려
 ; 바깥쪽에서 중심으로 줄어들게 만든 뒤 사라지게 한다.
-CLICK_RING_KEY := "FF00FF"
 ; 프레임 수를 늘릴수록 한 프레임이 담당하는 반경 변화폭이 작아져서 더 부드럽게 보인다.
 ; 클릭할 때만 잠깐 실행되고 끝나는 애니메이션이라(계속 다시 그리는 판서 오버레이와 달리),
 ; 프레임을 늘려도 체감될 정도의 성능 부담은 없다.
 CLICK_ANIM_FRAMES := 30 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
 
-clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Click") ; E0x20 = 클릭 통과, E0x80000 = WS_EX_LAYERED(SetLayeredWindowAttributes에 필요)
-clickGui.BackColor := CLICK_RING_KEY
+clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Click") ; 0x80000 = 레이어드, 0x20 = 클릭 통과
 clickGui.Show("w" SpotSize " h" SpotSize " Hide")
+clickCanvas := ""
 
-; 색상 키(원 안쪽 배경 투명 처리)와 전체 불투명도(clickOpacity)를 함께 적용한다.
-; WinSetTransColor와 WinSetTransparent를 따로 부르면 서로의 설정을 덮어써 버려서,
-; SetLayeredWindowAttributes를 직접 호출해 두 값을 한 번에 같이 설정한다.
-UpdateClickAppearance() {
-    global clickGui, CLICK_RING_KEY, clickOpacity
-    DllCall("SetLayeredWindowAttributes", "ptr", clickGui.Hwnd, "uint", ToBGR(Integer("0x" CLICK_RING_KEY)), "uchar", Round(clickOpacity * 255 / 100), "uint", 0x3) ; LWA_COLORKEY | LWA_ALPHA
+SetupClickCanvas() {
+    global clickCanvas, SpotSize
+    DestroyAlphaCanvas(clickCanvas)
+    clickCanvas := CreateAlphaCanvas(SpotSize, SpotSize)
 }
-UpdateClickAppearance()
-
-; 화면에 바로 지우고 다시 그리면 그 찰나의 빈 순간이 보여서(깜빡임) 테두리가 두 개로 보일 때가
-; 있었다. 오프스크린 버퍼에 한 프레임을 통째로 그린 뒤 한 번에 옮겨 붙여서(BitBlt) 해결한다.
-clickMemDC := 0
-clickMemBmp := 0
-SetupClickBuffer() {
-    global clickMemDC, clickMemBmp, SpotSize
-    if clickMemDC {
-        DllCall("DeleteDC", "ptr", clickMemDC)
-        DllCall("DeleteObject", "ptr", clickMemBmp)
-    }
-    hdcScreen := DllCall("GetDC", "ptr", 0, "ptr")
-    clickMemDC := DllCall("CreateCompatibleDC", "ptr", hdcScreen, "ptr")
-    clickMemBmp := DllCall("CreateCompatibleBitmap", "ptr", hdcScreen, "int", SpotSize, "int", SpotSize, "ptr")
-    DllCall("SelectObject", "ptr", clickMemDC, "ptr", clickMemBmp)
-    DllCall("ReleaseDC", "ptr", 0, "ptr", hdcScreen)
-}
-SetupClickBuffer()
+SetupClickCanvas()
 
 clickAnimFrame := 0
 
 ClickAnimStep() {
-    global clickAnimFrame, CLICK_ANIM_FRAMES, clickGui, clickMemDC, SpotSize, SpotThickness, penColor, CLICK_RING_KEY
+    global clickAnimFrame, CLICK_ANIM_FRAMES, clickGui, clickCanvas, SpotSize, SpotThickness, penColor, clickOpacity
     if clickAnimFrame >= CLICK_ANIM_FRAMES {
         SetTimer(ClickAnimStep, 0)
         clickGui.Hide()
         return
     }
     MouseGetPos(&mx, &my)
-    WinMove(mx - SpotSize // 2, my - SpotSize // 2,,, clickGui)
+    if clickCanvas.graphics {
+        DllCall("gdiplus\GdipGraphicsClear", "ptr", clickCanvas.graphics, "uint", 0x00000000)
 
-    ; 1) 오프스크린 버퍼를 지우고
-    bgBrush := DllCall("CreateSolidBrush", "uint", ToBGR("0x" CLICK_RING_KEY), "ptr")
-    rc := Buffer(16, 0)
-    NumPut("Int", 0, rc, 0)
-    NumPut("Int", 0, rc, 4)
-    NumPut("Int", SpotSize, rc, 8)
-    NumPut("Int", SpotSize, rc, 12)
-    DllCall("FillRect", "ptr", clickMemDC, "ptr", rc, "ptr", bgBrush)
-    DllCall("DeleteObject", "ptr", bgBrush)
+        ; 등속 대신 감속(ease-out) 곡선을 써서, 처음엔 빠르게 줄어들다가 중심 근처에서
+        ; 서서히 멈추는 것처럼 보이게 한다 — 등속보다 훨씬 자연스럽게 느껴진다.
+        t := clickAnimFrame / CLICK_ANIM_FRAMES
+        eased := 1 - (1 - t) ** 3
+        radius := (SpotSize / 2 - SpotThickness / 2 - 1) * (1 - eased)
+        cx := SpotSize / 2, cy := SpotSize / 2
+        pen := 0
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | penColor, "float", SpotThickness, "int", 2, "ptr*", &pen)
+        if pen {
+            DllCall("gdiplus\GdipDrawEllipse", "ptr", clickCanvas.graphics, "ptr", pen
+                , "float", cx - radius, "float", cy - radius, "float", radius * 2, "float", radius * 2)
+            DllCall("gdiplus\GdipDeletePen", "ptr", pen)
+        }
+        DllCall("gdiplus\GdipFlush", "ptr", clickCanvas.graphics, "int", 0)
 
-    ; 2) 오프스크린 버퍼에 현재 프레임의 링을 그린 뒤
-    ; 등속 대신 감속(ease-out) 곡선을 써서, 처음엔 빠르게 줄어들다가 중심 근처에서
-    ; 서서히 멈추는 것처럼 보이게 한다 — 등속보다 훨씬 자연스럽게 느껴진다.
-    t := clickAnimFrame / CLICK_ANIM_FRAMES
-    eased := 1 - (1 - t) ** 3
-    radius := Round((SpotSize / 2) * (1 - eased))
-    cx := SpotSize // 2, cy := SpotSize // 2
-    pen := DllCall("CreatePen", "int", 0, "int", SpotThickness, "uint", ToBGR(penColor), "ptr")
-    oldPen := DllCall("SelectObject", "ptr", clickMemDC, "ptr", pen, "ptr")
-    nullBrush := DllCall("GetStockObject", "int", 5, "ptr") ; NULL_BRUSH
-    oldBrush := DllCall("SelectObject", "ptr", clickMemDC, "ptr", nullBrush, "ptr")
-    DllCall("Ellipse", "ptr", clickMemDC, "int", cx - radius, "int", cy - radius, "int", cx + radius, "int", cy + radius)
-    DllCall("SelectObject", "ptr", clickMemDC, "ptr", oldPen)
-    DllCall("SelectObject", "ptr", clickMemDC, "ptr", oldBrush)
-    DllCall("DeleteObject", "ptr", pen)
-
-    ; 3) 완성된 프레임을 창에 한 번에 옮겨 붙인다
-    hdc := DllCall("GetDC", "ptr", clickGui.Hwnd, "ptr")
-    DllCall("BitBlt", "ptr", hdc, "int", 0, "int", 0, "int", SpotSize, "int", SpotSize, "ptr", clickMemDC, "int", 0, "int", 0, "uint", 0x00CC0020)
-    DllCall("ReleaseDC", "ptr", clickGui.Hwnd, "ptr", hdc)
-
+        ; 위치와 그림을 한 번에 올린다. 예전에는 화면에 지우고 다시 그리는 찰나가 보여서
+        ; 테두리가 두 개로 보이는 깜빡임이 있었는데, 이 방식은 그 틈이 아예 없다.
+        PushCanvasToWindow(clickGui.Hwnd, clickCanvas, mx - SpotSize // 2, my - SpotSize // 2
+            , Max(0, Min(255, Round(clickOpacity * 255 / 100))))
+    }
     clickAnimFrame += 1
 }
 
@@ -1054,7 +1084,7 @@ OpenSettingsWindow(*) {
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
-    AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, InitSpotlightShape()))
+    AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, RedrawSpotlight()))
 
     chkHideCursor := settingsGui.AddCheckbox("x30 y132 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
     settingsGui.AddText("x54 y133 w220", "활성화 시 마우스 커서 숨기기")
@@ -1070,7 +1100,8 @@ OpenSettingsWindow(*) {
     AddSliderRow(settingsGui, 90, "테두리 굵기", 2, 12, SpotThickness, "", (v) => SpotThickness := v)
     ; clickSpeed는 클수록 빠름(1~30) — 실제 타이머 간격(ms)은 반대로 계산한다
     AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v))
-    AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => (clickOpacity := v, UpdateClickAppearance()))
+    ; 클릭 링은 클릭할 때만 잠깐 나타나므로, 투명도는 값만 바꿔두면 다음 클릭부터 적용된다
+    AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => clickOpacity := v)
 
     tabs.UseTab("드로잉")
     AddSliderRow(settingsGui, 50, "선 굵기", 1, 12, DrawThickness, "", (v) => DrawThickness := v)
