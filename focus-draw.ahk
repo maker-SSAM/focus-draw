@@ -128,7 +128,9 @@ lastY := 0
 dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
-dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/설정 창/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
+dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
+chkWidgetCtrl := "" ; 설정 창의 "위젯 활성화" 체크박스 (창을 아직 한 번도 안 열었으면 비어 있음)
+settingsHiddenByDraw := false ; 판서를 켜느라 설정 창을 잠시 감췄는지 (판서를 끄면 다시 띄운다)
 
 ; ================= 가상 화면(전체 모니터) 크기 =================
 vx := SysGet(76)
@@ -314,7 +316,7 @@ DrawPoll() {
             dragStartX := mx
             dragStartY := my
             ; 마우스를 누른 순간 커서 아래에 있는 창이 판서 오버레이가 아니면, 그 위에 다른 창이
-            ; 떠 있다는 뜻이다 — 위젯, 설정 창, 색상 선택 대화상자, Win+Shift+S 캡처 도구 오버레이
+            ; 떠 있다는 뜻이다 — 위젯이나 Win+Shift+S 캡처 도구 오버레이처럼 위로 올라온 창
             ; 등. 그 창이 클릭을 받는 드래그이므로 판서로 그리지 않는다. 드래그를 시작한 시점에
             ; 한 번만 판단하고 마우스를 뗄 때까지 유지하므로, 설정 창 슬라이더를 끌다 커서가 창
             ; 밖으로 벗어나도 선이 그려지지 않는다. (예전엔 Win+Shift+S 뒤 드래그 "횟수"를
@@ -565,14 +567,19 @@ ToggleSpotlight(*) {
 }
 
 ToggleDraw(*) {
-    global drawOn, drawGui, widget, settingsGui
+    global drawOn, drawGui, widget, settingsGui, settingsHiddenByDraw
     drawOn := !drawOn
     if drawOn {
         drawGui.Show("NA")
-        ; 오버레이가 화면 전체를 덮으므로, 조작해야 하는 우리 창들은 오버레이보다 위로 다시 올린다
+        ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
         WinSetAlwaysOnTop(true, widget)
-        if IsSet(settingsGui) && WinExist(settingsGui)
-            WinSetAlwaysOnTop(true, settingsGui)
+        ; 오버레이는 그린 자국 말고는 거의 투명해서, 설정 창이 열려 있으면 눈에는 보이는데
+        ; 클릭은 오버레이가 가로채는 이상한 상태가 된다. 아예 잠시 감춰서 헷갈리지 않게 한다.
+        settingsHiddenByDraw := false
+        if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
+            settingsGui.Hide()
+            settingsHiddenByDraw := true
+        }
         SetTimer(DrawPoll, 10)
         Hotkey("Esc", "On")
         Hotkey("Delete", "On")
@@ -581,6 +588,12 @@ ToggleDraw(*) {
         Hotkey("Esc", "Off")
         Hotkey("Delete", "Off")
         drawGui.Hide()
+        ; 판서를 켜느라 감췄던 설정 창이라면 하던 작업을 이어갈 수 있게 다시 띄운다
+        if settingsHiddenByDraw {
+            settingsHiddenByDraw := false
+            if IsSet(settingsGui)
+                try settingsGui.Show()
+        }
     }
     UpdateSpotlightVisibility()
     UpdateCursorHiddenState() ; 판서 모드에서도 십자선 커서를 쓴다 (그림 도구다운 커서)
@@ -659,16 +672,26 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION
+    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl
+
+    ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
+    ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
+    ; 것은 판서를 잠시 멈추겠다는 뜻이므로 판서 모드를 먼저 끈다. 그려둔 내용은 지우지 않아서
+    ; 판서를 다시 켜면 그대로 남아 있다.
+    ; (설정 창을 항상 위로 올리는 방법도 써봤지만, 그러면 강조 하이라이트가 설정 창 밑으로
+    ;  숨어버려서 크기·투명도를 보면서 맞출 수 없었다 — 그래서 이 방식으로 되돌렸다)
+    if drawOn
+        ToggleDraw()
 
     if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
         settingsGui.Show()
         return
     }
 
-    ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다. AlwaysOnTop은 판서 모드 중에도
-    ; 설정 창이 화면 전체를 덮는 판서 오버레이 아래에 깔리지 않고 클릭을 받게 하기 위한 것이다.
-    settingsGui := Gui("+AlwaysOnTop", "Focus & Draw 설정")
+    ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다. AlwaysOnTop은 일부러 쓰지
+    ; 않는다 — 항상 위로 올리면 강조 하이라이트(이 창도 AlwaysOnTop이다)가 설정 창 뒤로
+    ; 가려져서, 크기와 투명도를 눈으로 보면서 맞출 수 없다.
+    settingsGui := Gui(, "Focus & Draw 설정")
     ; 숫자칸(Edit)은 흰 배경이라, 창 배경을 살짝 다른 톤으로 두어야 둥근 모서리 바깥으로
     ; 비치는 색이 또렷하게 구분되어 보인다.
     settingsGui.BackColor := "F2F2F2"
@@ -703,7 +726,9 @@ OpenSettingsWindow(*) {
     tabs.UseTab(4)
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
     settingsGui.AddText("x54 y53 w200", "위젯 활성화")
-    chkWidget.OnEvent("Click", (ctrl, *) => (showWidget := ctrl.Value, showWidget ? widget.Show() : widget.Hide()))
+    chkWidget.OnEvent("Click", (ctrl, *) => SetWidgetVisible(ctrl.Value))
+    ; 위젯의 ✕나 트레이 메뉴로 상태가 바뀌어도 이 체크박스가 따라오도록 참조를 남겨둔다
+    chkWidgetCtrl := chkWidget
 
     chkTray := settingsGui.AddCheckbox("x30 y92 w20 h20 " (showTrayIcons ? "Checked" : ""), "")
     settingsGui.AddText("x54 y93 w200", "작업표시줄 아이콘 활성화")
@@ -859,9 +884,14 @@ for ctrl in [btnSpotOff, btnSpotOn]
 for ctrl in [btnDrawOff, btnDrawOn]
     ctrl.OnEvent("Click", ToggleDraw)
 btnSettings.OnEvent("Click", OpenSettingsWindow)
-; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 아이콘·메뉴로 계속 조작 가능,
-; 설정 창의 "위젯" 탭에서 다시 켤 수 있음)
-btnClose.OnEvent("Click", (*) => (showWidget := false, widget.Hide()))
+; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 메뉴의 "위젯 표시"나 설정 창의
+; "위젯" 탭에서 다시 켤 수 있음)
+; 주의: 여기서 (*) => (showWidget := false, ...) 처럼 화살표 함수 안에서 전역 변수에 값을
+; 넣으면 안 된다. AutoHotkey v2에서 함수 안의 대입은 global 선언이 없으면 같은 이름의
+; 지역 변수를 새로 만들 뿐이라 전역값이 그대로 남는다. 실제로 그 탓에 ✕로 위젯을 숨겨도
+; showWidget은 계속 참이어서, 설정 창의 "위젯 활성화"가 체크된 채로 보이고 한 번 눌러도
+; 다시 나타나지 않는 버그가 있었다. 그래서 global을 선언할 수 있는 보통 함수로 둔다.
+btnClose.OnEvent("Click", (*) => SetWidgetVisible(false))
 
 ; 위젯 창 자체의 바깥 테두리도 둥글게 잘라낸다 (칩과 달리 배경이 단색 하나뿐이라
 ; SetWindowRgn만으로 충분히 자연스럽게 보인다).
@@ -888,8 +918,32 @@ UpdateWidgetState() {
 ; ================= 트레이 아이콘 메뉴 (작업표시줄 알림 영역) =================
 ; 기본 AutoHotkey 개발용 메뉴(Window Spy, Reload Script 등)를 포함해 전부 지우고,
 ; 설정/종료 두 개만 남긴다. 강조·판서·색상은 위젯의 ⚙(설정) 또는 트레이 바로가기 아이콘으로 접근.
+; 위젯을 ✕로 숨기고 나면 화면에 남는 단추가 하나도 없어서, 트레이 메뉴에서 바로 다시 켤 수
+; 있도록 체크 항목을 둔다. (설정 창의 "위젯" 탭에서도 켤 수 있다)
+TRAY_WIDGET_ITEM := "위젯 표시"
+
+; 위젯 표시 여부를 바꾸는 유일한 통로. 트레이 메뉴 체크 표시와 설정 창 체크박스까지 같이
+; 맞춰줘야 세 곳(위젯 ✕, 트레이 메뉴, 설정 창)이 서로 어긋나지 않는다.
+SetWidgetVisible(show) {
+    global showWidget, widget, TRAY_WIDGET_ITEM, chkWidgetCtrl
+    showWidget := show ? true : false
+    if showWidget
+        widget.Show()
+    else
+        widget.Hide()
+    if showWidget
+        A_TrayMenu.Check(TRAY_WIDGET_ITEM)
+    else
+        A_TrayMenu.Uncheck(TRAY_WIDGET_ITEM)
+    ; 설정 창은 닫아도 없애지 않고 숨겨뒀다가 다시 쓰기 때문에, 열려 있지 않더라도 체크
+    ; 상태를 지금 맞춰둬야 다음에 열었을 때 옛 상태가 보이지 않는다.
+    if IsSet(chkWidgetCtrl) && chkWidgetCtrl
+        try chkWidgetCtrl.Value := showWidget
+}
+
 A_TrayMenu.Delete()
 A_TrayMenu.Add("설정...", OpenSettingsWindow)
+A_TrayMenu.Add(TRAY_WIDGET_ITEM, (*) => SetWidgetVisible(!showWidget))
 A_TrayMenu.Add("종료", (*) => ExitApp())
 A_TrayMenu.Default := "설정..."
 
@@ -1036,8 +1090,7 @@ OnWidgetDrag(wParam, lParam, msg, hwnd) {
 }
 
 widget.Show("x" (A_ScreenWidth - widgetW - 20) " y" (A_ScreenHeight - widgetH - 60) " w" widgetW " h" widgetH " Hide")
-if showWidget
-    widget.Show()
+SetWidgetVisible(showWidget) ; 트레이 메뉴 체크 표시까지 시작 상태에 맞춰준다
 
 ; ================= 단축키 =================
 ^!h::ToggleSpotlight()
