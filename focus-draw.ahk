@@ -399,8 +399,9 @@ ClickAnimStep() {
 }
 
 StartClickAnimation(*) {
-    global spotlightOn, clickEffectEnabled, clickAnimFrame, clickGui, CLICK_ANIM_INTERVAL
-    if !spotlightOn || !clickEffectEnabled
+    global spotlightOn, drawOn, clickEffectEnabled, clickAnimFrame, clickGui, CLICK_ANIM_INTERVAL
+    ; 판서 중에는 강조 하이라이트 자체를 감춰두므로, 클릭 링 효과도 같이 쉰다
+    if !spotlightOn || drawOn || !clickEffectEnabled
         return
     clickAnimFrame := 0
     clickGui.Show("NA")
@@ -456,6 +457,17 @@ RestoreSystemCursor(*) {
 }
 OnExit(RestoreSystemCursor) ; 커서가 숨겨진 채로 프로그램이 종료되는 일이 없도록 보험
 
+; 커서를 십자선으로 바꿔야 하는 이유가 두 가지(강조 중 커서 숨기기 설정 + 판서 모드)라서,
+; 매번 따로 켜고 끄는 대신 "지금 상태 종합해서 켜져 있어야 하나?"를 한곳에서 판단한다.
+UpdateCursorHiddenState() {
+    global spotlightOn, hideCursorOnHighlight, drawOn, systemCursorHidden
+    shouldHide := (spotlightOn && hideCursorOnHighlight) || drawOn
+    if shouldHide && !systemCursorHidden
+        HideSystemCursor()
+    else if !shouldHide && systemCursorHidden
+        RestoreSystemCursor()
+}
+
 ; SetSystemCursor로 바꾼 커서는 이 프로그램이 아니라 Windows 세션 전체에 적용되는
 ; 상태라서, 작업 관리자로 강제 종료되는 등 OnExit이 실행되지 못하고 죽으면 커서가 숨겨진
 ; 채로 계속 남는다. 그런 경우를 대비해 시작할 때 한 번 무조건 기본 커서로 되돌려둔다.
@@ -463,18 +475,16 @@ DllCall("SystemParametersInfo", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0) ; 
 
 ; ================= 토글 / 동작 함수 =================
 ToggleSpotlight(*) {
-    global spotlightOn, spotGui, hideCursorOnHighlight
+    global spotlightOn, spotGui
     spotlightOn := !spotlightOn
     if spotlightOn {
         spotGui.Show("NA")
         SetTimer(SpotFollow, 15)
-        if hideCursorOnHighlight
-            HideSystemCursor()
     } else {
         SetTimer(SpotFollow, 0)
         spotGui.Hide()
-        RestoreSystemCursor()
     }
+    UpdateCursorHiddenState()
     UpdateWidgetState()
 }
 
@@ -483,8 +493,12 @@ ToggleDraw(*) {
     drawOn := !drawOn
     if drawOn {
         drawGui.Show("NA")
-        if spotlightOn
-            WinSetAlwaysOnTop(true, spotGui)
+        ; 판서 중에는 마우스 강조 하이라이트가 그림 그리는 데 방해만 되므로 잠시 감춘다
+        ; (강조 자체를 끄는 게 아니라 화면 표시만 잠깐 멈추는 것 — 판서를 끄면 다시 보임)
+        if spotlightOn {
+            SetTimer(SpotFollow, 0)
+            spotGui.Hide()
+        }
         WinSetAlwaysOnTop(true, widget)
         SetTimer(DrawPoll, 10)
         Hotkey("Esc", "On")
@@ -496,7 +510,12 @@ ToggleDraw(*) {
         Hotkey("Backspace", "Off")
         Hotkey("Delete", "Off")
         drawGui.Hide()
+        if spotlightOn {
+            spotGui.Show("NA")
+            SetTimer(SpotFollow, 15)
+        }
     }
+    UpdateCursorHiddenState() ; 판서 모드에서도 십자선 커서를 쓴다 (그림 도구다운 커서)
     UpdateWidgetState()
 }
 
@@ -596,7 +615,7 @@ OpenSettingsWindow(*) {
 
     chkHideCursor := settingsGui.AddCheckbox("x30 y172 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
     settingsGui.AddText("x54 y173 w220", "활성화 시 마우스 커서 숨기기")
-    chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, spotlightOn ? (ctrl.Value ? HideSystemCursor() : RestoreSystemCursor()) : 0))
+    chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
 
     tabs.UseTab(2)
     ; 체크박스 라벨 텍스트까지 클릭 영역에 포함되면 실수로 누르기 쉬워서, 네모 칸만 클릭
@@ -905,7 +924,12 @@ SetTrayIconsVisible(show) {
 }
 if showTrayIcons
     SetTrayIconsVisible(true)
-OnExit((*) => (RemoveQuickTrayIcon(1), RemoveQuickTrayIcon(2), DllCall("gdiplus\GdiplusShutdown", "ptr", gdipToken)))
+; GdiplusShutdown은 일부러 부르지 않는다 — 종료 시점에는 위젯/트레이 아이콘 등 GDI+로 만든
+; 리소스를 쓰던 창들이 아직 완전히 정리되지 않은 상태라, 여기서 GDI+를 먼저 꺼버리면 그
+; 창들이 뒤이어 정리되면서 이미 죽은 GDI+를 건드려 접근 위반(0xC0000005)으로 죽는 경우가
+; 있었다(배포한 exe에서 종료 시 에러 팝업으로 보고됨). 프로세스가 끝나면 GDI+ 리소스는
+; 어차피 OS가 정리해주므로, 굳이 직접 종료하지 않는 편이 더 안전하다.
+OnExit((*) => (RemoveQuickTrayIcon(1), RemoveQuickTrayIcon(2)))
 
 ; 시작 시점의 위젯 버튼 상태(꺼짐/켜짐 중 어느 쪽을 보여줄지)는 생성 시 Hidden 옵션으로
 ; 이미 맞춰뒀고, 트레이 아이콘도 SetTrayIconsVisible(true)에서 이미 맞춰졌으므로 여기서
