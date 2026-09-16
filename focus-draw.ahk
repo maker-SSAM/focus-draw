@@ -9,7 +9,7 @@ CoordMode("Mouse", "Screen")
 DllCall("winmm\timeBeginPeriod", "uint", 1)
 OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
 
-A_IconTip := "TeachingTool - 마우스 강조 / 화면 판서"
+A_IconTip := "Focus & Draw - 마우스 강조 / 화면 판서"
 SETTINGS_PATH := A_ScriptDir "\settings.ini"
 
 ; 컴파일된 exe에도 아이콘 파일이 그대로 들어가도록 FileInstall로 함께 담고, 실행 시 임시 폴더로 꺼내 쓴다.
@@ -127,7 +127,7 @@ ClearBackBuffer()
 ; ================= 판서 오버레이 창 (레이어드 윈도우 + 픽셀 단위 알파) =================
 ; 색상 키(투명색) 방식 대신 진짜 픽셀 알파를 쓰면, 안 그려진 빈 공간도 창이 그대로
 ; 마우스 입력을 받아서 아래 화면(링크 클릭, 텍스트 드래그 등)으로 클릭이 새지 않는다.
-drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80000", "TeachingTool-Draw") ; E0x80000 = WS_EX_LAYERED
+drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80000", "FocusDraw-Draw") ; E0x80000 = WS_EX_LAYERED
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
 ; UpdateLayeredWindow은 부를 때마다 창 전체(가상 화면 전체 크기)를 합성하기 때문에,
@@ -273,7 +273,7 @@ DrawPoll() {
 ; ================= 마우스 강조(스포트라이트) 창 =================
 ; 매 프레임 다시 그리는 대신, 창 모양 자체를 원 모양으로 SetWindowRgn으로 잘라내고
 ; WinSetTransparent로 반투명 처리 — 위치만 옮기면 되므로 훨씬 가볍다.
-spotGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "TeachingTool-Spot") ; E0x20 = 클릭 통과
+spotGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "FocusDraw-Spot") ; E0x20 = 클릭 통과
 spotGui.Show("w" SpotSize " h" SpotSize " Hide")
 
 InitSpotlightShape() {
@@ -313,7 +313,7 @@ SpotFollow() {
 CLICK_RING_KEY := "FF00FF"
 CLICK_ANIM_FRAMES := 16 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
 
-clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "TeachingTool-Click")
+clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "FocusDraw-Click")
 clickGui.BackColor := CLICK_RING_KEY
 clickGui.Show("w" SpotSize " h" SpotSize " Hide")
 WinSetTransColor(CLICK_RING_KEY, clickGui)
@@ -506,7 +506,7 @@ OpenSettingsWindow(*) {
         return
     }
 
-    settingsGui := Gui(, "TeachingTool 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
+    settingsGui := Gui(, "Focus & Draw 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
     settingsGui.SetFont("s10", "Malgun Gothic")
 
     tabs := settingsGui.AddTab3("x10 y10 w320 h190", ["포인터", "왼쪽 클릭 효과", "판서", "위젯"])
@@ -563,7 +563,7 @@ OpenSettingsWindow(*) {
 ; 딱 맞는 좁은 칸이라 닫기(✕)도 같은 폭(14)으로 줄여야 양쪽 여백이 실제로 같아 보인다.
 widgetW := 152
 widgetH := 40
-widget := Gui("+AlwaysOnTop -Caption +ToolWindow", "TeachingTool")
+widget := Gui("+AlwaysOnTop -Caption +ToolWindow", "FocusDraw")
 widget.BackColor := "F2F2F2"
 widget.SetFont("s10", "Malgun Gothic")
 
@@ -708,7 +708,7 @@ hIconSpotOn := LoadIconFromPng(ICON_SPOT_PATH, TRAY_ON_COLOR)
 hIconDrawOff := LoadIconFromPng(ICON_DRAW_PATH, 0xFFFFFF)
 hIconDrawOn := LoadIconFromPng(ICON_DRAW_PATH, TRAY_ON_COLOR)
 
-trayHelper := Gui("+ToolWindow", "TeachingTool-TrayHelper")
+trayHelper := Gui("+ToolWindow", "FocusDraw-TrayHelper")
 trayHelper.Show("Hide")
 OnMessage(WM_TRAYBTN, OnQuickTrayClick)
 

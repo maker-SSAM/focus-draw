@@ -1,4 +1,4 @@
-# TeachingTool
+# Focus & Draw (포커스 앤 드로우)
 
 수업 중 화면 위에 판서를 하고, 마우스 커서 위치를 강조 표시해주는 가벼운 도구입니다.
 (spotmouse의 커서 강조 기능 + ZoomIt의 판서 기능 중 핵심만 구현)
@@ -11,7 +11,7 @@ AutoHotkey v2가 필요합니다. (설치형 프로그램으로 배포할 때는
 
 ## 실행
 
-`TeachingTool.ahk` 파일을 더블클릭하면 실행됩니다.
+`focus-draw.ahk` 파일을 더블클릭하면 실행됩니다.
 실행하면 화면 우측 하단에 작은 컨트롤 위젯이 나타납니다.
 
 ## 사용법
@@ -42,7 +42,7 @@ AutoHotkey v2가 필요합니다. (설치형 프로그램으로 배포할 때는
 
 추가로, 메뉴를 거치지 않고 **클릭 한 번으로 바로 켜고 끌 수 있는 전용 아이콘 2개**(강조=빨강, 판서=파랑)가 따로 생깁니다. 처음 실행하면 작업표시줄 숨김 아이콘(^) 안에 들어있으니, 꺼내서 작업표시줄에 고정하거나 "항상 표시"로 설정해두면 다음 실행부터 계속 보입니다. 이 설정은 PC별로 한 번만 해두면 유지됩니다.
 
-(아이콘 그림은 `icon_spotlight.png`, `icon_draw.png` 파일을 사용합니다 — `TeachingTool.ahk`와 같은 폴더에 있어야 합니다. exe로 컴파일하면 이 파일들이 exe 안에 함께 포함되어 별도로 들고 다닐 필요는 없습니다.)
+(아이콘 그림은 `icon_spotlight.png`, `icon_draw.png` 파일을 사용합니다 — `focus-draw.ahk`와 같은 폴더에 있어야 합니다. exe로 컴파일하면 이 파일들이 exe 안에 함께 포함되어 별도로 들고 다닐 필요는 없습니다.)
 
 ### 단축키로 조작
 - `Ctrl+Alt+H`: 마우스 강조 표시 켜기/끄기
@@ -52,9 +52,9 @@ AutoHotkey v2가 필요합니다. (설치형 프로그램으로 배포할 때는
 
 ## 배포용 exe 만들기 (다른 선생님 PC에 설치 없이 배포)
 
-1. AutoHotkey v2 설치 시 함께 설치되는 **Ahk2Exe** 실행 (또는 `TeachingTool.ahk` 우클릭 → "Compile Script")
-2. Source: `TeachingTool.ahk` 지정, Base File은 AutoHotkey v2 64-bit 선택
-3. 생성된 `TeachingTool.exe` 하나만 전달하면, 받는 PC에 AutoHotkey가 설치되어 있지 않아도 바로 실행됨
+1. AutoHotkey v2 설치 시 함께 설치되는 **Ahk2Exe** 실행 (또는 `focus-draw.ahk` 우클릭 → "Compile Script")
+2. Source: `focus-draw.ahk` 지정, Base File은 AutoHotkey v2 64-bit 선택
+3. 생성된 `focus-draw.exe` 하나만 전달하면, 받는 PC에 AutoHotkey가 설치되어 있지 않아도 바로 실행됨
 
 ## 알려진 제한사항 (필요하면 추후 개선 가능)
 
