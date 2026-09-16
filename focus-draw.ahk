@@ -155,6 +155,7 @@ dragStartY := 0
 dragShapeMode := ""
 dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
 erasing := false ; 오른쪽 버튼으로 지우는 중인지
+lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리만 되돌리고 다시 합성하면 된다)
 
 ; 드로잉 중 숫자키 1~7로 바로 바꿀 수 있는 색 (무지개 순서: 빨주노초파남보).
 ; 노랑과 초록은 표준 무지개값(FFFF00, 00FF00)을 그대로 쓰면 흰 배경에서 잘 안 보이고
@@ -202,6 +203,19 @@ memDC := DllCall("CreateCompatibleDC", "ptr", hScreenDC, "ptr")
 memBmp := DllCall("CreateDIBSection", "ptr", hScreenDC, "ptr", bi, "uint", 0, "ptr*", &ppvBits, "ptr", 0, "uint", 0, "ptr")
 DllCall("SelectObject", "ptr", memDC, "ptr", memBmp)
 DllCall("ReleaseDC", "ptr", 0, "ptr", hScreenDC)
+
+; 도형 미리보기는 GDI가 아니라 GDI+로 그린다. GDI는 알파 채널을 건드리지 않아서, 그린 자리를
+; 픽셀 단위로 훑어 알파를 255로 올려줘야 했다 — 큰 사각형이나 원은 그 훑는 양이 수십만 픽셀이라
+; 한 프레임에 수백 밀리초가 걸렸고, 그래서 크게 그릴수록 드래그가 뚝뚝 끊겼다. GDI+는 알파까지
+; 제대로 써주므로 훑는 작업 자체가 없어진다. 같은 DIB 메모리를 가리키게 만들어 두 방식이 같은
+; 그림을 공유한다. (0xE200B = 미리 곱해진 32비트 ARGB — 레이어드 윈도우가 기대하는 형식)
+pShapeBitmap := 0, pShapeGraphics := 0
+DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", vw, "int", vh, "int", vw * 4, "int", 0xE200B, "ptr", ppvBits, "ptr*", &pShapeBitmap)
+if pShapeBitmap {
+    DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pShapeBitmap, "ptr*", &pShapeGraphics)
+    if pShapeGraphics
+        DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4) ; 계단 없이 매끄럽게
+}
 
 ; 도형(직선/사각형/원) 미리보기를 그리기 전에 현재 그림을 스냅샷으로 저장해뒀다가,
 ; 드래그 중 매 프레임마다 스냅샷으로 되돌린 뒤 새 도형을 다시 그려서 "고무줄 미리보기" 효과를 낸다.
@@ -329,6 +343,73 @@ PatchAlpha(x1, y1, x2, y2) {
     return [minX, minY, maxX + 1, maxY + 1]
 }
 
+; ================= 도형 테두리만 훑기 =================
+; 도형 미리보기가 느렸던 이유는 알파를 채울 때 도형을 감싸는 네모 "전체"를 픽셀 하나씩
+; 훑었기 때문이다. 테두리만 그리는데도 빈 안쪽까지 훑다 보니, 큰 사각형이나 원은 한 프레임에
+; 수십만 픽셀이 되어 드래그가 뚝뚝 끊겼다. (자유선이 멀쩡했던 건 방금 지나간 짧은 구간만
+; 훑기 때문) 테두리를 짧은 토막으로 나눠 각 토막 둘레의 작은 네모만 훑으면, 훑는 양이
+; 네모 넓이가 아니라 테두리 넓이로 줄어든다.
+PatchAlphaPolyline(pts, segLen := 24) {
+    global vw, vh
+    uMinX := vw, uMinY := vh, uMaxX := 0, uMaxY := 0
+    loop pts.Length - 1 {
+        ax := pts[A_Index][1], ay := pts[A_Index][2]
+        bx := pts[A_Index + 1][1], by := pts[A_Index + 1][2]
+        dx := bx - ax, dy := by - ay
+        parts := Max(1, Ceil(Sqrt(dx * dx + dy * dy) / segLen))
+        loop parts {
+            t0 := (A_Index - 1) / parts, t1 := A_Index / parts
+            box := PatchAlpha(Round(ax + dx * t0), Round(ay + dy * t0), Round(ax + dx * t1), Round(ay + dy * t1))
+            uMinX := Min(uMinX, box[1]), uMinY := Min(uMinY, box[2])
+            uMaxX := Max(uMaxX, box[3]), uMaxY := Max(uMaxY, box[4])
+        }
+    }
+    return [uMinX, uMinY, uMaxX, uMaxY]
+}
+
+; 도형이 차지하는 범위(펜 굵기만큼 여유를 둔다). GDI+로 그릴 때는 훑을 필요가 없으므로
+; 되돌리기와 화면 갱신에 쓸 범위만 이렇게 계산해서 쓴다.
+ShapeDirtyBox(x1, y1, x2, y2) {
+    global vw, vh, DrawThickness
+    pad := DrawThickness + 4
+    return [Max(0, Min(x1, x2) - pad), Max(0, Min(y1, y2) - pad)
+        , Min(vw, Max(x1, x2) + pad + 1), Min(vh, Max(y1, y2) + pad + 1)]
+}
+
+; 도형 테두리를 따라가는 점들. 원은 크기에 맞춰 잘게 쪼개야 토막마다 훑는 네모가 작게 유지된다.
+ShapeOutlinePoints(mode, x1, y1, x2, y2) {
+    if (mode = "line")
+        return [[x1, y1], [x2, y2]]
+    lx := Min(x1, x2), rx := Max(x1, x2), ty := Min(y1, y2), by := Max(y1, y2)
+    if (mode = "rect")
+        return [[lx, ty], [rx, ty], [rx, by], [lx, by], [lx, ty]]
+    cx := (lx + rx) / 2, cy := (ty + by) / 2
+    ax := (rx - lx) / 2, ay := (by - ty) / 2
+    steps := Max(16, Min(160, Round((ax + ay) / 6)))
+    pts := []
+    loop steps + 1 {
+        t := (A_Index - 1) * 6.283185307179586 / steps
+        pts.Push([cx + ax * Cos(t), cy + ay * Sin(t)])
+    }
+    return pts
+}
+
+; 스냅샷에서 지정한 네모만 되돌린다. 미리보기는 직전 프레임이 그린 자리만 지우면 되므로
+; 화면 전체(수 MB)를 매 프레임 복사할 필요가 없다.
+RestoreSnapshotBox(box) {
+    global ppvBits, snapshotBuf, vw, vh
+    minX := Max(0, box[1]), minY := Max(0, box[2])
+    maxX := Min(vw, box[3]), maxY := Min(vh, box[4])
+    if (maxX <= minX || maxY <= minY)
+        return
+    stride := vw * 4
+    rowBytes := (maxX - minX) * 4
+    loop (maxY - minY) {
+        off := (minY + A_Index - 1) * stride + minX * 4
+        DllCall("RtlCopyMemory", "ptr", ppvBits + off, "ptr", snapshotBuf.Ptr + off, "uptr", rowBytes)
+    }
+}
+
 ; ================= 지우개 (오른쪽 버튼 드래그) =================
 ; 굵기는 펜보다 넉넉하게 — 지우개는 대충 문질러도 지워져야 쓸 만하다.
 EraserThickness() {
@@ -390,33 +471,64 @@ DrawSegment(x1, y1, x2, y2) {
 ; mode: "line" | "rect" | "ellipse". 시작점~현재점 사이의 도형을 매 프레임 다시 그린다.
 ; (매번 스냅샷으로 되돌린 뒤 새로 그려서, 드래그 중인 미리보기가 쌓이지 않고 하나만 보이게 함)
 DrawShapePreview(mode, x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, activeDrawColor
-    RestoreSnapshot()
+    global memDC, vx, vy, DrawThickness, activeDrawColor, lastShapeBox, pShapeGraphics
+    ; 직전 프레임이 그린 자리만 되돌리면 된다. 첫 프레임은 되돌릴 것이 없다(스냅샷을 방금 떴다).
+    if (lastShapeBox.Length = 4)
+        RestoreSnapshotBox(lastShapeBox)
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
-    oldPen := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
-    nullBrush := DllCall("GetStockObject", "int", 5, "ptr") ; NULL_BRUSH (안쪽은 채우지 않음)
-    oldBrush := DllCall("SelectObject", "ptr", memDC, "ptr", nullBrush, "ptr")
-    if mode = "line" {
-        DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
-        DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
-    } else if mode = "rect" {
-        DllCall("Rectangle", "ptr", memDC, "int", Min(lx1, lx2), "int", Min(ly1, ly2), "int", Max(lx1, lx2), "int", Max(ly1, ly2))
-    } else if mode = "ellipse" {
-        DllCall("Ellipse", "ptr", memDC, "int", Min(lx1, lx2), "int", Min(ly1, ly2), "int", Max(lx1, lx2), "int", Max(ly1, ly2))
+    bx := Min(lx1, lx2), by := Min(ly1, ly2)
+    bw := Abs(lx2 - lx1), bh := Abs(ly2 - ly1)
+
+    if pShapeGraphics {
+        ; GDI가 아직 버퍼에 반영하지 않은 작업이 남아 있을 수 있으므로 먼저 밀어 넣는다
+        DllCall("gdi32\GdiFlush")
+        pPen := 0
+        ; GDI+ 색은 0xAARRGGBB — GDI처럼 BGR로 뒤집지 않는다
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", DrawThickness, "int", 2, "ptr*", &pPen)
+        if mode = "line"
+            DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+        else if mode = "rect"
+            DllCall("gdiplus\GdipDrawRectangle", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
+        else if mode = "ellipse"
+            DllCall("gdiplus\GdipDrawEllipse", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
+        DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+        box := ShapeDirtyBox(lx1, ly1, lx2, ly2)
+    } else {
+        ; GDI+ 준비에 실패한 경우를 위한 대비책 — 예전 방식(GDI로 그리고 알파는 직접 채우기).
+        ; 테두리를 따라가며 훑어서, 도형을 감싸는 네모 전체를 훑던 때보다는 훨씬 가볍다.
+        pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
+        oldPen := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
+        nullBrush := DllCall("GetStockObject", "int", 5, "ptr") ; NULL_BRUSH (안쪽은 채우지 않음)
+        oldBrush := DllCall("SelectObject", "ptr", memDC, "ptr", nullBrush, "ptr")
+        if mode = "line" {
+            DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
+            DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
+        } else if mode = "rect" {
+            DllCall("Rectangle", "ptr", memDC, "int", bx, "int", by, "int", bx + bw, "int", by + bh)
+        } else if mode = "ellipse" {
+            DllCall("Ellipse", "ptr", memDC, "int", bx, "int", by, "int", bx + bw, "int", by + bh)
+        }
+        DllCall("SelectObject", "ptr", memDC, "ptr", oldPen)
+        DllCall("SelectObject", "ptr", memDC, "ptr", oldBrush)
+        DllCall("DeleteObject", "ptr", pen)
+        box := PatchAlphaPolyline(ShapeOutlinePoints(mode, lx1, ly1, lx2, ly2))
     }
-    DllCall("SelectObject", "ptr", memDC, "ptr", oldPen)
-    DllCall("SelectObject", "ptr", memDC, "ptr", oldBrush)
-    DllCall("DeleteObject", "ptr", pen)
-    PatchAlpha(lx1, ly1, lx2, ly2)
-    ; 도형 미리보기는 매번 스냅샷으로 전체를 되돌리므로, 이전 프레임에 그렸던 부분도
-    ; 화면에서 지워줘야 한다 — 그래서 부분 갱신 대신 항상 전체를 다시 합성한다.
-    UpdateOverlay()
+
+    ; 이전 프레임에 그렸던 자리도 화면에서 지워져야 하므로, 두 범위를 합친 만큼만 다시 합성한다.
+    dirty := box.Clone()
+    if (lastShapeBox.Length = 4) {
+        dirty[1] := Min(dirty[1], lastShapeBox[1])
+        dirty[2] := Min(dirty[2], lastShapeBox[2])
+        dirty[3] := Max(dirty[3], lastShapeBox[3])
+        dirty[4] := Max(dirty[4], lastShapeBox[4])
+    }
+    lastShapeBox := box
+    UpdateOverlay(dirty[1], dirty[2], dirty[3], dirty[4])
 }
 
 DrawPoll() {
     global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
-    global dragOnOtherWindow
+    global dragOnOtherWindow, lastShapeBox
     if !drawOn
         return
 
@@ -471,8 +583,10 @@ DrawPoll() {
             : GetKeyState("Ctrl", "P") ? "rect"
             : GetKeyState("Shift", "P") ? "line"
             : ""
-        if dragShapeMode != "" && !dragOnOtherWindow
+        if (dragShapeMode != "" && !dragOnOtherWindow) {
             SaveSnapshot()
+            lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
+        }
     } else if dragOnOtherWindow {
         ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
     } else if dragShapeMode != "" {
