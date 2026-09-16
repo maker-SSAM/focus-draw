@@ -10,6 +10,7 @@
 ;@Ahk2Exe-SetName Focus & Draw
 ;@Ahk2Exe-SetDescription Focus & Draw - 마우스 강조 / 화면 판서
 ;@Ahk2Exe-SetVersion 1.0.0
+;@Ahk2Exe-SetCopyright (c) 2026 maker_SSAM (MIT License)
 
 Persistent()
 SetWinDelay(-1)
@@ -751,8 +752,12 @@ OpenSettingsWindow(*) {
     btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
 
     ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
+    ; 제작자 표시도 같이 둔다 — 수업 화면을 가리지 않으면서 찾으려는 사람은 확실히 볼 수 있는
+    ; 자리가 여기라서, 위젯이나 트레이 툴팁 대신 이곳을 골랐다.
     lblVersion := settingsGui.AddText("x30 y150 w270", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
+    lblAuthor := settingsGui.AddText("x30 y170 w270", "제작자: maker_SSAM")
+    lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab()
 
