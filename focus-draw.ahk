@@ -36,7 +36,7 @@ DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "
 ; clickSpeed는 "클수록 빠름"(1~30)으로 저장/표시하고, 타이머 간격(ms)으로 쓸 때만 뒤집어 계산한다.
 LoadSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor
-    global clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons
+    global clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 64)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
     spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 43)))
@@ -44,6 +44,7 @@ LoadSettings() {
     clickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "ClickEffect", 1) = 1
     clickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "ClickSpeed", 16)))
     CLICK_ANIM_INTERVAL := 31 - clickSpeed
+    hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 0) = 1
     DrawThickness := Max(1, Min(12, IniRead(SETTINGS_PATH, "Draw", "Thickness", 4)))
     penColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "Color", "FF3B30"))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
@@ -51,12 +52,13 @@ LoadSettings() {
 }
 
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor, clickEffectEnabled, clickSpeed, showWidget, showTrayIcons
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor, clickEffectEnabled, clickSpeed, showWidget, showTrayIcons, hideCursorOnHighlight
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
     IniWrite(clickEffectEnabled ? 1 : 0, SETTINGS_PATH, "Highlight", "ClickEffect")
     IniWrite(clickSpeed, SETTINGS_PATH, "Highlight", "ClickSpeed")
+    IniWrite(hideCursorOnHighlight ? 1 : 0, SETTINGS_PATH, "Highlight", "HideCursor")
     IniWrite(DrawThickness, SETTINGS_PATH, "Draw", "Thickness")
     IniWrite(HexColor(penColor), SETTINGS_PATH, "Common", "Color")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
@@ -406,16 +408,72 @@ StartClickAnimation(*) {
 }
 ~LButton::StartClickAnimation()
 
+; ================= 강조 중 마우스 커서를 작은 십자선으로 바꾸기 =================
+; 마우스 커서는 각 창이 스스로 그리기 때문에, 단순히 "커서 숨김" API 하나로는 다른 프로그램
+; 창 위로 마우스가 지나가는 순간 커서가 다시 나타난다. 대신 시스템 커서 전체(화살표, 손,
+; 입력창의 I자 등 전부)를 작은 십자선 모양의 커서로 통째로 바꿔치기해서, 어떤 창 위에 있든
+; 일관되게 위치를 알 수 있게 한다. (완전히 투명하게 만들면 클릭 지점을 눈으로 짚기 어려워서
+; 십자선으로 대신함) SystemParametersInfo(SPI_SETCURSORS)로 한 번에 기본값으로 되돌릴 수 있다.
+CURSOR_IDS := [32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651]
+; OCR_NORMAL, OCR_IBEAM, OCR_WAIT, OCR_CROSS, OCR_UP, OCR_SIZENWSE, OCR_SIZENESW, OCR_SIZEWE,
+; OCR_SIZENS, OCR_SIZEALL, OCR_NO, OCR_HAND, OCR_APPSTARTING, OCR_HELP
+systemCursorHidden := false
+
+; 1비트(흑백) 커서 마스크에서 (x,y) 픽셀 하나를 켜고 끈다. 32x32 커서는 한 줄이 정확히
+; 4바이트(32비트)이고, 한 바이트 안에서는 왼쪽 픽셀이 상위 비트(MSB)에 대응한다.
+SetMonoBit(mask, x, y, bit) {
+    byteIndex := y * 4 + (x // 8)
+    bitPos := 7 - Mod(x, 8)
+    b := NumGet(mask, byteIndex, "UChar")
+    b := bit ? (b | (1 << bitPos)) : (b & ~(1 << bitPos) & 0xFF)
+    NumPut("UChar", b, mask, byteIndex)
+}
+
+CreateCrosshairCursor() {
+    size := 32, center := 16, armLen := 2 ; 중심에서 양쪽으로 2px — 가늘고 작은 십자선
+    andMask := Buffer(128, 0xFF) ; 기본은 전부 투명(원래 화면 그대로 통과)
+    xorMask := Buffer(128, 0x00) ; AND=0인 자리는 XOR 그대로(0=검정)가 표시됨
+    loop (armLen * 2 + 1)
+        SetMonoBit(andMask, center - armLen + (A_Index - 1), center, 0)
+    loop (armLen * 2 + 1)
+        SetMonoBit(andMask, center, center - armLen + (A_Index - 1), 0)
+    return DllCall("CreateCursor", "ptr", 0, "int", center, "int", center, "int", size, "int", size, "ptr", andMask, "ptr", xorMask, "ptr")
+}
+
+HideSystemCursor() {
+    global CURSOR_IDS, systemCursorHidden
+    for id in CURSOR_IDS
+        DllCall("SetSystemCursor", "ptr", CreateCrosshairCursor(), "uint", id) ; 넘긴 커서는 시스템이 소유/해제함
+    systemCursorHidden := true
+}
+
+RestoreSystemCursor(*) {
+    global systemCursorHidden
+    if !systemCursorHidden
+        return
+    DllCall("SystemParametersInfo", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0) ; SPI_SETCURSORS
+    systemCursorHidden := false
+}
+OnExit(RestoreSystemCursor) ; 커서가 숨겨진 채로 프로그램이 종료되는 일이 없도록 보험
+
+; SetSystemCursor로 바꾼 커서는 이 프로그램이 아니라 Windows 세션 전체에 적용되는
+; 상태라서, 작업 관리자로 강제 종료되는 등 OnExit이 실행되지 못하고 죽으면 커서가 숨겨진
+; 채로 계속 남는다. 그런 경우를 대비해 시작할 때 한 번 무조건 기본 커서로 되돌려둔다.
+DllCall("SystemParametersInfo", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0) ; SPI_SETCURSORS
+
 ; ================= 토글 / 동작 함수 =================
 ToggleSpotlight(*) {
-    global spotlightOn, spotGui
+    global spotlightOn, spotGui, hideCursorOnHighlight
     spotlightOn := !spotlightOn
     if spotlightOn {
         spotGui.Show("NA")
         SetTimer(SpotFollow, 15)
+        if hideCursorOnHighlight
+            HideSystemCursor()
     } else {
         SetTimer(SpotFollow, 0)
         spotGui.Hide()
+        RestoreSystemCursor()
     }
     UpdateWidgetState()
 }
@@ -513,7 +571,7 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui
+    global SpotSize, spotOpacity, SpotThickness, DrawThickness, clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn
 
     if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
         settingsGui.Show()
@@ -523,7 +581,7 @@ OpenSettingsWindow(*) {
     settingsGui := Gui(, "Focus & Draw 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
     settingsGui.SetFont("s10", "Malgun Gothic")
 
-    tabs := settingsGui.AddTab3("x10 y10 w320 h190", ["포인터", "왼쪽 클릭 효과", "판서", "위젯"])
+    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["포인터", "왼쪽 클릭 효과", "판서", "위젯"])
 
     tabs.UseTab(1)
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -535,6 +593,10 @@ OpenSettingsWindow(*) {
     swatch := settingsGui.AddProgress("x100 y130 w40 h24 Range0-100 -Smooth c" HexColor(penColor), 100)
     btnPick := settingsGui.AddButton("x150 y128 w110 h28", "색상 선택...")
     btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
+
+    chkHideCursor := settingsGui.AddCheckbox("x30 y172 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y173 w220", "활성화 시 마우스 커서 숨기기")
+    chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, spotlightOn ? (ctrl.Value ? HideSystemCursor() : RestoreSystemCursor()) : 0))
 
     tabs.UseTab(2)
     ; 체크박스 라벨 텍스트까지 클릭 영역에 포함되면 실수로 누르기 쉬워서, 네모 칸만 클릭
@@ -563,13 +625,13 @@ OpenSettingsWindow(*) {
 
     tabs.UseTab()
 
-    btnSave := settingsGui.AddButton("x130 y210 w95 h30", "저장")
+    btnSave := settingsGui.AddButton("x130 y235 w95 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x235 y210 w95 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x235 y235 w95 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h256")
+    settingsGui.Show("w340 h282")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
