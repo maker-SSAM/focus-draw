@@ -59,8 +59,11 @@ DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "
 ; ================= 사용자가 바꿀 수 있는 전역 단축키 =================
 ; `^!h::` 같은 문법은 프로그램이 켜질 때 고정으로 박혀서 실행 중에 바꿀 수 없다. 설정 창에서
 ; 단축키를 바꾸려면 Hotkey() 함수로 등록/해제해야 해서, 동작과 기본값을 이름으로 묶어둔다.
-HOTKEY_DEFAULTS := Map("Spotlight", "^!h", "Draw", "^!d", "Clear", "^!c")
-HOTKEY_LABELS := Map("Spotlight", "강조", "Draw", "드로잉", "Clear", "지우기")
+; 지우기는 전역 단축키로 두지 않는다. 드로잉 모드가 꺼져 있으면 그린 내용이 화면에 보이지도
+; 않아서 그때 지울 일이 없고, 드로잉 중에는 Delete와 Esc가 같은 일을 한다. 전역 단축키는
+; 하나 등록할 때마다 그 키를 Windows 전체에서 빼앗으므로, 값어치가 낮은 것은 두지 않는 게 낫다.
+HOTKEY_DEFAULTS := Map("Spotlight", "^!h", "Draw", "^!d")
+HOTKEY_LABELS := Map("Spotlight", "강조", "Draw", "드로잉")
 hotkeyCombos := Map()     ; 지금 설정된 조합 (settings.ini에서 불러옴)
 hotkeyRegistered := Map() ; 실제로 등록에 성공해 살아있는 조합 (해제할 때 필요)
 hotkeyApplying := false   ; 값을 되돌리느라 Change가 다시 불려 무한히 반복되는 것을 막는 빗장
@@ -110,6 +113,9 @@ SaveSettings() {
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
     for name, combo in hotkeyCombos
         IniWrite(combo, SETTINGS_PATH, "Hotkeys", name)
+    ; 예전 버전에 있던 전역 "지우기" 단축키의 잔재를 치운다. 안 읽히는 값이라 그냥 둬도
+    ; 동작에는 문제가 없지만, 설정 파일을 열어본 사람이 헷갈리지 않도록 지운다.
+    try IniDelete(SETTINGS_PATH, "Hotkeys", "Clear")
 }
 
 LoadSettings()
@@ -735,7 +741,8 @@ OpenSettingsWindow(*) {
     ; 탭은 번호가 아니라 이름으로 고른다 — 나중에 순서를 바꿔도 아래 코드를 손볼 필요가 없다.
     ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
     ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
-    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
+    tabs := settingsGui.AddTab3("x10 y10 w320 h295", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -793,32 +800,44 @@ OpenSettingsWindow(*) {
     ; 자리가 여기라서, 위젯이나 트레이 툴팁 대신 이곳을 골랐다.
     ; +0x80 = SS_NOPREFIX. 이게 없으면 Text 컨트롤이 &를 단축키 표시용 기호로 삼아 먹어버려서
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
-    lblVersion := settingsGui.AddText("x30 y150 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
+    ; 않아 눈에 걸리지도 않는다.
+    lblVersion := settingsGui.AddText("x30 y252 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y170 w270", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x30 y272 w270", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
     AddHotkeyRow(settingsGui, 50, "Spotlight")
     AddHotkeyRow(settingsGui, 90, "Draw")
-    AddHotkeyRow(settingsGui, 130, "Clear")
-    lblHotkeyHelp := settingsGui.AddText("x30 y172 w280 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
+    lblHotkeyHelp := settingsGui.AddText("x30 y126 w280 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
     lblHotkeyHelp.SetFont("s9 c999999")
+
+    ; 드로잉 중에만 쓰는 키들은 바꿀 수 없지만, 모르면 못 쓰는 기능이라 여기에 같이 적어둔다.
+    ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
+    ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
+    settingsGui.AddText("x30 y170 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
+    keyNames := settingsGui.AddText("x38 y194 w120 h104",
+        "드래그`nShift + 드래그`nCtrl + 드래그`nCtrl+Shift + 드래그`nDelete`nEsc")
+    keyNames.SetFont("s9")
+    keyMeans := settingsGui.AddText("x170 y194 w140 h104",
+        "자유선 그리기`n직선`n사각형`n원(타원)`n그린 내용 지우기`n지우고 드로잉 끄기")
+    keyMeans.SetFont("s9 c666666")
 
     tabs.UseTab()
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y235 w90 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y315 w90 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x125 y235 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x125 y315 w90 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x225 y235 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x225 y315 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h282")
+    settingsGui.Show("w340 h362")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -1145,7 +1164,7 @@ SetWidgetVisible(showWidget) ; 트레이 메뉴 체크 표시까지 시작 상�
 
 ; ================= 단축키 =================
 ; 이름 → 실제로 실행할 동작. 설정 창에서 조합을 바꿔도 동작은 그대로이므로 여기서 한 번만 묶는다.
-HOTKEY_ACTIONS := Map("Spotlight", ToggleSpotlight, "Draw", ToggleDraw, "Clear", ClearDrawing)
+HOTKEY_ACTIONS := Map("Spotlight", ToggleSpotlight, "Draw", ToggleDraw)
 
 ; 저장해둔 조합으로 전역 단축키를 켠다. 다른 프로그램이 이미 쓰는 조합이면 등록에 실패하는데,
 ; 시작하자마자 오류 창을 띄우면 수업 중에 곤란하므로 조용히 건너뛴다(위젯과 트레이는 그대로 동작).
