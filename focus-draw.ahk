@@ -18,10 +18,12 @@ FileInstall("icon_spotlight.png", A_Temp "\tt_icon_spotlight.png", true)
 FileInstall("icon_draw.png", A_Temp "\tt_icon_draw.png", true)
 FileInstall("icon_spotlight_dark.png", A_Temp "\tt_icon_spotlight_dark.png", true)
 FileInstall("icon_draw_dark.png", A_Temp "\tt_icon_draw_dark.png", true)
+FileInstall("Settings.png", A_Temp "\tt_icon_settings.png", true)
 ICON_SPOT_PATH := A_Temp "\tt_icon_spotlight.png"
 ICON_DRAW_PATH := A_Temp "\tt_icon_draw.png"
 ICON_SPOT_DARK_PATH := A_Temp "\tt_icon_spotlight_dark.png"
 ICON_DRAW_DARK_PATH := A_Temp "\tt_icon_draw_dark.png"
+ICON_SETTINGS_PATH := A_Temp "\tt_icon_settings.png"
 
 ; ================= GDI+ 초기화 (PNG 아이콘 불러오기/색 입히기용) =================
 gdipStartupInput := Buffer(24, 0)
@@ -563,38 +565,134 @@ OpenSettingsWindow(*) {
 ; 딱 맞는 좁은 칸이라 닫기(✕)도 같은 폭(14)으로 줄여야 양쪽 여백이 실제로 같아 보인다.
 widgetW := 152
 widgetH := 40
+
+; 버튼 네모(강조/판서/설정)를 둥근 테두리+아이콘까지 한 장으로 미리 그려둔다.
+; 처음엔 "둥근 칩 Picture" 위에 "아이콘 Picture"를 따로 겹쳤었는데, Picture 컨트롤의
+; PNG 투명 처리가 항상 배경과 다시 합성되는 게 아니라서 색 있는 배경에서 아이콘 가장자리에
+; 흰 테두리가 비치거나(작은 네모 자국) 심하면 아이콘이 통째로 안 보이는 문제가 있었다.
+; 그래서 배경(위젯 바탕색)+둥근 사각형(채우기)+아이콘을 GDI/GDI+로 직접 한 비트맵에
+; 합성해서 하나의 완성된 그림만 컨트롤에 넣는다 — 별도 겹침이 없으니 항상 정확하게 보인다.
+CHIP_SIZE := 32
+CHIP_CORNER := 12
+CHIP_ICON_SIZE := 22
+WIDGET_BG_COLOR := 0xF2F2F2
+ICON_OFF_COLOR := 0x000000
+; 켜짐 상태를 표시할 색 — 위젯 버튼과 트레이 바로가기 아이콘이 같은 색을 쓴다.
+TRAY_ON_COLOR := 0x0A84FF
+
+RenderButtonBitmap(fillColor, bgColor, size, corner, iconPath, iconSize, iconColor) {
+    hdcScreen := DllCall("GetDC", "ptr", 0, "ptr")
+    hdc := DllCall("CreateCompatibleDC", "ptr", hdcScreen, "ptr")
+    hBmp := DllCall("CreateCompatibleBitmap", "ptr", hdcScreen, "int", size, "int", size, "ptr")
+    DllCall("ReleaseDC", "ptr", 0, "ptr", hdcScreen)
+    old := DllCall("SelectObject", "ptr", hdc, "ptr", hBmp, "ptr")
+
+    bgBrush := DllCall("CreateSolidBrush", "uint", ToBGR(bgColor), "ptr")
+    rc := Buffer(16, 0)
+    NumPut("Int", size, rc, 8)
+    NumPut("Int", size, rc, 12)
+    DllCall("FillRect", "ptr", hdc, "ptr", rc, "ptr", bgBrush)
+    DllCall("DeleteObject", "ptr", bgBrush)
+
+    ; NULL_PEN(테두리 없음)으로 채우기만 한다. RoundRect는 펜의 두께만큼 안쪽만 채우는
+    ; 버릇이 있어서, 펜이 없을 때 가장자리에 1px 틈이 남지 않도록 사각형을 1px 더 크게 잡는다.
+    nullPen := DllCall("GetStockObject", "int", 8, "ptr") ; NULL_PEN
+    brush := DllCall("CreateSolidBrush", "uint", ToBGR(fillColor), "ptr")
+    oldPen := DllCall("SelectObject", "ptr", hdc, "ptr", nullPen, "ptr")
+    oldBrush := DllCall("SelectObject", "ptr", hdc, "ptr", brush, "ptr")
+    DllCall("RoundRect", "ptr", hdc, "int", 0, "int", 0, "int", size + 1, "int", size + 1, "int", corner, "int", corner)
+    DllCall("SelectObject", "ptr", hdc, "ptr", oldPen)
+    DllCall("SelectObject", "ptr", hdc, "ptr", oldBrush)
+    DllCall("DeleteObject", "ptr", brush)
+
+    ; 아이콘을 불러와 지정된 색으로 다시 칠한다 (트레이 바로가기 아이콘과 같은 방식 —
+    ; 켜짐 상태는 배경이 아니라 아이콘 자체의 색이 파랗게 바뀐다). 알파는 그대로 둬서
+    ; 모양은 유지한다.
+    pIcon := 0
+    DllCall("gdiplus\GdipLoadImageFromFile", "wstr", iconPath, "ptr*", &pIcon)
+    iw := 0, ih := 0
+    DllCall("gdiplus\GdipGetImageWidth", "ptr", pIcon, "uint*", &iw)
+    DllCall("gdiplus\GdipGetImageHeight", "ptr", pIcon, "uint*", &ih)
+    lockRect := Buffer(16, 0)
+    NumPut("Int", iw, lockRect, 8)
+    NumPut("Int", ih, lockRect, 12)
+    bmd := Buffer(32, 0)
+    DllCall("gdiplus\GdipBitmapLockBits", "ptr", pIcon, "ptr", lockRect, "uint", 3, "int", 0x26200A, "ptr", bmd) ; ReadWrite, 32bppARGB
+    stride := NumGet(bmd, 8, "Int")
+    scan0 := NumGet(bmd, 16, "Ptr")
+    itr := (iconColor >> 16) & 0xFF
+    itg := (iconColor >> 8) & 0xFF
+    itb := iconColor & 0xFF
+    loop ih {
+        rowPtr := scan0 + (A_Index - 1) * stride
+        loop iw {
+            px := rowPtr + (A_Index - 1) * 4
+            NumPut("UChar", itb, px, 0) ; B
+            NumPut("UChar", itg, px, 1) ; G
+            NumPut("UChar", itr, px, 2) ; R (알파는 그대로 유지)
+        }
+    }
+    DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pIcon, "ptr", bmd)
+
+    ; GDI+로 같은 hdc 위에 다시 칠한 아이콘을 알파값 그대로 합성해 그린다.
+    pGraphics := 0
+    DllCall("gdiplus\GdipCreateFromHDC", "ptr", hdc, "ptr*", &pGraphics)
+    off := (size - iconSize) // 2
+    DllCall("gdiplus\GdipDrawImageRectI", "ptr", pGraphics, "ptr", pIcon, "int", off, "int", off, "int", iconSize, "int", iconSize)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pIcon)
+    DllCall("gdiplus\GdipDeleteGraphics", "ptr", pGraphics)
+
+    DllCall("SelectObject", "ptr", hdc, "ptr", old)
+    DllCall("DeleteDC", "ptr", hdc)
+    return hBmp
+}
+
+hBtnSpotOff := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SPOT_DARK_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
+hBtnSpotOn := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SPOT_DARK_PATH, CHIP_ICON_SIZE, TRAY_ON_COLOR)
+hBtnDrawOff := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_DRAW_DARK_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
+hBtnDrawOn := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_DRAW_DARK_PATH, CHIP_ICON_SIZE, TRAY_ON_COLOR)
+hBtnSettings := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SETTINGS_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
+
 widget := Gui("+AlwaysOnTop -Caption +ToolWindow", "FocusDraw")
 widget.BackColor := "F2F2F2"
 widget.SetFont("s10", "Malgun Gothic")
 
+; 강조/판서 버튼은 "꺼짐/켜짐" 그림을 한 컨트롤에서 바꿔치기(STM_SETIMAGE)하는 대신,
+; 같은 자리에 꺼짐용/켜짐용 Picture 컨트롤을 각각 만들어두고 보이기/숨기기만 전환한다.
+; (STM_SETIMAGE로 비트맵을 다시 넣으면, 그 핸들이 이미 한 번 다른 곳에 쓰였는지 여부에
+; 따라 안 보이게 되는 경우가 있어서 — Show/Hide 전환이 훨씬 안정적이다)
 grip := widget.AddText("x6 y4 w14 h32 Center +0x200", "⋮")
-btnSpot := widget.AddText("x24 y4 w32 h32 Center Border", "")
-btnDraw := widget.AddText("x60 y4 w32 h32 Center Border", "")
-btnSettings := widget.AddText("x96 y4 w32 h32 Center Border +0x200", "⚙")
+btnSpotOff := widget.AddPicture("x24 y4 w32 h32", "HBITMAP:" hBtnSpotOff)
+btnSpotOn := widget.AddPicture("x24 y4 w32 h32 Hidden", "HBITMAP:" hBtnSpotOn)
+btnDrawOff := widget.AddPicture("x60 y4 w32 h32", "HBITMAP:" hBtnDrawOff)
+btnDrawOn := widget.AddPicture("x60 y4 w32 h32 Hidden", "HBITMAP:" hBtnDrawOn)
+btnSettings := widget.AddPicture("x96 y4 w32 h32", "HBITMAP:" hBtnSettings)
 btnClose := widget.AddText("x132 y4 w14 h32 Center +0x200", "✕")
 
-; 버튼 배경(btnSpot/btnDraw) 위에 트레이와 같은 아이콘 그림을 겹쳐서, 텍스트 대신 아이콘으로 보여준다.
-; 위젯 배경이 밝은 색(흰색/연파랑)이라 트레이용 흰색 아이콘 대신 어두운 색 버전을 쓴다.
-icoSpot := widget.AddPicture("x29 y9 w22 h22", ICON_SPOT_DARK_PATH)
-icoDraw := widget.AddPicture("x65 y9 w22 h22", ICON_DRAW_DARK_PATH)
-
-btnSpot.OnEvent("Click", ToggleSpotlight)
-btnDraw.OnEvent("Click", ToggleDraw)
-icoSpot.OnEvent("Click", ToggleSpotlight)
-icoDraw.OnEvent("Click", ToggleDraw)
+for ctrl in [btnSpotOff, btnSpotOn]
+    ctrl.OnEvent("Click", ToggleSpotlight)
+for ctrl in [btnDrawOff, btnDrawOn]
+    ctrl.OnEvent("Click", ToggleDraw)
 btnSettings.OnEvent("Click", OpenSettingsWindow)
 ; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 아이콘·메뉴로 계속 조작 가능,
 ; 설정 창의 "위젯" 탭에서 다시 켤 수 있음)
 btnClose.OnEvent("Click", (*) => (showWidget := false, widget.Hide()))
 
+; 위젯 창 자체의 바깥 테두리도 둥글게 잘라낸다 (칩과 달리 배경이 단색 하나뿐이라
+; SetWindowRgn만으로 충분히 자연스럽게 보인다).
+RoundRegion(hwnd, w, h, corner) {
+    rgn := DllCall("CreateRoundRectRgn", "int", 0, "int", 0, "int", w, "int", h, "int", corner, "int", corner, "ptr")
+    DllCall("SetWindowRgn", "ptr", hwnd, "ptr", rgn, "int", true)
+}
+RoundRegion(widget.Hwnd, widgetW, widgetH, 16)
+
 UpdateWidgetState() {
-    global spotlightOn, drawOn, btnSpot, btnDraw
+    global spotlightOn, drawOn, btnSpotOff, btnSpotOn, btnDrawOff, btnDrawOn
     global hIconSpotOn, hIconSpotOff, hIconDrawOn, hIconDrawOff, showTrayIcons
-    activeBg := "85C2FF" ; 0A84FF를 50% 연하게 (흰색과 혼합)
-    btnSpot.SetFont(spotlightOn ? "c000000 Bold" : "c000000 Norm")
-    btnSpot.Opt(spotlightOn ? "Background" activeBg : "BackgroundFFFFFF")
-    btnDraw.SetFont(drawOn ? "c000000 Bold" : "c000000 Norm")
-    btnDraw.Opt(drawOn ? "Background" activeBg : "BackgroundFFFFFF")
+    btnSpotOff.Visible := !spotlightOn
+    btnSpotOn.Visible := spotlightOn
+    btnDrawOff.Visible := !drawOn
+    btnDrawOn.Visible := drawOn
 
     if showTrayIcons {
         SetQuickTrayIcon(1, spotlightOn ? hIconSpotOn : hIconSpotOff)
@@ -700,12 +798,19 @@ OnQuickTrayClick(wParam, lParam, msg, hwnd) {
     }
 }
 
-; 켜짐 상태를 표시할 색(위젯의 활성 색과 통일)
-TRAY_ON_COLOR := 0x0A84FF
+; 작업표시줄이 라이트 모드면 흰색 "꺼짐" 아이콘이 밝은 배경에 묻혀 안 보이므로,
+; Windows 시스템 테마를 읽어서 밝은 테마일 때는 어두운 색으로 대신 칠한다.
+IsLightTaskbar() {
+    try
+        return RegRead("HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", "SystemUsesLightTheme") = 1
+    catch
+        return false
+}
+TRAY_OFF_COLOR := IsLightTaskbar() ? 0x1A1A1A : 0xFFFFFF
 
-hIconSpotOff := LoadIconFromPng(ICON_SPOT_PATH, 0xFFFFFF)
+hIconSpotOff := LoadIconFromPng(ICON_SPOT_PATH, TRAY_OFF_COLOR)
 hIconSpotOn := LoadIconFromPng(ICON_SPOT_PATH, TRAY_ON_COLOR)
-hIconDrawOff := LoadIconFromPng(ICON_DRAW_PATH, 0xFFFFFF)
+hIconDrawOff := LoadIconFromPng(ICON_DRAW_PATH, TRAY_OFF_COLOR)
 hIconDrawOn := LoadIconFromPng(ICON_DRAW_PATH, TRAY_ON_COLOR)
 
 trayHelper := Gui("+ToolWindow", "FocusDraw-TrayHelper")
@@ -728,7 +833,9 @@ if showTrayIcons
     SetTrayIconsVisible(true)
 OnExit((*) => (RemoveQuickTrayIcon(1), RemoveQuickTrayIcon(2), DllCall("gdiplus\GdiplusShutdown", "ptr", gdipToken)))
 
-UpdateWidgetState()
+; 시작 시점의 위젯 버튼 상태(꺼짐/켜짐 중 어느 쪽을 보여줄지)는 생성 시 Hidden 옵션으로
+; 이미 맞춰뒀고, 트레이 아이콘도 SetTrayIconsVisible(true)에서 이미 맞춰졌으므로 여기서
+; 다시 UpdateWidgetState()를 부를 필요는 없다.
 
 ; 위젯을 제목 표시줄 없이도 마우스로 끌어서 옮길 수 있게 함
 OnMessage(0x0201, OnWidgetDrag) ; WM_LBUTTONDOWN
