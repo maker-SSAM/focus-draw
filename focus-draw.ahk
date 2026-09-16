@@ -35,37 +35,65 @@ DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "
 ; spotOpacity는 0~100(%)로 저장/표시하고, 실제 WinSetTransparent에 쓸 때만 0~255로 환산한다.
 ; clickSpeed는 "클수록 빠름"(1~30)으로 저장/표시하고, 타이머 간격(ms)으로 쓸 때만 뒤집어 계산한다.
 LoadSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor
-    global clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor
+    global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 64)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
     spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 43)))
     SpotThickness := Max(2, Min(12, IniRead(SETTINGS_PATH, "Highlight", "RingThickness", 5)))
     clickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "ClickEffect", 1) = 1
     clickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "ClickSpeed", 16)))
-    CLICK_ANIM_INTERVAL := 31 - clickSpeed
+    clickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "ClickOpacity", 100)))
+    CLICK_ANIM_INTERVAL := 41 - clickSpeed ; 1(40ms, 예전보다 더 느린 옵션)~30(11ms, 예전 "20" 정도의 체감 속도가 새 최대)
     hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 0) = 1
     DrawThickness := Max(1, Min(12, IniRead(SETTINGS_PATH, "Draw", "Thickness", 4)))
+    DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 100)))
     penColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "Color", "FF3B30"))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 1) = 1
 }
 
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, penColor, clickEffectEnabled, clickSpeed, showWidget, showTrayIcons, hideCursorOnHighlight
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
     IniWrite(clickEffectEnabled ? 1 : 0, SETTINGS_PATH, "Highlight", "ClickEffect")
     IniWrite(clickSpeed, SETTINGS_PATH, "Highlight", "ClickSpeed")
+    IniWrite(clickOpacity, SETTINGS_PATH, "Highlight", "ClickOpacity")
     IniWrite(hideCursorOnHighlight ? 1 : 0, SETTINGS_PATH, "Highlight", "HideCursor")
     IniWrite(DrawThickness, SETTINGS_PATH, "Draw", "Thickness")
+    IniWrite(DrawOpacity, SETTINGS_PATH, "Draw", "Opacity")
     IniWrite(HexColor(penColor), SETTINGS_PATH, "Common", "Color")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
 }
 
 LoadSettings()
+
+; ================= Windows 시작 시 자동 실행 =================
+; settings.ini가 아니라 실제 상태(레지스트리)를 그 자리에서 그대로 읽고 쓴다 — 다른 방법으로
+; 시작프로그램에서 제거된 경우까지 항상 정확하게 보여주기 위해서다. 값에는 exe로
+; 컴파일했을 때와 .ahk 소스로 실행할 때 모두 지금 실행 중인 파일의 실제 경로(A_ScriptFullPath)를
+; 그대로 써서, 둘 중 어느 형태로 실행 중이든 그 형태로 다시 켜지게 한다.
+STARTUP_RUN_KEY := "HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+STARTUP_RUN_NAME := "FocusDraw"
+
+IsRunAtStartup() {
+    global STARTUP_RUN_KEY, STARTUP_RUN_NAME
+    try
+        return RegRead(STARTUP_RUN_KEY, STARTUP_RUN_NAME, "") != ""
+    catch
+        return false
+}
+
+SetRunAtStartup(enable) {
+    global STARTUP_RUN_KEY, STARTUP_RUN_NAME
+    if enable
+        RegWrite('"' A_ScriptFullPath '"', "REG_SZ", STARTUP_RUN_KEY, STARTUP_RUN_NAME)
+    else
+        try RegDelete(STARTUP_RUN_KEY, STARTUP_RUN_NAME)
+}
 
 ; ================= 상태값 =================
 spotlightOn := false
@@ -150,7 +178,7 @@ ulwPtSrc := Buffer(8, 0) ; 항상 (0,0) — memDC 전체가 소스
 ulwBlend := Buffer(4, 0)
 NumPut("UChar", 0, ulwBlend, 0)   ; AC_SRC_OVER
 NumPut("UChar", 0, ulwBlend, 1)   ; flags
-NumPut("UChar", 255, ulwBlend, 2) ; SourceConstantAlpha
+NumPut("UChar", Round(DrawOpacity * 255 / 100), ulwBlend, 2) ; SourceConstantAlpha — 판서 전체 불투명도
 NumPut("UChar", 1, ulwBlend, 3)   ; AC_SRC_ALPHA
 ulwDirtyRect := Buffer(16, 0)
 ulwInfo := Buffer(80, 0) ; UPDATELAYEREDWINDOWINFO (x64)
@@ -177,6 +205,14 @@ UpdateOverlay(minX := -1, minY := -1, maxX := -1, maxY := -1) {
     DllCall("UpdateLayeredWindowIndirect", "ptr", drawGui.Hwnd, "ptr", ulwInfo)
 }
 UpdateOverlay()
+
+; 판서 전체의 불투명도를 바꾼다. UpdateLayeredWindow의 SourceConstantAlpha는 이미 그려둔
+; 그림 전체에 곱해지는 값이라, 픽셀을 다시 그리지 않고 이 값만 바꿔도 화면에 바로 반영된다.
+UpdateDrawOpacity() {
+    global ulwBlend, DrawOpacity
+    NumPut("UChar", Round(DrawOpacity * 255 / 100), ulwBlend, 2)
+    UpdateOverlay()
+}
 
 ; GDI로 그린 픽셀은 알파 값이 채워지지 않으므로, 그린 영역만 알파를 255로 채워준다.
 ; 실제로 훑은 사각형 범위를 돌려줘서, 호출한 쪽이 그 부분만 화면에 다시 합성하면 되게 한다.
@@ -327,12 +363,23 @@ SpotFollow() {
 ; spotGui와 별개의 작은 창을 하나 더 써서, 클릭한 순간에만 진한 테두리 원을 그려
 ; 바깥쪽에서 중심으로 줄어들게 만든 뒤 사라지게 한다.
 CLICK_RING_KEY := "FF00FF"
-CLICK_ANIM_FRAMES := 16 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
+; 프레임 수를 늘릴수록 한 프레임이 담당하는 반경 변화폭이 작아져서 더 부드럽게 보인다.
+; 클릭할 때만 잠깐 실행되고 끝나는 애니메이션이라(계속 다시 그리는 판서 오버레이와 달리),
+; 프레임을 늘려도 체감될 정도의 성능 부담은 없다.
+CLICK_ANIM_FRAMES := 30 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
 
-clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20", "FocusDraw-Click")
+clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Click") ; E0x20 = 클릭 통과, E0x80000 = WS_EX_LAYERED(SetLayeredWindowAttributes에 필요)
 clickGui.BackColor := CLICK_RING_KEY
 clickGui.Show("w" SpotSize " h" SpotSize " Hide")
-WinSetTransColor(CLICK_RING_KEY, clickGui)
+
+; 색상 키(원 안쪽 배경 투명 처리)와 전체 불투명도(clickOpacity)를 함께 적용한다.
+; WinSetTransColor와 WinSetTransparent를 따로 부르면 서로의 설정을 덮어써 버려서,
+; SetLayeredWindowAttributes를 직접 호출해 두 값을 한 번에 같이 설정한다.
+UpdateClickAppearance() {
+    global clickGui, CLICK_RING_KEY, clickOpacity
+    DllCall("SetLayeredWindowAttributes", "ptr", clickGui.Hwnd, "uint", ToBGR(Integer("0x" CLICK_RING_KEY)), "uchar", Round(clickOpacity * 255 / 100), "uint", 0x3) ; LWA_COLORKEY | LWA_ALPHA
+}
+UpdateClickAppearance()
 
 ; 화면에 바로 지우고 다시 그리면 그 찰나의 빈 순간이 보여서(깜빡임) 테두리가 두 개로 보일 때가
 ; 있었다. 오프스크린 버퍼에 한 프레임을 통째로 그린 뒤 한 번에 옮겨 붙여서(BitBlt) 해결한다.
@@ -576,7 +623,8 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
     btnMinus := gui.AddButton("x100 y" y " w24 h24", "-")
     sl := gui.AddSlider("x126 y" (y + 2) " w104 Range" rangeMin "-" rangeMax, initial)
     btnPlus := gui.AddButton("x232 y" y " w24 h24", "+")
-    ed := gui.AddEdit("x260 y" y " w40 h24 Number", initial)
+    ed := gui.AddEdit("x260 y" y " w40 h24 Center Number", initial)
+    RoundRegion(ed.Hwnd, 40, 24, 12) ; 숫자칸 모서리를 둥글게
     if suffixText != ""
         gui.AddText("x302 y" (y + 4) " w30", suffixText)
 
@@ -590,7 +638,7 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, clickEffectEnabled, clickSpeed, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn
+    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn
 
     if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
         settingsGui.Show()
@@ -598,23 +646,19 @@ OpenSettingsWindow(*) {
     }
 
     settingsGui := Gui(, "Focus & Draw 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
+    ; 숫자칸(Edit)은 흰 배경이라, 창 배경을 살짝 다른 톤으로 두어야 둥근 모서리 바깥으로
+    ; 비치는 색이 또렷하게 구분되어 보인다.
+    settingsGui.BackColor := "F2F2F2"
     settingsGui.SetFont("s10", "Malgun Gothic")
 
-    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["포인터", "왼쪽 클릭 효과", "판서", "위젯"])
+    tabs := settingsGui.AddTab3("x10 y10 w320 h215", ["포인터", "클릭효과", "판서", "위젯", "일반"])
 
     tabs.UseTab(1)
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
     AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, InitSpotlightShape()))
 
-    settingsGui.AddText("x30 y134 w70", "색상")
-    ; Text 컨트롤의 배경색 지정은 이 창(테마 적용된 일반 창)에서 반영되지 않는 문제가 있어서,
-    ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
-    swatch := settingsGui.AddProgress("x100 y130 w40 h24 Range0-100 -Smooth c" HexColor(penColor), 100)
-    btnPick := settingsGui.AddButton("x150 y128 w110 h28", "색상 선택...")
-    btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
-
-    chkHideCursor := settingsGui.AddCheckbox("x30 y172 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y173 w220", "활성화 시 마우스 커서 숨기기")
+    chkHideCursor := settingsGui.AddCheckbox("x30 y132 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y133 w220", "활성화 시 마우스 커서 숨기기")
     chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
 
     tabs.UseTab(2)
@@ -626,27 +670,48 @@ OpenSettingsWindow(*) {
 
     AddSliderRow(settingsGui, 90, "테두리 굵기", 2, 12, SpotThickness, "", (v) => SpotThickness := v)
     ; clickSpeed는 클수록 빠름(1~30) — 실제 타이머 간격(ms)은 반대로 계산한다
-    AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 31 - v))
+    AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v))
+    AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => (clickOpacity := v, UpdateClickAppearance()))
 
     tabs.UseTab(3)
     AddSliderRow(settingsGui, 50, "선 굵기", 1, 12, DrawThickness, "", (v) => DrawThickness := v)
+    AddSliderRow(settingsGui, 90, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()))
 
     tabs.UseTab(4)
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y53 w200", "위젯 표시")
+    settingsGui.AddText("x54 y53 w200", "위젯 활성화")
     chkWidget.OnEvent("Click", (ctrl, *) => (showWidget := ctrl.Value, showWidget ? widget.Show() : widget.Hide()))
 
     chkTray := settingsGui.AddCheckbox("x30 y92 w20 h20 " (showTrayIcons ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y93 w200", "트레이 바로가기 아이콘 표시")
+    settingsGui.AddText("x54 y93 w200", "작업표시줄 아이콘 활성화")
     chkTray.OnEvent("Click", (ctrl, *) => SetTrayIconsVisible(ctrl.Value))
 
-    settingsGui.AddText("x30 y128 w280 h50", "위젯/트레이 바로가기 아이콘을 모두 꺼도, 트레이의 기본 프로그램 아이콘(우클릭 메뉴)으로는 항상 조작할 수 있습니다.")
+    tabs.UseTab(5)
+    ; 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는 항상
+    ; IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
+    chkStartup := settingsGui.AddCheckbox("x30 y52 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y53 w220", "Windows 시작 시 자동 실행")
+    chkStartup.OnEvent("Click", (ctrl, *) => SetRunAtStartup(ctrl.Value))
+
+    settingsGui.AddText("x30 y98 w70", "색상")
+    ; Text 컨트롤의 배경색 지정은 이 창(테마 적용된 일반 창)에서 반영되지 않는 문제가 있어서,
+    ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
+    ; Progress 컨트롤은 안쪽 채움 영역이 테두리보다 살짝 안으로 들어가 있어서, 모서리를
+    ; 둥글게 잘라내면 그 여백 부분이 직선 자국으로 비쳐 보인다 — 그냥 사각형으로 둔다.
+    swatch := settingsGui.AddProgress("x100 y94 w40 h24 Range0-100 -Smooth c" HexColor(penColor), 100)
+    btnPick := settingsGui.AddButton("x150 y92 w110 h28", "색상 선택...")
+    btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
 
     tabs.UseTab()
 
-    btnSave := settingsGui.AddButton("x130 y235 w95 h30", "저장")
+    ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
+    ; 버튼과 다르다는 느낌만 은은하게 준다.
+    btnExit := settingsGui.AddButton("x25 y235 w90 h30", "프로그램 종료")
+    btnExit.SetFont("c999999")
+    btnExit.OnEvent("Click", (*) => ExitApp())
+    btnSave := settingsGui.AddButton("x125 y235 w90 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x235 y235 w95 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x225 y235 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
@@ -965,3 +1030,4 @@ SuppressDrawForSnip(*) {
 Hotkey("Esc", ExitDrawMode, "Off")   ; 내용 지우고 판서 모드 종료
 Hotkey("Backspace", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
 Hotkey("Delete", ClearDrawing, "Off")    ; 판서 모드 유지한 채 내용만 지움
+
