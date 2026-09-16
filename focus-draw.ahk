@@ -1,5 +1,15 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
+
+; ================= 컴파일(Ahk2Exe) 설정 =================
+; 아래 줄들은 평범한 주석이라 .ahk로 그냥 실행할 때는 아무 영향이 없고, Ahk2Exe로 exe를
+; 만들 때만 읽힌다. focus-draw.ico는 icon.png를 16~256px 여러 크기로 담아 변환한 파일이다
+; (작업표시줄·바탕화면·파일 탐색기가 상황에 따라 다른 크기를 골라 쓰기 때문에 여러 크기가 필요).
+; 컴파일된 exe는 이 아이콘을 파일 아이콘이자 트레이 아이콘으로 함께 사용한다.
+;@Ahk2Exe-SetMainIcon focus-draw.ico
+;@Ahk2Exe-SetName Focus & Draw
+;@Ahk2Exe-SetDescription Focus & Draw - 마우스 강조 / 화면 판서
+
 Persistent()
 SetWinDelay(-1)
 CoordMode("Mouse", "Screen")
