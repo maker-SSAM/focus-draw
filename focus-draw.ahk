@@ -104,8 +104,7 @@ lastY := 0
 dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
-dragIsSnip := false ; 현재 드래그가 Win+Shift+S 캡처 동작이라 판서를 건너뛰어야 하는지
-snipSuppressCount := 0 ; Win+Shift+S 이후 무시할 남은 드래그(마우스 누름~뗌) 횟수
+dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/설정 창/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
 
 ; ================= 가상 화면(전체 모니터) 크기 =================
 vx := SysGet(76)
@@ -278,38 +277,35 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
 }
 
 DrawPoll() {
-    global drawOn, drawing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, widget
-    global dragIsSnip, snipSuppressCount
+    global drawOn, drawing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
+    global dragOnOtherWindow
     if !drawOn
         return
     if GetKeyState("LButton", "P") {
         MouseGetPos(&mx, &my, &winUnder)
-        if (winUnder = widget.Hwnd) {
-            drawing := false
-            return
-        }
         if !drawing {
             drawing := true
             lastX := mx
             lastY := my
             dragStartX := mx
             dragStartY := my
-            ; Win+Shift+S 캡처 도구는 화면 위 모드 버튼을 한 번 클릭한 뒤에야 실제 드래그가
-            ; 시작되므로, 핫키를 누른 뒤 처음 두 번의 드래그(툴바 클릭 + 캡처 드래그)까지는
-            ; 판서로 그리지 않는다. 시간이 아니라 "드래그 횟수"로 세기 때문에, 캡처가 끝나자마자
-            ; 바로 판서를 이어서 써도 기다릴 필요가 없다.
-            dragIsSnip := snipSuppressCount > 0
-            if dragIsSnip
-                snipSuppressCount -= 1
+            ; 마우스를 누른 순간 커서 아래에 있는 창이 판서 오버레이가 아니면, 그 위에 다른 창이
+            ; 떠 있다는 뜻이다 — 위젯, 설정 창, 색상 선택 대화상자, Win+Shift+S 캡처 도구 오버레이
+            ; 등. 그 창이 클릭을 받는 드래그이므로 판서로 그리지 않는다. 드래그를 시작한 시점에
+            ; 한 번만 판단하고 마우스를 뗄 때까지 유지하므로, 설정 창 슬라이더를 끌다 커서가 창
+            ; 밖으로 벗어나도 선이 그려지지 않는다. (예전엔 Win+Shift+S 뒤 드래그 "횟수"를
+            ; 세어 건너뛰었는데, 캡처 도구가 툴바 클릭을 요구하는지가 Windows 버전마다 달라
+            ; 첫 판서 한 획을 삼키거나 캡처 드래그가 그려지는 일이 있었다.)
+            dragOnOtherWindow := winUnder != drawGui.Hwnd
             ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다 (ZoomIt과 동일한 조합)
             dragShapeMode := GetKeyState("Ctrl", "P") && GetKeyState("Shift", "P") ? "ellipse"
                 : GetKeyState("Ctrl", "P") ? "rect"
                 : GetKeyState("Shift", "P") ? "line"
                 : ""
-            if dragShapeMode != ""
+            if dragShapeMode != "" && !dragOnOtherWindow
                 SaveSnapshot()
-        } else if dragIsSnip {
-            ; 캡처 도구 조작 중으로 판단한 드래그 — 아무것도 그리지 않는다
+        } else if dragOnOtherWindow {
+            ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
         } else if dragShapeMode != "" {
             DrawShapePreview(dragShapeMode, dragStartX, dragStartY, mx, my)
         } else {
@@ -521,47 +517,48 @@ UpdateCursorHiddenState() {
 DllCall("SystemParametersInfo", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0) ; SPI_SETCURSORS
 
 ; ================= 토글 / 동작 함수 =================
-ToggleSpotlight(*) {
-    global spotlightOn, spotGui
-    spotlightOn := !spotlightOn
-    if spotlightOn {
+; 강조 하이라이트는 "강조가 켜져 있고 + 판서 모드가 아닐 때"만 화면에 보인다. 판서 중에는
+; 그림 그리는 데 방해만 되므로 화면 표시만 잠깐 멈춘다(강조 자체를 끄는 게 아니라, 판서를
+; 끄면 다시 보임). 강조/판서 어느 쪽을 토글하든 여기서 한 번에 판단하므로, 판서 중에
+; 단축키나 트레이 아이콘으로 강조를 켜도 하이라이트가 튀어나오지 않는다.
+UpdateSpotlightVisibility() {
+    global spotlightOn, drawOn, spotGui
+    if spotlightOn && !drawOn {
         spotGui.Show("NA")
         SetTimer(SpotFollow, 15)
     } else {
         SetTimer(SpotFollow, 0)
         spotGui.Hide()
     }
+}
+
+ToggleSpotlight(*) {
+    global spotlightOn
+    spotlightOn := !spotlightOn
+    UpdateSpotlightVisibility()
     UpdateCursorHiddenState()
     UpdateWidgetState()
 }
 
 ToggleDraw(*) {
-    global drawOn, drawGui, widget, spotlightOn, spotGui
+    global drawOn, drawGui, widget, settingsGui
     drawOn := !drawOn
     if drawOn {
         drawGui.Show("NA")
-        ; 판서 중에는 마우스 강조 하이라이트가 그림 그리는 데 방해만 되므로 잠시 감춘다
-        ; (강조 자체를 끄는 게 아니라 화면 표시만 잠깐 멈추는 것 — 판서를 끄면 다시 보임)
-        if spotlightOn {
-            SetTimer(SpotFollow, 0)
-            spotGui.Hide()
-        }
+        ; 오버레이가 화면 전체를 덮으므로, 조작해야 하는 우리 창들은 오버레이보다 위로 다시 올린다
         WinSetAlwaysOnTop(true, widget)
+        if IsSet(settingsGui) && WinExist(settingsGui)
+            WinSetAlwaysOnTop(true, settingsGui)
         SetTimer(DrawPoll, 10)
         Hotkey("Esc", "On")
-        Hotkey("Backspace", "On")
         Hotkey("Delete", "On")
     } else {
         SetTimer(DrawPoll, 0)
         Hotkey("Esc", "Off")
-        Hotkey("Backspace", "Off")
         Hotkey("Delete", "Off")
         drawGui.Hide()
-        if spotlightOn {
-            spotGui.Show("NA")
-            SetTimer(SpotFollow, 15)
-        }
     }
+    UpdateSpotlightVisibility()
     UpdateCursorHiddenState() ; 판서 모드에서도 십자선 커서를 쓴다 (그림 도구다운 커서)
     UpdateWidgetState()
 }
@@ -645,7 +642,9 @@ OpenSettingsWindow(*) {
         return
     }
 
-    settingsGui := Gui(, "Focus & Draw 설정") ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다
+    ; ToolWindow를 안 써야 작업표시줄/Alt+Tab에 정상적으로 뜬다. AlwaysOnTop은 판서 모드 중에도
+    ; 설정 창이 화면 전체를 덮는 판서 오버레이 아래에 깔리지 않고 클릭을 받게 하기 위한 것이다.
+    settingsGui := Gui("+AlwaysOnTop", "Focus & Draw 설정")
     ; 숫자칸(Edit)은 흰 배경이라, 창 배경을 살짝 다른 톤으로 두어야 둥근 모서리 바깥으로
     ; 비치는 색이 또렷하게 구분되어 보인다.
     settingsGui.BackColor := "F2F2F2"
@@ -1016,18 +1015,10 @@ if showWidget
 ^!h::ToggleSpotlight()
 ^!d::ToggleDraw()
 ^!c::ClearDrawing()
-; Win+Shift+S(윈도우 화면 캡처 도구)로 캡처 영역을 드래그하면, 판서 모드가 켜져 있을 때
-; 그 드래그가 그대로 판서로 그려져 캡처 후에도 화면에 선이 남는 문제가 있었다.
-; ~를 붙여 캡처 기능 자체는 그대로 동작하게 두고, 이어지는 드래그 2번(윈도우 11 캡처
-; 도구의 모드 선택 버튼 클릭 + 실제 캡처 드래그)까지는 판서로 그리지 않는다. 시간이
-; 아니라 횟수로 세므로, 캡처가 끝나면 기다릴 필요 없이 바로 판서를 이어서 쓸 수 있다.
-SuppressDrawForSnip(*) {
-    global snipSuppressCount
-    snipSuppressCount := 2
-}
-~#+s::SuppressDrawForSnip()
-; 아래 세 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어)
+; (Win+Shift+S 캡처 도구 드래그가 판서로 그려지는 문제는 DrawPoll에서 "드래그를 시작한 창이
+; 판서 오버레이인지"를 보고 걸러내므로, 별도 핫키 감지가 필요 없다.)
+; 아래 두 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어). 판서 모드 중엔 이 키가
+; 다른 프로그램으로 전달되지 않으므로, 흔히 쓰는 키(Backspace 등)는 일부러 넣지 않았다.
 Hotkey("Esc", ExitDrawMode, "Off")   ; 내용 지우고 판서 모드 종료
-Hotkey("Backspace", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
-Hotkey("Delete", ClearDrawing, "Off")    ; 판서 모드 유지한 채 내용만 지움
+Hotkey("Delete", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
 
