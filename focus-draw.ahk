@@ -369,9 +369,11 @@ PatchAlphaPolyline(pts, segLen := 24) {
 
 ; 펜이 지나간 범위(굵기만큼 여유를 둔다). GDI+로 그릴 때는 픽셀을 훑을 필요가 없으므로,
 ; 되돌리기와 화면 갱신에 쓸 범위만 이렇게 계산해서 쓴다. 자유선과 도형이 함께 쓴다.
-PenDirtyBox(x1, y1, x2, y2) {
+PenDirtyBox(x1, y1, x2, y2, thickness := 0) {
     global vw, vh, DrawThickness
-    pad := DrawThickness + 4
+    if !thickness
+        thickness := DrawThickness
+    pad := thickness // 2 + 6 ; 펜 굵기의 절반 + 부드럽게 처리한 가장자리만큼 여유
     return [Max(0, Min(x1, x2) - pad), Max(0, Min(y1, y2) - pad)
         , Min(vw, Max(x1, x2) + pad + 1), Min(vh, Max(y1, y2) + pad + 1)]
 }
@@ -420,16 +422,42 @@ EraserThickness() {
 ; 지나간 자리를 배경과 똑같은 값(1,1,1)으로 덧칠한 뒤, 그 픽셀들의 알파를 1로 낮춰 도로
 ; 투명하게 만든다. GDI는 알파를 건드리지 않으므로 알파는 직접 손봐야 한다.
 EraseSegment(x1, y1, x2, y2) {
-    global memDC, vx, vy
+    global memDC, vx, vy, pShapeGraphics
     thickness := EraserThickness()
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    pen := DllCall("CreatePen", "int", 0, "int", thickness, "uint", 0x010101, "ptr")
-    old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
-    DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
-    DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
-    DllCall("SelectObject", "ptr", memDC, "ptr", old)
-    DllCall("DeleteObject", "ptr", pen)
-    box := ClearAlpha(lx1, ly1, lx2, ly2, thickness)
+    if pShapeGraphics {
+        DllCall("gdi32\GdiFlush")
+        ; 지우개는 "덮어쓰기"(SourceCopy)로 그려야 한다. 보통의 겹쳐 그리기로는 이미 칠해진
+        ; 투명도를 되돌릴 수 없어서 아무리 칠해도 지워지지 않는다.
+        ; 부드럽게 처리하는 것도 여기서는 꺼야 한다 — 가장자리가 배경과 정확히 같은 값이
+        ; 되지 않아 흐린 자국이 남기 때문이다.
+        DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 1) ; SourceCopy
+        DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 3)   ; 끄기
+        pPen := 0
+        ; 0x01FFFFFF는 GDI+가 투명도를 미리 곱하면서 배경값(1,1,1,1)과 정확히 같아진다.
+        ; 0x01010101로 주면 (0,0,0,1)이 되어 배경과 달라진다 — 시험해서 확인한 값이다.
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0x01FFFFFF, "float", thickness, "int", 2, "ptr*", &pPen)
+        if pPen {
+            DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; 자유선과 같게 둥근 끝
+            DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+            DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
+            DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+            DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+        }
+        ; 그리기용 기본 설정으로 되돌려 놓는다 (겹쳐 그리기 + 부드럽게)
+        DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 0)
+        DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4)
+        box := PenDirtyBox(lx1, ly1, lx2, ly2, thickness)
+    } else {
+        ; GDI+ 준비에 실패한 경우를 위한 대비책 (예전 방식: 배경색으로 덮고 투명도는 직접 내리기)
+        pen := DllCall("CreatePen", "int", 0, "int", thickness, "uint", 0x010101, "ptr")
+        old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
+        DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
+        DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
+        DllCall("SelectObject", "ptr", memDC, "ptr", old)
+        DllCall("DeleteObject", "ptr", pen)
+        box := ClearAlpha(lx1, ly1, lx2, ly2, thickness)
+    }
     UpdateOverlay(box[1], box[2], box[3], box[4])
 }
 
