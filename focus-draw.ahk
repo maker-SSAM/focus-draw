@@ -74,6 +74,8 @@ lastY := 0
 dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
+dragIsSnip := false ; 현재 드래그가 Win+Shift+S 캡처 동작이라 판서를 건너뛰어야 하는지
+snipSuppressCount := 0 ; Win+Shift+S 이후 무시할 남은 드래그(마우스 누름~뗌) 횟수
 
 ; ================= 가상 화면(전체 모니터) 크기 =================
 vx := SysGet(76)
@@ -239,6 +241,7 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
 
 DrawPoll() {
     global drawOn, drawing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, widget
+    global dragIsSnip, snipSuppressCount
     if !drawOn
         return
     if GetKeyState("LButton", "P") {
@@ -253,6 +256,13 @@ DrawPoll() {
             lastY := my
             dragStartX := mx
             dragStartY := my
+            ; Win+Shift+S 캡처 도구는 화면 위 모드 버튼을 한 번 클릭한 뒤에야 실제 드래그가
+            ; 시작되므로, 핫키를 누른 뒤 처음 두 번의 드래그(툴바 클릭 + 캡처 드래그)까지는
+            ; 판서로 그리지 않는다. 시간이 아니라 "드래그 횟수"로 세기 때문에, 캡처가 끝나자마자
+            ; 바로 판서를 이어서 써도 기다릴 필요가 없다.
+            dragIsSnip := snipSuppressCount > 0
+            if dragIsSnip
+                snipSuppressCount -= 1
             ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다 (ZoomIt과 동일한 조합)
             dragShapeMode := GetKeyState("Ctrl", "P") && GetKeyState("Shift", "P") ? "ellipse"
                 : GetKeyState("Ctrl", "P") ? "rect"
@@ -260,6 +270,8 @@ DrawPoll() {
                 : ""
             if dragShapeMode != ""
                 SaveSnapshot()
+        } else if dragIsSnip {
+            ; 캡처 도구 조작 중으로 판단한 드래그 — 아무것도 그리지 않는다
         } else if dragShapeMode != "" {
             DrawShapePreview(dragShapeMode, dragStartX, dragStartY, mx, my)
         } else {
@@ -853,6 +865,16 @@ if showWidget
 ^!h::ToggleSpotlight()
 ^!d::ToggleDraw()
 ^!c::ClearDrawing()
+; Win+Shift+S(윈도우 화면 캡처 도구)로 캡처 영역을 드래그하면, 판서 모드가 켜져 있을 때
+; 그 드래그가 그대로 판서로 그려져 캡처 후에도 화면에 선이 남는 문제가 있었다.
+; ~를 붙여 캡처 기능 자체는 그대로 동작하게 두고, 이어지는 드래그 2번(윈도우 11 캡처
+; 도구의 모드 선택 버튼 클릭 + 실제 캡처 드래그)까지는 판서로 그리지 않는다. 시간이
+; 아니라 횟수로 세므로, 캡처가 끝나면 기다릴 필요 없이 바로 판서를 이어서 쓸 수 있다.
+SuppressDrawForSnip(*) {
+    global snipSuppressCount
+    snipSuppressCount := 2
+}
+~#+s::SuppressDrawForSnip()
 ; 아래 세 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어)
 Hotkey("Esc", ExitDrawMode, "Off")   ; 내용 지우고 판서 모드 종료
 Hotkey("Backspace", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
