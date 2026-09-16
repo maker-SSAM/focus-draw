@@ -20,6 +20,14 @@ DllCall("winmm\timeBeginPeriod", "uint", 1)
 OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
 
 A_IconTip := "Focus & Draw - 마우스 강조 / 화면 판서"
+
+; 컴파일된 exe는 위 SetMainIcon으로 넣은 아이콘을 트레이 아이콘으로도 그대로 쓰지만,
+; .ahk 소스로 직접 실행할 때는 AutoHotkey 기본 아이콘(초록색 H)이 뜬다. 소스로 실행할 때도
+; 같은 그림이 보이도록 같은 폴더의 ico 파일을 지정한다. (exe는 아이콘을 이미 품고 있어서
+; 건드릴 필요가 없고, ico 파일을 exe에 또 넣으면 같은 그림이 두 번 들어가 크기만 커진다)
+if !A_IsCompiled && FileExist(A_ScriptDir "\focus-draw.ico")
+    TraySetIcon(A_ScriptDir "\focus-draw.ico")
+
 SETTINGS_PATH := A_ScriptDir "\settings.ini"
 
 ; 컴파일된 exe에도 아이콘 파일이 그대로 들어가도록 FileInstall로 함께 담고, 실행 시 임시 폴더로 꺼내 쓴다.

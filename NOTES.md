@@ -38,6 +38,7 @@ spotmouse의 마우스 하이라이트 기능과 ZoomIt의 화면 드로잉 기�
 
 - 2026-09-16: 프로그램(exe) 아이콘 교체 — 새로 받은 `icon.png`(500x500)를 16/24/32/48/64/128/256px 7개 크기를 담은 `focus-draw.ico`로 변환해서 `;@Ahk2Exe-SetMainIcon` 지시문으로 연결. 작업표시줄·바탕화면·탐색기가 상황에 따라 다른 크기를 골라 쓰므로 여러 크기가 필요하고, 256px만 PNG 압축 항목으로 담았다(BMP로 담으면 그것만 270KB). 변환은 PowerShell + System.Drawing으로 ICO 바이너리를 직접 작성(축소할 때 `WrapMode.TileFlipXY`를 안 주면 가장자리에 반투명 자국이 남는다). `;@Ahk2Exe-SetName`/`SetDescription`으로 파일 속성의 이름·설명도 지정 — 처음에 `^&`로 이스케이프했더니 캐럿이 글자 그대로 남아서 일반 `&`로 고침. 컴파일 후 `PrivateExtractIcons`로 16/32/48/256 전부 정상 추출되는 것 확인함. exe 크기 1.36MB → 1.50MB
   - 참고: PowerShell 5.1은 BOM 없는 `.ps1`을 시스템 코드페이지(한국어 Windows면 CP949)로 읽어서, UTF-8 한글 주석이 든 스크립트는 깨진 채 파싱되어 엉뚱한 곳에서 오류가 난다. 임시 빌드 스크립트 주석은 영문으로 쓸 것
+- 2026-09-16: 아이콘을 바꿨는데도 안 바뀌어 보인다는 보고 — 원인이 두 가지였고 둘 다 exe 자체의 문제는 아니었음. (1) 트레이 아이콘이 초록 H인 건 exe가 아니라 `.ahk` 소스로 실행 중이었기 때문(소스 실행은 항상 AutoHotkey 기본 아이콘을 씀). 소스로 실행할 때도 같은 그림이 보이도록 `A_IsCompiled`가 아닐 때만 `TraySetIcon(A_ScriptDir "\focus-draw.ico")`을 호출하게 함 — exe는 이미 아이콘을 품고 있어 `FileInstall`로 ico를 또 넣지 않았다(같은 그림이 두 번 들어가 크기만 커짐). (2) 탐색기 목록의 exe 아이콘이 H로 남은 건 Windows 아이콘 캐시가 오래된 것. `ie4uinit.exe -show`로 새로 고친 뒤 `SHGetFileInfo`(탐색기와 같은 경로)로 새 아이콘이 돌아오는 것 확인. exe 안의 아이콘 자체는 처음부터 정상이었음(`PrivateExtractIcons`로 확인). 같은 경로에 exe를 짧은 시간에 여러 번 덮어쓰면 캐시가 잘 안 따라오니, 앞으로도 아이콘이 안 바뀌어 보이면 탐색기에서 F5부터 눌러볼 것
 
 ## 현재 상태 / 알려진 제한사항
 - 도형(직선/사각형/원) 미리보기는 자유선과 달리 아직 매 프레임 화면 전체를 재합성함 (최적화 여지 있음, [focus-draw.ahk:213-236](focus-draw.ahk:213))
