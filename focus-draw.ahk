@@ -154,6 +154,21 @@ dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
 dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
+erasing := false ; 오른쪽 버튼으로 지우는 중인지
+
+; 드로잉 중 숫자키 1~7로 바로 바꿀 수 있는 색 (무지개 순서: 빨주노초파남보).
+; 노랑과 초록은 표준 무지개값(FFFF00, 00FF00)을 그대로 쓰면 흰 배경에서 잘 안 보이고
+; 판서 투명도까지 겹치면 더 흐려져서, 색감은 유지하되 조금 진한 값으로 골랐다.
+DRAW_COLORS := [0xFF0000, 0xFF7F00, 0xFFC800, 0x00A000, 0x0000FF, 0x4B0082, 0x9400D3]
+DRAW_COLOR_NAMES := ["빨강", "주황", "노랑", "초록", "파랑", "남색", "보라"]
+; 실제로 선을 그릴 때 쓰는 색. 설정에 저장된 penColor를 기본으로 하되 숫자키로 잠깐 바꿀 수
+; 있고, 드로잉 모드를 켜고 끌 때마다 설정값으로 되돌아간다. (penColor를 직접 바꾸면 강조
+; 하이라이트와 클릭 효과 색까지 같이 변하고, 저장까지 눌리면 임시 색이 굳어버린다)
+activeDrawColor := penColor
+
+; 실행 취소용 기록. 단계 수(UNDO_LIMIT)는 화면 크기를 알아야 정할 수 있어서 아래쪽
+; 백버퍼를 만드는 곳에서 함께 계산한다.
+undoStack := []
 chkWidgetCtrl := "" ; 설정 창의 "위젯 활성화" 체크박스 (창을 아직 한 번도 안 열었으면 비어 있음)
 settingsHiddenByDraw := false ; 판서를 켜느라 설정 창을 잠시 감췄는지 (판서를 끄면 다시 띄운다)
 
@@ -190,6 +205,31 @@ DllCall("ReleaseDC", "ptr", 0, "ptr", hScreenDC)
 
 ; 도형(직선/사각형/원) 미리보기를 그리기 전에 현재 그림을 스냅샷으로 저장해뒀다가,
 ; 드래그 중 매 프레임마다 스냅샷으로 되돌린 뒤 새 도형을 다시 그려서 "고무줄 미리보기" 효과를 낸다.
+; 실행 취소 한 단계가 화면 전체 크기(가로x세로x4바이트)만큼 메모리를 쓴다. 모니터 하나면
+; 한 단계에 8MB 남짓이지만 두 대를 늘어놓으면 두 배가 되므로, 넓을수록 단계 수를 줄여
+; 전체 사용량이 50MB 선을 넘지 않게 맞춘다.
+UNDO_LIMIT := Max(2, Min(8, 50000000 // (vw * vh * 4)))
+
+; 되돌릴 수 있도록 지금 화면을 기록해둔다. 획 하나를 긋기 직전, 지우개를 대기 직전,
+; 전체를 지우기 직전에 부른다.
+PushUndo() {
+    global ppvBits, undoStack, UNDO_LIMIT, vw, vh
+    buf := Buffer(vw * vh * 4)
+    DllCall("RtlCopyMemory", "ptr", buf, "ptr", ppvBits, "uptr", vw * vh * 4)
+    undoStack.Push(buf)
+    while (undoStack.Length > UNDO_LIMIT)
+        undoStack.RemoveAt(1) ; 가장 오래된 기록부터 버린다
+}
+
+UndoDrawing(*) {
+    global ppvBits, undoStack, vw, vh
+    if (undoStack.Length = 0)
+        return
+    buf := undoStack.Pop()
+    DllCall("RtlCopyMemory", "ptr", ppvBits, "ptr", buf, "uptr", vw * vh * 4)
+    UpdateOverlay()
+}
+
 snapshotBuf := Buffer(vw * vh * 4, 0)
 SaveSnapshot() {
     global ppvBits, snapshotBuf, vw, vh
@@ -279,18 +319,65 @@ PatchAlpha(x1, y1, x2, y2) {
         rowBase := ppvBits + yy * stride
         loop (maxX - minX + 1) {
             px := rowBase + (minX + A_Index - 1) * 4
-            ; 배경 기본값(1,1,1,1)보다 큰 값이면 실제로 펜이 지나간 픽셀
-            if (NumGet(px, 0, "UChar") > 1 || NumGet(px, 1, "UChar") > 1 || NumGet(px, 2, "UChar") > 1)
+            ; 배경값(1,1,1)과 조금이라도 다르면 펜이 지나간 픽셀이다. 예전에는 "채널 하나라도
+            ; 1보다 크면"으로 봤는데, 그러면 검정(0,0,0)으로 그은 선이 조건에 걸리지 않아
+            ; 알파가 1로 남고 화면에 아예 안 보이는 문제가 있었다.
+            if (NumGet(px, 0, "UChar") != 1 || NumGet(px, 1, "UChar") != 1 || NumGet(px, 2, "UChar") != 1)
                 NumPut("UChar", 255, px, 3)
         }
     }
     return [minX, minY, maxX + 1, maxY + 1]
 }
 
-DrawSegment(x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, penColor
+; ================= 지우개 (오른쪽 버튼 드래그) =================
+; 굵기는 펜보다 넉넉하게 — 지우개는 대충 문질러도 지워져야 쓸 만하다.
+EraserThickness() {
+    global DrawThickness
+    return Max(24, DrawThickness * 4)
+}
+
+; 지나간 자리를 배경과 똑같은 값(1,1,1)으로 덧칠한 뒤, 그 픽셀들의 알파를 1로 낮춰 도로
+; 투명하게 만든다. GDI는 알파를 건드리지 않으므로 알파는 직접 손봐야 한다.
+EraseSegment(x1, y1, x2, y2) {
+    global memDC, vx, vy
+    thickness := EraserThickness()
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(penColor), "ptr")
+    pen := DllCall("CreatePen", "int", 0, "int", thickness, "uint", 0x010101, "ptr")
+    old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
+    DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
+    DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
+    DllCall("SelectObject", "ptr", memDC, "ptr", old)
+    DllCall("DeleteObject", "ptr", pen)
+    box := ClearAlpha(lx1, ly1, lx2, ly2, thickness)
+    UpdateOverlay(box[1], box[2], box[3], box[4])
+}
+
+; 방금 배경색으로 덮인 픽셀만 골라 알파를 1로 되돌린다. 배경값과 "정확히" 같은 픽셀만
+; 건드리기 때문에, 근처에 있던 검정(0,0,0) 선까지 휩쓸어 지우는 일이 없다.
+ClearAlpha(x1, y1, x2, y2, pad) {
+    global ppvBits, vw, vh
+    pad += 2
+    minX := Max(0, Min(x1, x2) - pad)
+    maxX := Min(vw - 1, Max(x1, x2) + pad)
+    minY := Max(0, Min(y1, y2) - pad)
+    maxY := Min(vh - 1, Max(y1, y2) + pad)
+    stride := vw * 4
+    loop (maxY - minY + 1) {
+        yy := minY + A_Index - 1
+        rowBase := ppvBits + yy * stride
+        loop (maxX - minX + 1) {
+            px := rowBase + (minX + A_Index - 1) * 4
+            if (NumGet(px, 0, "UChar") = 1 && NumGet(px, 1, "UChar") = 1 && NumGet(px, 2, "UChar") = 1)
+                NumPut("UChar", 1, px, 3)
+        }
+    }
+    return [minX, minY, maxX + 1, maxY + 1]
+}
+
+DrawSegment(x1, y1, x2, y2) {
+    global memDC, vx, vy, DrawThickness, activeDrawColor
+    lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
+    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
     old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
     DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
     DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
@@ -303,10 +390,10 @@ DrawSegment(x1, y1, x2, y2) {
 ; mode: "line" | "rect" | "ellipse". 시작점~현재점 사이의 도형을 매 프레임 다시 그린다.
 ; (매번 스냅샷으로 되돌린 뒤 새로 그려서, 드래그 중인 미리보기가 쌓이지 않고 하나만 보이게 함)
 DrawShapePreview(mode, x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, penColor
+    global memDC, vx, vy, DrawThickness, activeDrawColor
     RestoreSnapshot()
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(penColor), "ptr")
+    pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
     oldPen := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
     nullBrush := DllCall("GetStockObject", "int", 5, "ptr") ; NULL_BRUSH (안쪽은 채우지 않음)
     oldBrush := DllCall("SelectObject", "ptr", memDC, "ptr", nullBrush, "ptr")
@@ -328,18 +415,46 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
 }
 
 DrawPoll() {
-    global drawOn, drawing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
+    global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
     global dragOnOtherWindow
     if !drawOn
         return
-    if GetKeyState("LButton", "P") {
-        MouseGetPos(&mx, &my, &winUnder)
-        if !drawing {
-            drawing := true
+
+    leftDown := GetKeyState("LButton", "P")
+    rightDown := GetKeyState("RButton", "P")
+    if (!leftDown && !rightDown) {
+        drawing := false
+        erasing := false
+        return
+    }
+    MouseGetPos(&mx, &my, &winUnder)
+
+    ; 오른쪽 버튼 드래그는 지우개. 왼쪽으로 이미 그리는 중이면 그 획을 방해하지 않는다.
+    if (rightDown && !drawing) {
+        if !erasing {
+            erasing := true
             lastX := mx
             lastY := my
-            dragStartX := mx
-            dragStartY := my
+            dragOnOtherWindow := winUnder != drawGui.Hwnd
+            if !dragOnOtherWindow
+                PushUndo()
+        } else if !dragOnOtherWindow {
+            EraseSegment(lastX, lastY, mx, my)
+            lastX := mx
+            lastY := my
+        }
+        return
+    }
+    if !leftDown
+        return
+    erasing := false
+
+    if !drawing {
+        drawing := true
+        lastX := mx
+        lastY := my
+        dragStartX := mx
+        dragStartY := my
             ; 마우스를 누른 순간 커서 아래에 있는 창이 판서 오버레이가 아니면, 그 위에 다른 창이
             ; 떠 있다는 뜻이다 — 위젯이나 Win+Shift+S 캡처 도구 오버레이처럼 위로 올라온 창
             ; 등. 그 창이 클릭을 받는 드래그이므로 판서로 그리지 않는다. 드래그를 시작한 시점에
@@ -347,25 +462,25 @@ DrawPoll() {
             ; 밖으로 벗어나도 선이 그려지지 않는다. (예전엔 Win+Shift+S 뒤 드래그 "횟수"를
             ; 세어 건너뛰었는데, 캡처 도구가 툴바 클릭을 요구하는지가 Windows 버전마다 달라
             ; 첫 판서 한 획을 삼키거나 캡처 드래그가 그려지는 일이 있었다.)
-            dragOnOtherWindow := winUnder != drawGui.Hwnd
-            ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다 (ZoomIt과 동일한 조합)
-            dragShapeMode := GetKeyState("Ctrl", "P") && GetKeyState("Shift", "P") ? "ellipse"
-                : GetKeyState("Ctrl", "P") ? "rect"
-                : GetKeyState("Shift", "P") ? "line"
-                : ""
-            if dragShapeMode != "" && !dragOnOtherWindow
-                SaveSnapshot()
-        } else if dragOnOtherWindow {
-            ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
-        } else if dragShapeMode != "" {
-            DrawShapePreview(dragShapeMode, dragStartX, dragStartY, mx, my)
-        } else {
-            DrawSegment(lastX, lastY, mx, my)
-            lastX := mx
-            lastY := my
-        }
+        dragOnOtherWindow := winUnder != drawGui.Hwnd
+        ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
+        if !dragOnOtherWindow
+            PushUndo()
+        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다 (ZoomIt과 동일한 조합)
+        dragShapeMode := GetKeyState("Ctrl", "P") && GetKeyState("Shift", "P") ? "ellipse"
+            : GetKeyState("Ctrl", "P") ? "rect"
+            : GetKeyState("Shift", "P") ? "line"
+            : ""
+        if dragShapeMode != "" && !dragOnOtherWindow
+            SaveSnapshot()
+    } else if dragOnOtherWindow {
+        ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
+    } else if dragShapeMode != "" {
+        DrawShapePreview(dragShapeMode, dragStartX, dragStartY, mx, my)
     } else {
-        drawing := false
+        DrawSegment(lastX, lastY, mx, my)
+        lastX := mx
+        lastY := my
     }
 }
 
@@ -592,8 +707,12 @@ ToggleSpotlight(*) {
 }
 
 ToggleDraw(*) {
-    global drawOn, drawGui, widget, settingsGui, settingsHiddenByDraw
+    global drawOn, drawGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, penColor, erasing
     drawOn := !drawOn
+    ; 숫자키로 잠깐 바꿔둔 색은 여기서 초기화한다. 드로잉을 켤 때마다 설정에 저장된 색으로
+    ; 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
+    activeDrawColor := penColor
+    erasing := false
     if drawOn {
         drawGui.Show("NA")
         ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
@@ -606,12 +725,10 @@ ToggleDraw(*) {
             settingsHiddenByDraw := true
         }
         SetTimer(DrawPoll, 10)
-        Hotkey("Esc", "On")
-        Hotkey("Delete", "On")
+        SetDrawModeHotkeys("On")
     } else {
         SetTimer(DrawPoll, 0)
-        Hotkey("Esc", "Off")
-        Hotkey("Delete", "Off")
+        SetDrawModeHotkeys("Off")
         drawGui.Hide()
         ; 판서를 켜느라 감췄던 설정 창이라면 하던 작업을 이어갈 수 있게 다시 띄운다
         if settingsHiddenByDraw {
@@ -626,9 +743,22 @@ ToggleDraw(*) {
 }
 
 ClearDrawing(*) {
+    PushUndo() ; 실수로 다 지웠을 때 Ctrl+Z로 되살릴 수 있게 한다
     ClearBackBuffer()
     UpdateOverlay()
 }
+
+; 드로잉 중 숫자키 1~7로 선 색을 바로 바꾼다. 설정에 저장된 색(penColor)은 건드리지 않아서,
+; 드로잉을 껐다 켜면 원래 색으로 돌아온다.
+SetDrawColor(index) {
+    global DRAW_COLORS, activeDrawColor
+    if (index >= 1 && index <= DRAW_COLORS.Length)
+        activeDrawColor := DRAW_COLORS[index]
+}
+
+; 숫자키마다 서로 다른 색을 기억한 함수를 만들어준다. 반복문 안에서 화살표 함수를 바로 쓰면
+; 모두 같은 변수를 붙들어 마지막 색 하나만 적용되므로, 이렇게 매개변수로 가둬야 한다.
+MakeColorSetter(index) => (*) => SetDrawColor(index)
 
 ; Esc: 판서 내용을 지우고 판서 모드까지 종료
 ExitDrawMode(*) {
@@ -742,7 +872,7 @@ OpenSettingsWindow(*) {
     ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
     ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
     ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
-    tabs := settingsGui.AddTab3("x10 y10 w320 h295", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    tabs := settingsGui.AddTab3("x10 y10 w320 h345", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -802,9 +932,9 @@ OpenSettingsWindow(*) {
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
     ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
     ; 않아 눈에 걸리지도 않는다.
-    lblVersion := settingsGui.AddText("x30 y252 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion := settingsGui.AddText("x30 y302 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y272 w270", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x30 y322 w270", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
@@ -816,28 +946,30 @@ OpenSettingsWindow(*) {
     ; 드로잉 중에만 쓰는 키들은 바꿀 수 없지만, 모르면 못 쓰는 기능이라 여기에 같이 적어둔다.
     ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
     ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
-    settingsGui.AddText("x30 y170 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
-    keyNames := settingsGui.AddText("x38 y194 w120 h104",
-        "드래그`nShift + 드래그`nCtrl + 드래그`nCtrl+Shift + 드래그`nDelete`nEsc")
+    settingsGui.AddText("x30 y164 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
+    keyNames := settingsGui.AddText("x38 y188 w130 h160",
+        "드래그`nShift + 드래그`nCtrl + 드래그`nCtrl+Shift + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 7`nDelete`nEsc")
     keyNames.SetFont("s9")
-    keyMeans := settingsGui.AddText("x170 y194 w140 h104",
-        "자유선 그리기`n직선`n사각형`n원(타원)`n그린 내용 지우기`n지우고 드로잉 끄기")
+    ; 오른쪽 칸 글자가 한 줄을 넘기면 그 아래 줄들이 왼쪽 칸과 어긋나 보인다. 색 설명은
+    ; "1 ~ 7"과 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
+    keyMeans := settingsGui.AddText("x176 y188 w140 h160",
+        "자유선 그리기`n직선`n사각형`n원(타원)`n지우개`n실행 취소`n색: 빨주노초파남보`n전부 지우기`n지우고 드로잉 끄기")
     keyMeans.SetFont("s9 c666666")
 
     tabs.UseTab()
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y315 w90 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y365 w90 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x125 y315 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x125 y365 w90 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x225 y315 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x225 y365 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h362")
+    settingsGui.Show("w340 h412")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -1175,8 +1307,22 @@ for name, combo in hotkeyCombos
 ; 판서 오버레이인지"를 보고 걸러내므로, 별도 핫키 감지가 필요 없다.)
 ; 아래 두 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어). 판서 모드 중엔 이 키가
 ; 다른 프로그램으로 전달되지 않으므로, 흔히 쓰는 키(Backspace 등)는 일부러 넣지 않았다.
-Hotkey("Esc", ExitDrawMode, "Off")   ; 내용 지우고 판서 모드 종료
-Hotkey("Delete", ClearDrawing, "Off") ; 판서 모드 유지한 채 내용만 지움
+Hotkey("Esc", ExitDrawMode, "Off")    ; 내용 지우고 드로잉 모드 종료
+Hotkey("Delete", ClearDrawing, "Off") ; 드로잉 모드 유지한 채 내용만 지움
+Hotkey("^z", UndoDrawing, "Off")      ; 직전 획/지우기/전체 지우기 한 단계 되돌리기
+loop DRAW_COLORS.Length
+    Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~7 = 빨주노초파남보
+
+; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
+; 그대로 쓸 수 있다.
+SetDrawModeHotkeys(state) {
+    global DRAW_COLORS
+    Hotkey("Esc", state)
+    Hotkey("Delete", state)
+    Hotkey("^z", state)
+    loop DRAW_COLORS.Length
+        Hotkey(String(A_Index), state)
+}
 
 ; ================= 전역 단축키 등록/검증 =================
 ; 글자 키 하나만 단축키로 잡으면 그 글자를 어느 프로그램에서도 칠 수 없게 된다. Shift만 더해도
