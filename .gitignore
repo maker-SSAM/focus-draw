@@ -3,3 +3,6 @@ settings.ini
 
 # Ahk2Exe로 컴파일한 결과물
 *.exe
+
+# 베타 테스트용으로 exe를 묶은 압축 파일 (배포는 파일로 직접 전달)
+*.zip
