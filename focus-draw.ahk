@@ -162,6 +162,16 @@ lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리�
 ; 판서 투명도까지 겹치면 더 흐려져서, 색감은 유지하되 조금 진한 값으로 골랐다.
 DRAW_COLORS := [0xFF0000, 0xFF7F00, 0xFFC800, 0x00A000, 0x0000FF, 0x4B0082, 0x9400D3]
 DRAW_COLOR_NAMES := ["빨강", "주황", "노랑", "초록", "파랑", "남색", "보라"]
+
+; 드로잉 중 "누른 채 드래그"로 도형을 고르는 키 (위에 있는 것이 우선).
+; 수식키(Shift/Ctrl)만 쓰면 자리가 네 개뿐이라 도형을 늘릴 수 없는데, 드로잉 모드에서는
+; 글자키도 다른 용도가 없으므로 그냥 쓸 수 있다. 다만 판서 오버레이는 포커스를 가져가지
+; 않아서(drawGui.Show("NA")) 그냥 두면 누른 글자가 뒤에 있는 프로그램에 그대로 입력된다 —
+; 그래서 드로잉 모드일 때만 이 키들을 핫키로 잡아 삼킨다(SetDrawModeHotkeys).
+SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"]]
+; 지금 눌려 있는 도형 키. 핫키에 삼켜진 키는 GetKeyState(..., "P")로 읽히리라 기대할 수 없어서
+; (흉내낸 입력으로 확인해보면 0으로 나온다) 누를 때와 뗄 때를 직접 받아 여기에 기록한다.
+shapeKeyHeld := Map()
 ; 실제로 선을 그릴 때 쓰는 색. 설정에 저장된 penColor를 기본으로 하되 숫자키로 잠깐 바꿀 수
 ; 있고, 드로잉 모드를 켜고 끌 때마다 설정값으로 되돌아간다. (penColor를 직접 바꾸면 강조
 ; 하이라이트와 클릭 효과 색까지 같이 변하고, 저장까지 눌리면 임시 색이 굳어버린다)
@@ -219,28 +229,87 @@ if pShapeBitmap {
 
 ; 도형(직선/사각형/원) 미리보기를 그리기 전에 현재 그림을 스냅샷으로 저장해뒀다가,
 ; 드래그 중 매 프레임마다 스냅샷으로 되돌린 뒤 새 도형을 다시 그려서 "고무줄 미리보기" 효과를 낸다.
-; 실행 취소 한 단계가 화면 전체 크기(가로x세로x4바이트)만큼 메모리를 쓴다. 모니터 하나면
-; 한 단계에 8MB 남짓이지만 두 대를 늘어놓으면 두 배가 되므로, 넓을수록 단계 수를 줄여
-; 전체 사용량이 50MB 선을 넘지 않게 맞춘다.
-UNDO_LIMIT := Max(2, Min(8, 50000000 // (vw * vh * 4)))
+; ================= 실행 취소 =================
+; 예전에는 획을 긋기 직전에 화면 전체(가로x세로x4바이트)를 통째로 복사해 한 단계로 쌓았다.
+; 모니터를 두 대 늘어놓으면 한 단계가 20MB를 넘어가서, 메모리 상한에 걸려 두 단계밖에
+; 쌓지 못했다. 실제로 바뀌는 건 펜이 지나간 자리뿐인데 화면 전체를 뜨는 게 과했던 것이다.
+;
+; 그래서 화면을 가로 띠로 나눠 **그 획이 실제로 건드린 띠만** 떠둔다. 띠 하나는 메모리에서
+; 연속이라 한 번의 복사로 끝나고(세로로도 자르면 줄마다 따로 복사해야 해서 훨씬 느리다),
+; 밑줄 하나 긋는 정도면 띠 한두 개(1MB 안팎)면 충분하다. 덕분에 같은 메모리로 단계 수를
+; 열 배 이상 늘릴 수 있다. 전부 지우기처럼 화면 전체를 건드리는 동작은 예전과 같은 크기가
+; 되지만, 그건 자주 하는 일이 아니다.
+UNDO_BAND := 32          ; 띠 하나의 높이(픽셀)
+UNDO_LIMIT := 30         ; 단계 수 상한
+UNDO_BYTES_LIMIT := 80000000 ; 전체 메모리 상한 (이 둘 중 먼저 걸리는 쪽이 적용된다)
+undoBytes := 0           ; 지금 쌓아둔 전체 크기
 
-; 되돌릴 수 있도록 지금 화면을 기록해둔다. 획 하나를 긋기 직전, 지우개를 대기 직전,
-; 전체를 지우기 직전에 부른다.
+; 한 단계가 차지하는 크기
+UndoStepBytes(step) {
+    total := 0
+    for , buf in step
+        total += buf.Size
+    return total
+}
+
+; 오래된 단계부터 버려서 상한을 지킨다. 단계가 하나뿐이면 아무리 커도 남겨둔다 —
+; 화면을 다 지운 직후처럼 "되돌릴 게 이것 하나뿐"인 순간에 그걸 버리면 안 되기 때문이다.
+TrimUndo() {
+    global undoStack, undoBytes, UNDO_LIMIT, UNDO_BYTES_LIMIT
+    while (undoStack.Length > UNDO_LIMIT
+        || (undoBytes > UNDO_BYTES_LIMIT && undoStack.Length > 1))
+        undoBytes -= UndoStepBytes(undoStack.RemoveAt(1))
+}
+
+; 새 단계를 연다. 획 하나를 긋기 직전, 지우개를 대기 직전, 전부 지우기 직전에 부른다.
+; 여기서는 빈 단계만 열어두고, 실제 내용은 그리면서 건드린 띠만 담긴다(CaptureUndoBands).
 PushUndo() {
-    global ppvBits, undoStack, UNDO_LIMIT, vw, vh
-    buf := Buffer(vw * vh * 4)
-    DllCall("RtlCopyMemory", "ptr", buf, "ptr", ppvBits, "uptr", vw * vh * 4)
-    undoStack.Push(buf)
-    while (undoStack.Length > UNDO_LIMIT)
-        undoStack.RemoveAt(1) ; 가장 오래된 기록부터 버린다
+    global undoStack
+    undoStack.Push(Map())
+    TrimUndo()
+}
+
+; y1~y2 줄에 걸친 띠들의 "바뀌기 전" 모습을 지금 열린 단계에 담아둔다. 그리기 직전에
+; 부른다. 이미 담아둔 띠는 건너뛴다 — 한 획 안에서 같은 자리를 여러 번 덧그려도 처음 한 번만
+; 떠야 그 획을 긋기 전 상태로 돌아간다.
+; (획 밖에서 부르면 엉뚱한 단계에 담기므로, 반드시 PushUndo로 단계를 연 뒤에만 부를 것)
+CaptureUndoBands(y1, y2) {
+    global undoStack, undoBytes, ppvBits, vw, vh, UNDO_BAND
+    if (undoStack.Length = 0)
+        return
+    step := undoStack[undoStack.Length]
+    rowBytes := vw * 4
+    first := Integer(Max(0, Min(y1, y2))) // UNDO_BAND
+    last := Integer(Min(vh - 1, Max(y1, y2))) // UNDO_BAND
+    band := first
+    while (band <= last) {
+        if !step.Has(band) {
+            y0 := band * UNDO_BAND
+            size := Min(UNDO_BAND, vh - y0) * rowBytes
+            buf := Buffer(size)
+            DllCall("RtlCopyMemory", "ptr", buf, "ptr", ppvBits + y0 * rowBytes, "uptr", size)
+            step[band] := buf
+            undoBytes += size
+        }
+        band += 1
+    }
+    TrimUndo()
 }
 
 UndoDrawing(*) {
-    global ppvBits, undoStack, vw, vh
+    global ppvBits, undoStack, undoBytes, vw, UNDO_BAND
+    ; 누르기만 하고 끝난 드래그는 아무것도 안 담긴 빈 단계로 남는다. 그런 단계에서 멈추면
+    ; Ctrl+Z가 먹지 않는 것처럼 보이므로 건너뛴다.
+    while (undoStack.Length > 0 && undoStack[undoStack.Length].Count = 0)
+        undoStack.Pop()
     if (undoStack.Length = 0)
         return
-    buf := undoStack.Pop()
-    DllCall("RtlCopyMemory", "ptr", ppvBits, "ptr", buf, "uptr", vw * vh * 4)
+    step := undoStack.Pop()
+    rowBytes := vw * 4
+    for band, buf in step {
+        DllCall("RtlCopyMemory", "ptr", ppvBits + band * UNDO_BAND * rowBytes, "ptr", buf, "uptr", buf.Size)
+        undoBytes -= buf.Size
+    }
     UpdateOverlay()
 }
 
@@ -378,10 +447,81 @@ PenDirtyBox(x1, y1, x2, y2, thickness := 0) {
         , Min(vw, Max(x1, x2) + pad + 1), Min(vh, Max(y1, y2) + pad + 1)]
 }
 
+; ================= 화살표·물결의 모양 계산 =================
+; 그리는 쪽과 "되돌릴 범위를 계산하는 쪽"이 반드시 같은 값을 써야 해서, 계산은 여기 한 곳에만 둔다.
+
+; 화살표 머리의 기준점들. 머리 밑변의 중심(bx, by)과 좌우 끝점, 그리고 머리가 몸통 선
+; 바깥으로 삐져나가는 폭(halfW)을 돌려준다. 길이가 거의 0이면 방향을 정할 수 없어 0을 돌려준다.
+ArrowGeometry(x1, y1, x2, y2) {
+    global DrawThickness
+    dx := x2 - x1, dy := y2 - y1
+    len := Sqrt(dx * dx + dy * dy)
+    if (len < 1)
+        return 0
+    ux := dx / len, uy := dy / len ; 진행 방향
+    px := -uy, py := ux            ; 그에 수직인 방향
+    ; 머리는 선 굵기에 비례해야 한다 — 굵은 펜에 작은 머리가 붙으면 화살표로 보이지 않는다.
+    ; 다만 짧게 끌었을 때 머리가 전체를 잡아먹지 않도록 길이의 절반으로 제한한다.
+    head := Min(Max(DrawThickness * 4, 14), len * 0.5)
+    halfW := head * 0.45 ; 머리 끝 각도가 약 48도가 되는 폭
+    bx := x2 - ux * head, by := y2 - uy * head
+    return {bx: bx, by: by, halfW: halfW
+        , lx: bx + px * halfW, ly: by + py * halfW
+        , rx: bx - px * halfW, ry: by - py * halfW}
+}
+
+; 물결의 진폭(굽이 높이). 끈 높이가 아니라 선 굵기에 매어 둔 이유는, 글 밑에 밑줄 긋듯
+; 가로로 곧게 끌었을 때도 물결이 나와야 하기 때문이다(높이에 매면 곧게 끌 때 0이라 직선이 된다).
+WaveAmplitude() {
+    global DrawThickness
+    return Max(DrawThickness * 0.75, 3)
+}
+
+; 한 굽이의 길이. 진폭과 따로 두었다 — 진폭만 줄이면 물결이 더 완만해지고, 둘을 같이 줄이면
+; 같은 모양이 작아진다. 지금은 굵기 6에서 높이 4.5, 굽이 길이 33 — 글 밑에 치는 물결 밑줄에
+; 가까운, 작고 촘촘한 물결이다.
+WaveLength() {
+    global DrawThickness
+    return Max(DrawThickness * 5.5, 18)
+}
+
+; 시작점에서 끝점으로 가는 선 위에 사인파를 얹은 점들.
+WavePoints(x1, y1, x2, y2) {
+    dx := x2 - x1, dy := y2 - y1
+    len := Sqrt(dx * dx + dy * dy)
+    amp := WaveAmplitude()
+    if (len < amp) ; 한 굽이도 안 되게 짧으면 그냥 직선
+        return [[x1, y1], [x2, y2]]
+    ux := dx / len, uy := dy / len
+    px := -uy, py := ux
+    ; 굽이가 반 토막으로 끝나면 끝이 어중간해 보이므로, 굽이 수를 정수로 맞춰 딱 떨어지게 한다
+    cycles := Max(1, Round(len / WaveLength()))
+    ; 굽이가 짧아질수록 점을 촘촘히 찍어야 각져 보이지 않는다. 2px 간격이면 한 굽이(33px)에
+    ; 열일곱 점이라 부드럽게 처리한 뒤 곡선과 구분되지 않는다.
+    count := Max(2, Ceil(len / 2) + 1)
+    pts := []
+    loop count {
+        t := (A_Index - 1) / (count - 1)
+        d := t * len
+        off := amp * Sin(t * cycles * 6.283185307179586)
+        pts.Push([x1 + ux * d + px * off, y1 + uy * d + py * off])
+    }
+    return pts
+}
+
 ; 도형 테두리를 따라가는 점들. 원은 크기에 맞춰 잘게 쪼개야 토막마다 훑는 네모가 작게 유지된다.
 ShapeOutlinePoints(mode, x1, y1, x2, y2) {
     if (mode = "line")
         return [[x1, y1], [x2, y2]]
+    if (mode = "wave")
+        return WavePoints(x1, y1, x2, y2)
+    if (mode = "arrow") {
+        g := ArrowGeometry(x1, y1, x2, y2)
+        if !g
+            return [[x1, y1], [x2, y2]]
+        ; 몸통 → 머리 한쪽 → 꼭짓점 → 반대쪽 → 다시 밑변 (한붓그리기로 이어지는 순서)
+        return [[x1, y1], [g.bx, g.by], [g.lx, g.ly], [x2, y2], [g.rx, g.ry], [g.bx, g.by]]
+    }
     lx := Min(x1, x2), rx := Max(x1, x2), ty := Min(y1, y2), by := Max(y1, y2)
     if (mode = "rect")
         return [[lx, ty], [rx, ty], [rx, by], [lx, by], [lx, ty]]
@@ -425,6 +565,8 @@ EraseSegment(x1, y1, x2, y2) {
     global memDC, vx, vy, pShapeGraphics
     thickness := EraserThickness()
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
+    ; 지우기 전 모습을 먼저 담아둬야 Ctrl+Z로 되살릴 수 있다
+    CaptureUndoBands(Min(ly1, ly2) - thickness, Max(ly1, ly2) + thickness)
     if pShapeGraphics {
         DllCall("gdi32\GdiFlush")
         ; 지우개는 "덮어쓰기"(SourceCopy)로 그려야 한다. 보통의 겹쳐 그리기로는 이미 칠해진
@@ -511,6 +653,8 @@ GetFreehandPen() {
 DrawSegment(x1, y1, x2, y2) {
     global memDC, vx, vy, DrawThickness, activeDrawColor, pShapeGraphics
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
+    ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
+    CaptureUndoBands(Min(ly1, ly2) - DrawThickness, Max(ly1, ly2) + DrawThickness)
     if pShapeGraphics {
         ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
         ; 테두리도 도형과 똑같이 매끄럽게 나온다.
@@ -542,6 +686,10 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
     bx := Min(lx1, lx2), by := Min(ly1, ly2)
     bw := Abs(lx2 - lx1), bh := Abs(ly2 - ly1)
+    overhang := ShapeOverhang(mode, lx1, ly1, lx2, ly2)
+    ; 그리기 전 모습을 담아둔다. 미리보기는 매 프레임 스냅샷으로 되돌렸다 다시 그리는데,
+    ; 그 되돌리기는 드래그 시작 시점(= 이 단계의 기준 모습)으로 돌리는 것이라 따로 담을 필요가 없다.
+    CaptureUndoBands(Min(ly1, ly2) - DrawThickness - overhang, Max(ly1, ly2) + DrawThickness + overhang)
 
     if pShapeGraphics {
         ; GDI가 아직 버퍼에 반영하지 않은 작업이 남아 있을 수 있으므로 먼저 밀어 넣는다
@@ -555,8 +703,14 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
             DllCall("gdiplus\GdipDrawRectangle", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
         else if mode = "ellipse"
             DllCall("gdiplus\GdipDrawEllipse", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
+        else if mode = "arrow"
+            DrawArrowGdip(pPen, lx1, ly1, lx2, ly2)
+        else if mode = "wave"
+            DrawWaveGdip(pPen, lx1, ly1, lx2, ly2)
         DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
-        box := PenDirtyBox(lx1, ly1, lx2, ly2)
+        ; 화살표 머리와 물결의 굽이는 두 끝점을 잇는 선 바깥으로 나가므로, 그만큼 여유를 더 준다.
+        ; (여유가 모자라면 되돌릴 때 지워지지 않은 자국이 화면에 남는다)
+        box := PenDirtyBox(lx1, ly1, lx2, ly2, DrawThickness + 2 * overhang)
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 — 예전 방식(GDI로 그리고 알파는 직접 채우기).
         ; 테두리를 따라가며 훑어서, 도형을 감싸는 네모 전체를 훑던 때보다는 훨씬 가볍다.
@@ -571,6 +725,13 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
             DllCall("Rectangle", "ptr", memDC, "int", bx, "int", by, "int", bx + bw, "int", by + bh)
         } else if mode = "ellipse" {
             DllCall("Ellipse", "ptr", memDC, "int", bx, "int", by, "int", bx + bw, "int", by + bh)
+        } else {
+            ; 화살표와 물결은 전용 GDI 함수가 없으므로 점을 이어 그린다. 화살표 머리는 채워지지
+            ; 않고 테두리만 나오지만, GDI+를 못 쓰는 상황에서의 대비책이라 이 정도로 충분하다.
+            outline := ShapeOutlinePoints(mode, lx1, ly1, lx2, ly2)
+            DllCall("MoveToEx", "ptr", memDC, "int", Round(outline[1][1]), "int", Round(outline[1][2]), "ptr", 0)
+            loop outline.Length - 1
+                DllCall("LineTo", "ptr", memDC, "int", Round(outline[A_Index + 1][1]), "int", Round(outline[A_Index + 1][2]))
         }
         DllCall("SelectObject", "ptr", memDC, "ptr", oldPen)
         DllCall("SelectObject", "ptr", memDC, "ptr", oldBrush)
@@ -588,6 +749,70 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
     }
     lastShapeBox := box
     UpdateOverlay(dirty[1], dirty[2], dirty[3], dirty[4])
+}
+
+; 도형이 두 끝점을 잇는 선 바깥으로 얼마나 나가는지. 화살표 머리와 물결 굽이가 여기 해당하며,
+; 되돌릴 범위와 실행 취소에 담을 범위를 정하는 데 쓴다(그리는 쪽과 값이 어긋나면 안 되므로 한 곳에 둔다).
+ShapeOverhang(mode, x1, y1, x2, y2) {
+    if (mode = "arrow") {
+        g := ArrowGeometry(x1, y1, x2, y2)
+        return g ? Ceil(g.halfW) : 0
+    }
+    if (mode = "wave")
+        return Ceil(WaveAmplitude())
+    return 0
+}
+
+; 화살표: 몸통 선 + 끝에 채운 삼각형 머리.
+DrawArrowGdip(pPen, x1, y1, x2, y2) {
+    global pShapeGraphics, activeDrawColor
+    g := ArrowGeometry(x1, y1, x2, y2)
+    if !g
+        return
+    ; 몸통은 머리 밑변까지만 그린다 — 끝까지 그으면 머리 꼭짓점 밖으로 삐져나갈 수 있다.
+    ; 끝을 둥글게 해야 삼각형과 만나는 자리가 매끄럽게 이어진다.
+    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; LineCapRound
+    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", x1, "float", y1, "float", g.bx, "float", g.by)
+
+    ; 머리는 테두리가 아니라 채워야 화살표처럼 보인다 — 펜이 아니라 브러시로 삼각형을 채운다.
+    pts := Buffer(24) ; PointF 3개 (실수 x, y)
+    NumPut("float", x2, "float", y2, "float", g.lx, "float", g.ly, "float", g.rx, "float", g.ry, pts)
+    pBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF000000 | activeDrawColor, "ptr*", &pBrush)
+    if pBrush {
+        DllCall("gdiplus\GdipFillPolygon", "ptr", pShapeGraphics, "ptr", pBrush, "ptr", pts, "int", 3, "int", 0)
+        DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
+    }
+}
+
+; 물결: 사인파 위의 점들을 이어 그린다.
+DrawWaveGdip(pPen, x1, y1, x2, y2) {
+    global pShapeGraphics
+    pts := WavePoints(x1, y1, x2, y2)
+    buf := Buffer(pts.Length * 8)
+    for i, p in pts
+        NumPut("float", p[1], "float", p[2], buf, (i - 1) * 8)
+    ; 짧은 선을 잇대어 만드는 것이라 자유선과 같은 함정이 있다 — 끝과 이음매를 둥글게 하지
+    ; 않으면 굽이마다 모난 자국이 남는다.
+    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipDrawLines", "ptr", pShapeGraphics, "ptr", pPen, "ptr", buf, "int", pts.Length)
+}
+
+; 지금 눌려 있는 키로 그릴 도형을 정한다. 도형 키(글자)를 먼저 보기 때문에, 글자키를 쥔 채로
+; Shift나 Ctrl이 함께 눌려 있어도 사용자가 고른 도형이 그려진다.
+CurrentShapeMode() {
+    global SHAPE_HOLD_KEYS, shapeKeyHeld
+    for pair in SHAPE_HOLD_KEYS
+        if shapeKeyHeld.Has(pair[1]) && shapeKeyHeld[pair[1]]
+            return pair[2]
+    ; 수식키 둘은 "무언가를 네모나 동그라미로 둘러 강조하는" 쓰임이라 가장 누르기 쉬운 자리에 뒀다.
+    ; (ZoomIt과 여러 그림 도구는 Shift를 직선에 쓰지만, 여기서는 직선을 Z로 옮겼다 — 사용자 결정)
+    return GetKeyState("Ctrl", "P") ? "ellipse"
+        : GetKeyState("Shift", "P") ? "rect"
+        : ""
 }
 
 DrawPoll() {
@@ -642,11 +867,8 @@ DrawPoll() {
         ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
         if !dragOnOtherWindow
             PushUndo()
-        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다 (ZoomIt과 동일한 조합)
-        dragShapeMode := GetKeyState("Ctrl", "P") && GetKeyState("Shift", "P") ? "ellipse"
-            : GetKeyState("Ctrl", "P") ? "rect"
-            : GetKeyState("Shift", "P") ? "line"
-            : ""
+        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다
+        dragShapeMode := CurrentShapeMode()
         if (dragShapeMode != "" && !dragOnOtherWindow) {
             SaveSnapshot()
             lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
@@ -951,7 +1173,11 @@ ToggleDraw(*) {
 }
 
 ClearDrawing(*) {
-    PushUndo() ; 실수로 다 지웠을 때 Ctrl+Z로 되살릴 수 있게 한다
+    global vh
+    ; 실수로 다 지웠을 때 Ctrl+Z로 되살릴 수 있게 한다. 이때는 화면 전체가 바뀌므로 전부 담는다
+    ; — 실행 취소 한 단계로는 가장 큰 경우지만, 자주 하는 동작이 아니라 이대로 둔다.
+    PushUndo()
+    CaptureUndoBands(0, vh - 1)
     ClearBackBuffer()
     UpdateOverlay()
 }
@@ -967,6 +1193,17 @@ SetDrawColor(index) {
 ; 숫자키마다 서로 다른 색을 기억한 함수를 만들어준다. 반복문 안에서 화살표 함수를 바로 쓰면
 ; 모두 같은 변수를 붙들어 마지막 색 하나만 적용되므로, 이렇게 매개변수로 가둬야 한다.
 MakeColorSetter(index) => (*) => SetDrawColor(index)
+
+; 도형 키가 지금 눌려 있는지 기록한다. 키를 삼키는 핫키라 눌린 상태를 나중에 물어볼 수 없어서
+; (흉내낸 입력으로 확인해보면 GetKeyState(..., "P")가 0으로 나온다) 누를 때와 뗄 때 직접 적어둔다.
+SetShapeKeyHeld(key, down) {
+    global shapeKeyHeld
+    shapeKeyHeld[key] := down
+}
+
+; 색 설정과 같은 이유로 함수를 만들어 쓴다 — 반복문 안에서 화살표 함수를 바로 쓰면 모두 같은
+; 변수를 붙들어 마지막 키 하나만 제대로 동작한다.
+MakeShapeKeyTracker(key, down) => (*) => SetShapeKeyHeld(key, down)
 
 ; Esc: 판서 내용을 지우고 판서 모드까지 종료
 ExitDrawMode(*) {
@@ -1080,7 +1317,7 @@ OpenSettingsWindow(*) {
     ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
     ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
     ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
-    tabs := settingsGui.AddTab3("x10 y10 w320 h345", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    tabs := settingsGui.AddTab3("x10 y10 w320 h385", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -1141,9 +1378,9 @@ OpenSettingsWindow(*) {
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
     ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
     ; 않아 눈에 걸리지도 않는다.
-    lblVersion := settingsGui.AddText("x30 y302 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion := settingsGui.AddText("x30 y342 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y322 w270", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x30 y362 w270", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
@@ -1156,29 +1393,30 @@ OpenSettingsWindow(*) {
     ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
     ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
     settingsGui.AddText("x30 y164 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
-    keyNames := settingsGui.AddText("x38 y188 w130 h160",
-        "드래그`nShift + 드래그`nCtrl + 드래그`nCtrl+Shift + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 7`nDelete`nEsc")
+    keyNames := settingsGui.AddText("x38 y188 w130 h196",
+        "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 7`nDelete`nEsc")
+    ; (도형 순서: 자유선 / 사각형 / 원 / 직선 / 물결 / 화살표 — 위 키 목록과 줄이 맞아야 한다)
     keyNames.SetFont("s9")
     ; 오른쪽 칸 글자가 한 줄을 넘기면 그 아래 줄들이 왼쪽 칸과 어긋나 보인다. 색 설명은
     ; "1 ~ 7"과 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
-    keyMeans := settingsGui.AddText("x176 y188 w140 h160",
-        "자유선 그리기`n직선`n사각형`n원(타원)`n지우개`n실행 취소`n색: 빨주노초파남보`n전부 지우기`n지우고 드로잉 끄기")
+    keyMeans := settingsGui.AddText("x176 y188 w140 h196",
+        "자유선 그리기`n사각형`n원(타원)`n직선`n물결`n화살표`n지우개`n실행 취소`n색: 빨주노초파남보`n전부 지우기`n지우고 드로잉 끄기")
     keyMeans.SetFont("s9 c666666")
 
     tabs.UseTab()
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y365 w90 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y405 w90 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x125 y365 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x125 y405 w90 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x225 y365 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x225 y405 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h412")
+    settingsGui.Show("w340 h452")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -1522,15 +1760,33 @@ Hotkey("^z", UndoDrawing, "Off")      ; 직전 획/지우기/전체 지우기 �
 loop DRAW_COLORS.Length
     Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~7 = 빨주노초파남보
 
+; 도형 키(Z/X/C)는 "누르고 있는 동안"만 뜻이 있어서 눌렀을 때 할 일이 따로 없다. 그런데도
+; 핫키로 잡아두는 이유는 두 가지다 — (1) 키를 삼켜서 뒤에 있는 프로그램에 글자가 입력되지
+; 않게 하고, (2) 누를 때와 뗄 때를 받아 지금 눌려 있는지를 직접 기록하기 위해서다.
+; Z를 잡아도 Ctrl+Z(실행 취소)는 그대로 동작한다 — 수식키 없는 핫키는 Ctrl이 함께 눌리면
+; 발동하지 않고, 더 구체적인 ^z 쪽이 잡는다. (실제로 눌러 확인함)
+for pair in SHAPE_HOLD_KEYS {
+    shapeKeyHeld[pair[1]] := false
+    Hotkey(pair[1], MakeShapeKeyTracker(pair[1], true), "Off")
+    Hotkey(pair[1] " up", MakeShapeKeyTracker(pair[1], false), "Off")
+}
+
 ; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
 ; 그대로 쓸 수 있다.
 SetDrawModeHotkeys(state) {
-    global DRAW_COLORS
+    global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld
     Hotkey("Esc", state)
     Hotkey("Delete", state)
     Hotkey("^z", state)
     loop DRAW_COLORS.Length
         Hotkey(String(A_Index), state)
+    for pair in SHAPE_HOLD_KEYS {
+        Hotkey(pair[1], state)
+        Hotkey(pair[1] " up", state)
+        ; 도형 키를 누른 채로 드로잉이 꺼지면(Esc 등) 뗀 것을 못 보고 지나가 "계속 눌림"으로
+        ; 남는다. 켜고 끌 때마다 초기화해서 그런 유령 상태가 생기지 않게 한다.
+        shapeKeyHeld[pair[1]] := false
+    }
 }
 
 ; ================= 전역 단축키 등록/검증 =================
