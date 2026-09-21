@@ -93,8 +93,8 @@ STEP_MAX := 10
 PEN_BASE_PX := 3,   PEN_STEP_RATIO := 1.3    ; 3 · 3.9 · 5.1 · 6.6 · 8.6 · 11.1 · 14.5 · 18.8 · 24.5 · 31.8px
 ERASER_BASE_PX := 10, ERASER_STEP_RATIO := 1.5 ; 10 · 15 · 23 · 34 · 51 · 76 · 114 · 171 · 256 · 384px
 ; 처음 받아 쓰는 PC(= settings.ini가 없을 때)가 시작하는 단계
-DEFAULT_DRAW_STEP := 4   ; 6.6px
-DEFAULT_ERASER_STEP := 3 ; 23px
+DEFAULT_DRAW_STEP := 5   ; 8.6px
+DEFAULT_ERASER_STEP := 5 ; 51px
 
 StepToPx(step, basePx, ratio) {
     global STEP_MAX
@@ -130,7 +130,7 @@ LoadSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep
     global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
     global spotColor, clickColor, drawColor
-    global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight, widgetScale, widgetBgColor, widgetOpacity
+    global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickColor, showWidget, showTrayIcons, hideCursorOnHighlight, widgetScale, widgetBgColor, widgetOpacity, widgetX, widgetY
     global HOTKEY_DEFAULTS, hotkeyCombos, DEFAULT_DRAW_STEP, DEFAULT_ERASER_STEP
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
@@ -141,6 +141,13 @@ LoadSettings() {
     clickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "ClickOpacity", 50)))
     CLICK_ANIM_INTERVAL := 41 - clickSpeed ; 1(40ms, 예전보다 더 느린 옵션)~30(11ms, 예전 "20" 정도의 체감 속도가 새 최대)
     hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 1) = 1
+    ; 오른쪽 클릭 효과는 나중에 붙인 기능이라 **기본은 꺼둔다** — 쓰던 분들 화면이 업데이트만으로
+    ; 달라지면 안 된다. 나머지 값은 왼쪽 클릭의 기본값과 같게 맞춰, 켜는 순간 익숙한 모습이 되게 한다.
+    rclickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "RClickEffect", 0) = 1
+    rclickThickness := Max(2, Min(12, IniRead(SETTINGS_PATH, "Highlight", "RClickThickness", 7)))
+    rclickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "RClickSpeed", 26)))
+    rclickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "RClickOpacity", 50)))
+    RCLICK_ANIM_INTERVAL := 41 - rclickSpeed
     DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 100)))
     ; 굵기와 지우개 크기는 1~10단계로 다룬다(위 StepToPx 참고). 읽는 순서는 세 단계다 —
     ; (1) 새 항목이 있으면 그대로, (2) 없고 옛 픽셀값이 남아 있으면 가장 가까운 단계로 변환,
@@ -157,14 +164,20 @@ LoadSettings() {
     legacyColor := IniRead(SETTINGS_PATH, "Common", "Color", "FF0000")
     spotColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "Color", legacyColor))
     clickColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "ClickColor", legacyColor))
+    ; 오른쪽은 기본을 **파랑**으로 둔다. 왼쪽(빨강)과 색이 달라야 어느 버튼을 눌렀는지
+    ; 학생이 구분할 수 있고, 그게 좌·우를 따로 둔 이유이기도 하다.
+    rclickColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "RClickColor", "0020FF"))
     drawColor := Integer("0x" IniRead(SETTINGS_PATH, "Draw", "Color", legacyColor))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 0) = 1
     ; 위젯 크기는 100%가 기준. 빔프로젝터로 크게 띄우거나 고해상도 노트북에서 작게 보일 때 쓴다.
     widgetScale := Max(60, Min(250, IniRead(SETTINGS_PATH, "Common", "WidgetScale", 100)))
     widgetBgColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "WidgetColor", "F2F2F2"))
-    ; ìì ¯ì´ ìì íë©´ì ê°ë¦¬ë ê² ì ê²½ ì°ì¼ ë ì´ë¤. ëë¬´ ë®ì¶ë©´ ëë¬ì¼ í  ë²í¼ì´ ì ë³´ì¬ì 20%ê¹ì§ë§.
+    ; 위젯이 수업 화면을 가리는 게 신경 쓰일 때 쓴다. 너무 낮추면 눌러야 할 버튼이 안 보여서 20%까지만.
     widgetOpacity := Max(20, Min(100, IniRead(SETTINGS_PATH, "Common", "WidgetOpacity", 100)))
+    ; 위젯을 옮겨둔 자리. 한 번도 안 옮겼으면 빈 값이고, 그때는 화면 오른쪽 아래에서 시작한다.
+    widgetX := IniRead(SETTINGS_PATH, "Common", "WidgetX", "")
+    widgetY := IniRead(SETTINGS_PATH, "Common", "WidgetY", "")
     ; 저장된 단축키가 이상하면(사람이 ini를 잘못 고쳤다거나) 기본값으로 돌려서, 단축키가
     ; 하나도 안 먹는 상태로 시작하는 일이 없게 한다.
     for name, def in HOTKEY_DEFAULTS {
@@ -179,7 +192,7 @@ LoadSettings() {
 ; 경우다. 그냥 두면 IniWrite가 던진 오류가 그대로 튀어나와 수업 중에 오류 창이 뜨고 스크립트가
 ; 멈춘다. 무엇을 어떻게 하면 되는지 알려주고 계속 쓸 수 있게 한다(바꾼 값은 이번 실행 동안 유효).
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, rclickColor, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity, widgetX, widgetY
     try
         return WriteSettings()
     catch as err {
@@ -195,7 +208,7 @@ SaveSettings() {
 }
 
 WriteSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, rclickColor, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity, widgetX, widgetY
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
@@ -205,6 +218,11 @@ WriteSettings() {
     IniWrite(hideCursorOnHighlight ? 1 : 0, SETTINGS_PATH, "Highlight", "HideCursor")
     IniWrite(HexColor(spotColor), SETTINGS_PATH, "Highlight", "Color")
     IniWrite(HexColor(clickColor), SETTINGS_PATH, "Highlight", "ClickColor")
+    IniWrite(rclickEffectEnabled ? 1 : 0, SETTINGS_PATH, "Highlight", "RClickEffect")
+    IniWrite(rclickThickness, SETTINGS_PATH, "Highlight", "RClickThickness")
+    IniWrite(rclickSpeed, SETTINGS_PATH, "Highlight", "RClickSpeed")
+    IniWrite(rclickOpacity, SETTINGS_PATH, "Highlight", "RClickOpacity")
+    IniWrite(HexColor(rclickColor), SETTINGS_PATH, "Highlight", "RClickColor")
     IniWrite(DrawStep, SETTINGS_PATH, "Draw", "ThicknessStep")
     IniWrite(DrawOpacity, SETTINGS_PATH, "Draw", "Opacity")
     IniWrite(EraserStep, SETTINGS_PATH, "Draw", "EraserStep")
@@ -214,6 +232,7 @@ WriteSettings() {
     IniWrite(widgetScale, SETTINGS_PATH, "Common", "WidgetScale")
     IniWrite(HexColor(widgetBgColor), SETTINGS_PATH, "Common", "WidgetColor")
     IniWrite(widgetOpacity, SETTINGS_PATH, "Common", "WidgetOpacity")
+    SaveWidgetPos() ; 위치는 옮길 때마다 따로 적지만, 저장을 누를 때도 지금 자리를 확실히 남긴다
     for name, combo in hotkeyCombos
         IniWrite(combo, SETTINGS_PATH, "Hotkeys", name)
     ; 예전 버전에 있던 전역 "지우기" 단축키의 잔재를 치운다. 안 읽히는 값이라 그냥 둬도
@@ -729,11 +748,16 @@ RedrawBrushCursor() {
 
 ; 선은 마우스 위치를 중심으로 그려지므로(그 점은 해당 픽셀의 좌상단 모서리다) 원의 중심도
 ; 같은 점에 둔다. 창 위치와 그림을 한 번에 올려서 따라다녀도 깜빡이지 않는다.
-MoveBrushCursor() {
+; 좌표를 주면 그 자리로, 안 주면 마우스 커서 자리로 옮긴다. 터치·펜은 진짜 커서가 늦게
+; 따라오므로 포인터 메시지에서 받은 좌표를 직접 넘겨준다.
+MoveBrushCursor(px := "", py := "") {
     global drawOn, brushGui, brushCanvas, brushPad, brushMode, DrawOpacity
     if (!drawOn || !IsObject(brushCanvas) || !brushCanvas.graphics)
         return
-    MouseGetPos(&mx, &my)
+    if (px = "" || py = "")
+        MouseGetPos(&mx, &my)
+    else
+        mx := px, my := py
     ; 펜은 그어질 선과 같은 투명도로 보여줘야 결과가 예상된다. 지우개 테두리는 안내선이라
     ; 판서 투명도와 상관없이 또렷하게 둔다.
     alpha := (brushMode = "eraser") ? 255 : Max(0, Min(255, Round(DrawOpacity * 255 / 100)))
@@ -1218,9 +1242,148 @@ CurrentShapeMode() {
         : ""
 }
 
+; 마우스 버튼이 눌려 있는지 본다. **"P"(물리) 판정을 쓰지 않는 것이 핵심이다.**
+; 전자칠판 터치펜·펜 태블릿·원격 제어의 입력은 Windows가 마우스 입력을 "흉내내어" 만들어
+; 보내는데(injected), 이런 입력은 물리 판정에서 눌리지 않은 것으로 나온다. 실제로 측정한 값:
+;   흉내낸 클릭이 눌려 있는 동안 → GetKeyState("LButton","P")=0 / GetAsyncKeyState=1
+; 그래서 "P"로 판정하면 터치펜으로는 **커서만 움직이고 선이 안 그려진다**(2026-09-21 제보).
+; 반대로 하이라이트 모드의 클릭 효과는 멀쩡했는데, 그쪽은 핫키(~LButton)라서 흉내낸 입력에도
+; 정상적으로 걸리기 때문이다 — 같은 터치인데 한쪽만 되던 이유가 이것이다.
+;
+; 고르는 김에 AHK의 논리 판정(GetKeyState에 "P"를 빼는 것)이 아니라 GetAsyncKeyState를 쓴다.
+; 논리 판정은 "우리 스레드의 메시지 큐가 받아본 상태"라, 오른쪽 드래그가 다른 창 위에서
+; 시작되는 경우처럼 입력이 남의 프로세스로 가는 상황에서 뒤처질 수 있다. GetAsyncKeyState는
+; 큐와 무관한 시스템 전역 상태라 그런 구멍이 없다.
+VK_LBUTTON := 0x01
+VK_RBUTTON := 0x02
+MouseDown(vk) => (DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000) != 0
+
+; ================= 전자칠판·터치펜 입력 =================
+; 터치와 펜은 Windows가 마우스 입력으로 바꿔서 보내주는데(promotion), 그 변환이 **늦다.**
+; 탭인지, 길게 누르기인지, 드래그인지 판별할 때까지 붙들고 있다가 접촉점이 일정 거리를
+; 움직인 뒤에야 내보낸다. 합성 터치로 재현해 실제로 측정한 값:
+;   +0ms   WM_POINTERDOWN (700,700)  ← 닿는 즉시, 정확한 접촉 위치
+;   +46ms  WM_LBUTTONDOWN            ← 12px 움직인 뒤에야 도착
+; 게다가 우리는 폴링으로 MouseGetPos를 읽으므로, 뒤늦게 알아챈 그 시점의 커서 자리에서 획이
+; 시작된다 — 처음 구간이 통째로 날아간다. "터치한 뒤 좀 움직여야 선이 나온다"는 제보가 이것이다.
+;
+; 그래서 마우스 변환을 기다리지 않고 **포인터 메시지를 직접 받아** 획을 긋는다. 닿는 순간의
+; 좌표가 그대로 획의 시작점이 된다.
+;
+; **마우스(포인터 종류 4)는 건드리지 않고 기존 폴링 경로가 그대로 처리한다.** 어떤 기기에서
+; 이 경로가 안 먹더라도 최소한 지금처럼은 동작하게 남겨두려는 것이다 — 교실에서 쓰는
+; 물건이라 "더 좋아지거나, 아니면 그대로"여야지 "안 되거나"는 곤란하다.
+PT_TOUCH := 2
+PT_PEN := 3
+penStroke := false      ; 터치·펜으로 획을 긋고 있는 중인가
+penErasing := false     ; 그 획이 펜 뒤쪽(지우개)으로 긋는 것인가
+penLastX := 0
+penLastY := 0
+penIgnoreMouse := false ; 터치 뒤에 따라 들어오는 마우스 입력을 흘려보내는 중인가
+
+; 전자칠판 터치펜의 **앞뒤 구분**. Windows가 표준으로 알려준다 — 펜 입력에는 POINTER_PEN_INFO가
+; 딸려오고, 그 안의 penFlags에 "뒤집힘"과 "지우개" 표시가 들어 있다.
+;   PEN_FLAG_BARREL   0x01  옆면 버튼을 누르고 있음
+;   PEN_FLAG_INVERTED 0x02  펜을 뒤집어 **뒤쪽이 화면을 향하고 있음**
+;   PEN_FLAG_ERASER   0x04  뒤쪽(지우개)이 화면에 닿아 있음
+; 앞/뒤만 쓰기로 했으므로 INVERTED와 ERASER만 본다. 옆면 버튼(BARREL)까지 지우개로 치면
+; 펜을 고쳐 쥐다 버튼이 눌렸을 때 의도치 않게 지워지므로 일부러 뺐다.
+;
+; **모든 전자칠판이 이 정보를 주는 것은 아니다.** 적외선 방식 보드의 "펜"은 그냥 막대라서
+; Windows에는 손가락 터치와 구분이 안 되고, 순정 앱이 접촉 면적 같은 걸로 자체 판별하기도
+; 한다. 그래서 정보를 못 얻으면 조용히 "앞쪽(펜)"으로 본다 — 못 알아들었다고 안 그려지는
+; 것보다는 평소대로 그려지는 쪽이 낫다.
+PEN_FLAG_INVERTED := 0x02
+PEN_FLAG_ERASER := 0x04
+
+IsEraserEnd(id) {
+    global PEN_FLAG_INVERTED, PEN_FLAG_ERASER
+    ; POINTER_PEN_INFO = POINTER_INFO(x64에서 96바이트) + penFlags + penMask + ...
+    info := Buffer(120, 0)
+    if !DllCall("GetPointerPenInfo", "UInt", id, "Ptr", info, "Int")
+        return false ; 펜 정보가 없는 기기 — 앞쪽으로 친다
+    penFlags := NumGet(info, 96, "UInt")
+    return (penFlags & (PEN_FLAG_INVERTED | PEN_FLAG_ERASER)) != 0
+}
+
+; 포인터 메시지의 좌표는 lParam에 화면 좌표로 실려온다. **보조 모니터는 좌표가 음수라
+; 부호를 살려야 한다** — 그냥 읽으면 왼쪽 모니터가 65000 언저리의 엉뚱한 자리가 된다.
+PointerXY(lp) {
+    x := lp & 0xFFFF
+    y := (lp >> 16) & 0xFFFF
+    return [(x > 0x7FFF) ? x - 0x10000 : x, (y > 0x7FFF) ? y - 0x10000 : y]
+}
+
+IsPenOrTouch(wp) {
+    global PT_TOUCH, PT_PEN
+    t := 0
+    if !DllCall("GetPointerType", "UInt", wp & 0xFFFF, "UInt*", &t, "Int")
+        return false
+    return (t = PT_TOUCH || t = PT_PEN)
+}
+
+OnPointerDown(wp, lp, msg, hwnd) {
+    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY, penIgnoreMouse
+    global drawing, erasing, dragOnOtherWindow, dragShapeMode
+    if (!drawOn || hwnd != drawGui.Hwnd || !IsPenOrTouch(wp))
+        return
+    ; 도형(Shift·Ctrl·Z·X·C)은 기존 마우스 경로에 맡긴다. 전자칠판 앞에 서서 수식키를 쥐고
+    ; 끄는 일은 드물어서, 미리보기와 스냅샷까지 여기에 다시 만들 이유가 없다고 봤다.
+    if (CurrentShapeMode() != "")
+        return
+    pt := PointerXY(lp)
+    penStroke := true
+    ; **닿는 순간 한 번만** 앞뒤를 판단하고 획이 끝날 때까지 유지한다. 긋는 도중에 계속
+    ; 물어보면, 펜이 기울어져 플래그가 한 프레임 흔들릴 때 한 획이 반은 글씨 반은 지우개가 된다.
+    penErasing := IsEraserEnd(wp & 0xFFFF)
+    penIgnoreMouse := true
+    drawing := false
+    erasing := false
+    dragOnOtherWindow := false
+    dragShapeMode := ""
+    PushUndo() ; 이 획 하나만 Ctrl+Z로 되돌릴 수 있도록
+    penLastX := pt[1]
+    penLastY := pt[2]
+    ; 뒤쪽으로 대면 커서도 지우개 테두리 원으로 바뀌어, 어디까지 지워지는지 보인다
+    SetBrushMode(penErasing ? "eraser" : "pen")
+    ; 여기서 점을 찍지는 않는다 — 마우스로 그냥 클릭만 했을 때 점이 안 남는 것과 맞춘다
+    MoveBrushCursor(penLastX, penLastY)
+}
+
+OnPointerUpdate(wp, lp, msg, hwnd) {
+    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY
+    if (!penStroke || !drawOn || hwnd != drawGui.Hwnd)
+        return
+    pt := PointerXY(lp)
+    if (pt[1] = penLastX && pt[2] = penLastY)
+        return
+    if penErasing
+        EraseSegment(penLastX, penLastY, pt[1], pt[2])
+    else
+        DrawSegment(penLastX, penLastY, pt[1], pt[2])
+    penLastX := pt[1]
+    penLastY := pt[2]
+    ; 커서 노릇을 하는 원도 포인터 좌표로 옮긴다. 진짜 마우스 커서는 변환이 늦어 뒤처지므로
+    ; MouseGetPos로 옮기면 원만 따로 놀게 된다.
+    MoveBrushCursor(penLastX, penLastY)
+}
+
+OnPointerUp(wp, lp, msg, hwnd) {
+    global penStroke, penErasing
+    penStroke := false
+    if penErasing {
+        penErasing := false
+        SetBrushMode("pen") ; 펜을 떼면 커서는 다시 펜 원으로
+    }
+}
+
+OnMessage(0x0246, OnPointerDown)   ; WM_POINTERDOWN
+OnMessage(0x0245, OnPointerUpdate) ; WM_POINTERUPDATE
+OnMessage(0x0247, OnPointerUp)     ; WM_POINTERUP
+
 DrawPoll() {
     global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
-    global dragOnOtherWindow, lastShapeBox
+    global dragOnOtherWindow, lastShapeBox, VK_LBUTTON, VK_RBUTTON, penStroke, penIgnoreMouse
     if !drawOn
         return
     MouseGetPos(&mx, &my, &winUnder)
@@ -1232,8 +1395,23 @@ DrawPoll() {
     ; "아무 버튼도 안 눌림 → 그냥 빠져나감"보다 앞에 둔다.
     MoveBrushCursor()
 
-    leftDown := GetKeyState("LButton", "P")
-    rightDown := GetKeyState("RButton", "P")
+    leftDown := MouseDown(VK_LBUTTON)
+    rightDown := MouseDown(VK_RBUTTON)
+    ; 터치·펜으로 긋는 중이면 마우스 판정은 쳐다보지 않는다. 뒤늦게 따라 들어오는 마우스
+    ; 입력까지 같이 그리면 **한 획이 두 번 그려지고 실행 취소도 두 칸**이 된다.
+    if penStroke {
+        penIgnoreMouse := true
+        return
+    }
+    ; 획이 끝난 뒤에도 마우스 쪽은 아직 "눌림"으로 남아 있다. 그게 풀릴 때까지 흘려보내야
+    ; 손을 뗀 자리에 짧은 획이 하나 더 그려지지 않는다.
+    if penIgnoreMouse {
+        if (!leftDown && !rightDown)
+            penIgnoreMouse := false
+        drawing := false
+        erasing := false
+        return
+    }
     ; 오른쪽 버튼을 누르고 있는 동안에는 커서가 지우개 범위를 보여주는 원으로 바뀐다
     SetBrushMode(rightDown && !drawing ? "eraser" : "pen")
     if (!leftDown && !rightDown) {
@@ -1400,65 +1578,92 @@ SpotFollow() {
 ; 프레임 수를 늘릴수록 한 프레임이 담당하는 반경 변화폭이 작아져서 더 부드럽게 보인다.
 ; 클릭할 때만 잠깐 실행되고 끝나는 애니메이션이라(계속 다시 그리는 판서 오버레이와 달리),
 ; 프레임을 늘려도 체감될 정도의 성능 부담은 없다.
-CLICK_ANIM_FRAMES := 30 ; CLICK_ANIM_INTERVAL(빠르기)은 settings.ini에서 불러온 값을 그대로 씀
+CLICK_ANIM_FRAMES := 30 ; 빠르기(간격 ms)는 좌·우 버튼이 각각 settings.ini에서 불러온 값을 쓴다
 
-clickGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Click") ; 0x80000 = 레이어드, 0x20 = 클릭 통과
-clickGui.Show("w" SpotSize " h" SpotSize " Hide")
-clickCanvas := ""
+; 왼쪽 버튼과 오른쪽 버튼이 **서로 다른 색·굵기·투명도·빠르기**를 가질 수 있어야 하고,
+; 두 애니메이션이 겹쳐 돌 수도 있어서 창과 진행 상태를 각각 하나씩 둔다.
+; 그리는 방법은 똑같으므로 함수는 하나로 두고 어느 쪽인지만 넘긴다("L" / "R").
+clickAnim := Map(
+    "L", {gui: 0, canvas: "", frame: 0},
+    "R", {gui: 0, canvas: "", frame: 0})
+for side in ["L", "R"] {
+    g := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Click" side) ; 0x80000 = 레이어드, 0x20 = 클릭 통과
+    g.Show("w" SpotSize " h" SpotSize " Hide")
+    clickAnim[side].gui := g
+}
 
 SetupClickCanvas() {
-    global clickCanvas, SpotSize
-    DestroyAlphaCanvas(clickCanvas)
-    clickCanvas := CreateAlphaCanvas(SpotSize, SpotSize)
+    global clickAnim, SpotSize
+    for side, a in clickAnim {
+        DestroyAlphaCanvas(a.canvas)
+        a.canvas := CreateAlphaCanvas(SpotSize, SpotSize)
+    }
 }
 SetupClickCanvas()
 
-clickAnimFrame := 0
+; 어느 쪽 버튼의 설정을 쓸지 한곳에서 고른다 — 아래 그리기·시작 코드가 둘을 구분하지 않아도 된다.
+ClickStyle(side) {
+    global clickColor, SpotThickness, clickOpacity, CLICK_ANIM_INTERVAL, clickEffectEnabled
+    global rclickColor, rclickThickness, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickEffectEnabled
+    if (side = "R")
+        return {color: rclickColor, thickness: rclickThickness, opacity: rclickOpacity
+            , interval: RCLICK_ANIM_INTERVAL, enabled: rclickEffectEnabled}
+    return {color: clickColor, thickness: SpotThickness, opacity: clickOpacity
+        , interval: CLICK_ANIM_INTERVAL, enabled: clickEffectEnabled}
+}
 
-ClickAnimStep() {
-    global clickAnimFrame, CLICK_ANIM_FRAMES, clickGui, clickCanvas, SpotSize, SpotThickness, clickColor, clickOpacity
-    if clickAnimFrame >= CLICK_ANIM_FRAMES {
-        SetTimer(ClickAnimStep, 0)
-        clickGui.Hide()
+ClickAnimStepFor(side) {
+    global clickAnim, CLICK_ANIM_FRAMES, SpotSize
+    a := clickAnim[side]
+    st := ClickStyle(side)
+    if (a.frame >= CLICK_ANIM_FRAMES) {
+        SetTimer(side = "R" ? RClickAnimStep : ClickAnimStep, 0)
+        a.gui.Hide()
         return
     }
     MouseGetPos(&mx, &my)
-    if clickCanvas.graphics {
-        DllCall("gdiplus\GdipGraphicsClear", "ptr", clickCanvas.graphics, "uint", 0x00000000)
+    if a.canvas.graphics {
+        DllCall("gdiplus\GdipGraphicsClear", "ptr", a.canvas.graphics, "uint", 0x00000000)
 
         ; 등속 대신 감속(ease-out) 곡선을 써서, 처음엔 빠르게 줄어들다가 중심 근처에서
         ; 서서히 멈추는 것처럼 보이게 한다 — 등속보다 훨씬 자연스럽게 느껴진다.
-        t := clickAnimFrame / CLICK_ANIM_FRAMES
+        t := a.frame / CLICK_ANIM_FRAMES
         eased := 1 - (1 - t) ** 3
-        radius := (SpotSize / 2 - SpotThickness / 2 - 1) * (1 - eased)
+        radius := (SpotSize / 2 - st.thickness / 2 - 1) * (1 - eased)
         cx := SpotSize / 2, cy := SpotSize / 2
         pen := 0
-        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | clickColor, "float", SpotThickness, "int", 2, "ptr*", &pen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | st.color, "float", st.thickness, "int", 2, "ptr*", &pen)
         if pen {
-            DllCall("gdiplus\GdipDrawEllipse", "ptr", clickCanvas.graphics, "ptr", pen
+            DllCall("gdiplus\GdipDrawEllipse", "ptr", a.canvas.graphics, "ptr", pen
                 , "float", cx - radius, "float", cy - radius, "float", radius * 2, "float", radius * 2)
             DllCall("gdiplus\GdipDeletePen", "ptr", pen)
         }
-        DllCall("gdiplus\GdipFlush", "ptr", clickCanvas.graphics, "int", 0)
+        DllCall("gdiplus\GdipFlush", "ptr", a.canvas.graphics, "int", 0)
 
         ; 위치와 그림을 한 번에 올린다. 예전에는 화면에 지우고 다시 그리는 찰나가 보여서
         ; 테두리가 두 개로 보이는 깜빡임이 있었는데, 이 방식은 그 틈이 아예 없다.
-        PushCanvasToWindow(clickGui.Hwnd, clickCanvas, mx - SpotSize // 2, my - SpotSize // 2
-            , Max(0, Min(255, Round(clickOpacity * 255 / 100))))
+        PushCanvasToWindow(a.gui.Hwnd, a.canvas, mx - SpotSize // 2, my - SpotSize // 2
+            , Max(0, Min(255, Round(st.opacity * 255 / 100))))
     }
-    clickAnimFrame += 1
+    a.frame += 1
 }
+; 타이머는 함수를 이름으로 구분하므로 쪽마다 하나씩 필요하다
+ClickAnimStep() => ClickAnimStepFor("L")
+RClickAnimStep() => ClickAnimStepFor("R")
 
-StartClickAnimation(*) {
-    global spotlightOn, drawOn, clickEffectEnabled, clickAnimFrame, clickGui, CLICK_ANIM_INTERVAL
+StartClickAnimation(side) {
+    global spotlightOn, drawOn, clickAnim
+    st := ClickStyle(side)
     ; 판서 중에는 강조 하이라이트 자체를 감춰두므로, 클릭 링 효과도 같이 쉰다
-    if !spotlightOn || drawOn || !clickEffectEnabled
+    if (!spotlightOn || drawOn || !st.enabled)
         return
-    clickAnimFrame := 0
-    clickGui.Show("NA")
-    SetTimer(ClickAnimStep, CLICK_ANIM_INTERVAL)
+    a := clickAnim[side]
+    a.frame := 0
+    a.gui.Show("NA")
+    SetTimer(side = "R" ? RClickAnimStep : ClickAnimStep, st.interval)
 }
-~LButton::StartClickAnimation()
+~LButton::StartClickAnimation("L")
+~RButton::StartClickAnimation("R")
 
 ; ================= 마우스 커서 바꿔치기 (강조 중 십자선 / 드로잉 중 원) =================
 ; 마우스 커서는 각 창이 스스로 그리기 때문에, 단순히 "커서 숨김" API 하나로는 다른 프로그램
@@ -1667,8 +1872,9 @@ SetDrawColor(index) {
 ; 되돌아온다.
 AdjustDrawThickness(delta) {
     global activeDrawThickness, activeDrawStep, activeEraserSize, activeEraserStep
-    global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
-    if GetKeyState("RButton", "P") {
+    global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO, VK_RBUTTON
+    ; 여기도 물리 판정을 쓰지 않는다 — 이유는 MouseDown() 위의 설명 참고
+    if MouseDown(VK_RBUTTON) {
         newStep := Max(1, Min(STEP_MAX, activeEraserStep + delta))
         activeEraserStep := newStep
         activeEraserSize := EraserPx(newStep)
@@ -1724,8 +1930,9 @@ ToggleDrawFromWidget(*) {
 ; 예컨대 "강조는 은은한 노랑, 판서는 진한 빨강"처럼 쓰임새가 다른 조합을 만들 수 없다.
 ; 어느 색을 가리키는지는 문자열 하나로 넘기고, 읽고 쓰는 곳을 이 두 함수에만 모아둔다.
 GetColorOf(target) {
-    global spotColor, clickColor, drawColor, widgetBgColor
+    global spotColor, clickColor, rclickColor, drawColor, widgetBgColor
     return (target = "Spot") ? spotColor : (target = "Click") ? clickColor
+        : (target = "RClick") ? rclickColor
         : (target = "Widget") ? widgetBgColor : drawColor
 }
 
@@ -1733,7 +1940,7 @@ GetColorOf(target) {
 ; ownerHwnd를 지정하지 않으면 위젯을 소유 창으로 쓴다 — 설정 창 등 다른 창에서 호출할 때는
 ; 그 창의 Hwnd를 넘겨줘야 대화상자가 그 창 뒤에 가려지지 않는다.
 PickColor(target := "Spot", ownerHwnd := 0, *) {
-    global spotColor, clickColor, drawColor, widgetBgColor, showWidget, activeDrawColor, widget
+    global spotColor, clickColor, rclickColor, drawColor, widgetBgColor, showWidget, activeDrawColor, widget
     if !ownerHwnd
         ownerHwnd := widget.Hwnd
     cc := Buffer(72, 0)
@@ -1759,6 +1966,8 @@ PickColor(target := "Spot", ownerHwnd := 0, *) {
             SetWidgetVisible(showWidget)
         } else if (target = "Click") {
             clickColor := picked ; 클릭 링은 다음 클릭 때 그려지므로 값만 바꿔두면 된다
+        } else if (target = "RClick") {
+            rclickColor := picked
         } else {
             drawColor := picked
             ; 지금 쓰는 색까지 같이 맞춰둔다. 설정 창을 열면 드로잉 모드가 꺼지긴 하지만,
@@ -1806,6 +2015,20 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
     btnPlus.OnEvent("Click", (*) => apply(sl.Value + step))
     ed.OnEvent("LoseFocus", (*) => applyFromEdit())
     sliderEditHandlers[ed.Hwnd] := applyFromEdit
+    ; 묶어서 돌려준다 — 체크박스로 이 줄 전체를 켜고 끌 수 있게 하려면 컨트롤이 다 필요하다
+    return [btnMinus, sl, btnPlus, ed]
+}
+
+; 컨트롤 묶음을 한꺼번에 켜고 끈다. 끄면 회색으로 흐려져서 "지금은 해당 없음"이 눈에 보인다.
+SetRowEnabled(controls, on) {
+    for c in controls
+        try c.Enabled := on ? true : false
+}
+
+; 여러 줄에서 돌려받은 컨트롤들을 한 바구니에 모은다 (묶음째 켜고 끄려면 한 배열이어야 한다)
+AddAll(basket, items) {
+    for it in items
+        basket.Push(it)
 }
 
 ; 라벨 + 색상 견본 + "색상 선택..." 버튼을 한 줄로 만든다. 포인터·클릭효과·드로잉 세 탭이
@@ -1825,6 +2048,7 @@ AddColorRow(gui, y, target) {
     swatch := gui.AddProgress("x100 y" y " w40 h24 Range0-100 -Smooth c" HexColor(GetColorOf(target)), 100)
     btnPick := gui.AddButton("x150 y" (y - 2) " w110 h28", "색상 선택...")
     btnPick.OnEvent("Click", (*) => (PickColor(target, gui.Hwnd), swatch.Opt("c" HexColor(GetColorOf(target)))))
+    return [btnPick]
 }
 
 ; 라벨 + 단축키 입력칸 + "기본값" 버튼을 한 줄로 만든다. 입력칸은 사용자가 누른 키 조합을
@@ -1844,7 +2068,7 @@ AddHotkeyRow(gui, y, name) {
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl, widgetScale, widgetOpacity
+    global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl, widgetScale, widgetOpacity
 
     ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
     ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
@@ -1875,87 +2099,104 @@ OpenSettingsWindow(*) {
     ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
     ; 키 목록이 12줄이라 그만큼 자리를 준다 — 줄이 하나 늘 때마다 여기와 아래 버튼 위치,
     ; 창 높이를 같이 키워야 마지막 줄이 잘리지 않는다.
-    tabs := settingsGui.AddTab3("x10 y10 w460 h428", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    ; "포인터"와 "클릭효과"를 **"포커스" 한 탭으로 합쳤다.** 셋 다 마우스 자리를 짚어주는
+    ; 같은 목적의 기능이라 나눠 둘 이유가 없었고, 나뉘어 있으면 클릭효과의 색이 하이라이트와
+    ; 다른 색이라는 것도 눈에 안 들어온다. 대신 탭 안에서 테두리 상자로 셋을 갈라둔다.
+    tabs := settingsGui.AddTab3("x10 y10 w460 h552", ["일반", "포커스", "드로잉", "위젯", "단축키"])
 
-    tabs.UseTab("포인터")
-    AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
-    AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, RedrawSpotlight()))
-    AddColorRow(settingsGui, 130, "Spot")
-
-    chkHideCursor := settingsGui.AddCheckbox("x30 y172 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y173 w220", "활성화 시 마우스 커서 숨기기")
-    chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
-
-    tabs.UseTab("클릭효과")
+    tabs.UseTab("포커스")
+    ; --- 하이라이트 ---
+    settingsGui.AddGroupBox("x22 y42 w436 h158", "포커스 하이라이트")
     ; 체크박스 라벨 텍스트까지 클릭 영역에 포함되면 실수로 누르기 쉬워서, 네모 칸만 클릭
     ; 가능하게 하고 글자는 옆에 별도의(클릭 안 되는) 텍스트로 둔다.
-    chkClick := settingsGui.AddCheckbox("x30 y52 w20 h20 " (clickEffectEnabled ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y53 w200", "애니메이션 효과")
-    chkClick.OnEvent("Click", (ctrl, *) => clickEffectEnabled := ctrl.Value)
+    chkHideCursor := settingsGui.AddCheckbox("x36 y70 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
+    settingsGui.AddText("x60 y71 w300", "활성화 시 마우스 커서 숨기기")
+    chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
+    AddColorRow(settingsGui, 102, "Spot")
+    AddSliderRow(settingsGui, 134, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()), 5)
+    AddSliderRow(settingsGui, 166, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, RedrawSpotlight()), 5)
 
-    AddSliderRow(settingsGui, 90, "테두리 굵기", 2, 12, SpotThickness, "", (v) => SpotThickness := v)
-    ; clickSpeed는 클수록 빠름(1~30) — 실제 타이머 간격(ms)은 반대로 계산한다
-    AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v))
+    ; --- 왼쪽 클릭 효과 --- (켜고 끄는 체크박스를 상자 제목 자리에 얹는다)
+    settingsGui.AddGroupBox("x22 y212 w436 h164", "")
+    chkClick := settingsGui.AddCheckbox("x36 y204 w20 h20 " (clickEffectEnabled ? "Checked" : ""), "")
+    settingsGui.AddText("x60 y205 w300", "포커스 클릭효과 (좌클릭)")
+    lClickRows := []
+    AddAll(lClickRows, AddColorRow(settingsGui, 240, "Click"))
+    AddAll(lClickRows, AddSliderRow(settingsGui, 272, "테두리 굵기", 2, 12, SpotThickness, "", (v) => SpotThickness := v))
     ; 클릭 링은 클릭할 때만 잠깐 나타나므로, 투명도는 값만 바꿔두면 다음 클릭부터 적용된다
-    AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => clickOpacity := v)
-    AddColorRow(settingsGui, 210, "Click")
+    AddAll(lClickRows, AddSliderRow(settingsGui, 304, "투명도", 0, 100, clickOpacity, "%", (v) => clickOpacity := v, 5))
+    ; clickSpeed는 클수록 빠름(1~30) — 실제 타이머 간격(ms)은 반대로 계산한다
+    AddAll(lClickRows, AddSliderRow(settingsGui, 336, "빠르기", 1, 30, clickSpeed, ""
+        , (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v)))
+    chkClick.OnEvent("Click", (ctrl, *) => (clickEffectEnabled := ctrl.Value, SetRowEnabled(lClickRows, ctrl.Value)))
+    SetRowEnabled(lClickRows, clickEffectEnabled) ; 꺼져 있으면 처음부터 흐리게
+
+    ; --- 오른쪽 클릭 효과 ---
+    settingsGui.AddGroupBox("x22 y388 w436 h164", "")
+    chkRClick := settingsGui.AddCheckbox("x36 y380 w20 h20 " (rclickEffectEnabled ? "Checked" : ""), "")
+    settingsGui.AddText("x60 y381 w300", "포커스 클릭효과 (우클릭)")
+    rClickRows := []
+    AddAll(rClickRows, AddColorRow(settingsGui, 416, "RClick"))
+    AddAll(rClickRows, AddSliderRow(settingsGui, 448, "테두리 굵기", 2, 12, rclickThickness, "", (v) => rclickThickness := v))
+    AddAll(rClickRows, AddSliderRow(settingsGui, 480, "투명도", 0, 100, rclickOpacity, "%", (v) => rclickOpacity := v, 5))
+    AddAll(rClickRows, AddSliderRow(settingsGui, 512, "빠르기", 1, 30, rclickSpeed, ""
+        , (v) => (rclickSpeed := v, RCLICK_ANIM_INTERVAL := 41 - v)))
+    chkRClick.OnEvent("Click", (ctrl, *) => (rclickEffectEnabled := ctrl.Value, SetRowEnabled(rClickRows, ctrl.Value)))
+    SetRowEnabled(rClickRows, rclickEffectEnabled)
 
     tabs.UseTab("드로잉")
     ; 설정 창이 열려 있다는 것은 드로잉 모드가 꺼져 있다는 뜻이라(OpenSettingsWindow에서 끈다)
     ; 여기서 바꾼 값은 다음에 드로잉을 켤 때부터 쓰인다. 드로잉 중에 쓰는 값(activeDrawThickness)은
     ; 켤 때마다 이 값으로 초기화된다.
-    AddSliderRow(settingsGui, 50, "선 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
-    AddSliderRow(settingsGui, 90, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()))
-    AddColorRow(settingsGui, 130, "Draw")
-    AddSliderRow(settingsGui, 170, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
+    AddColorRow(settingsGui, 60, "Draw")
+    AddSliderRow(settingsGui, 100, "드로잉 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
+    AddSliderRow(settingsGui, 140, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()), 5)
+    AddSliderRow(settingsGui, 180, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
 
     tabs.UseTab("위젯")
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y53 w200", "위젯 활성화")
+    settingsGui.AddText("x54 y53 w300", "위젯 활성화")
     chkWidget.OnEvent("Click", (ctrl, *) => SetWidgetVisible(ctrl.Value))
     ; 위젯의 ✕나 트레이 메뉴로 상태가 바뀌어도 이 체크박스가 따라오도록 참조를 남겨둔다
     chkWidgetCtrl := chkWidget
 
     chkTray := settingsGui.AddCheckbox("x30 y92 w20 h20 " (showTrayIcons ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y93 w200", "작업표시줄 아이콘 활성화")
+    settingsGui.AddText("x54 y93 w300", "작업표시줄 아이콘 활성화")
     chkTray.OnEvent("Click", (ctrl, *) => SetTrayIconsVisible(ctrl.Value))
 
+    AddColorRow(settingsGui, 132, "Widget")
     ; 크기를 바꾸면 위젯을 통째로 다시 만든다(버튼 그림이 크기에 맞춰 다시 그려져야 한다).
     ; 슬라이더를 끄는 동안 매번 다시 만들면 깜빡이므로, 손을 뗀 뒤 잠깐 있다가 한 번만 만든다.
     ; 1%씩 움직여봐야 차이가 안 보여서 슬라이더와 -/+는 10%씩 간다. 숫자칸에 직접 적으면 1% 단위.
-    AddSliderRow(settingsGui, 132, "크기", 60, 250, widgetScale, "%"
+    AddSliderRow(settingsGui, 172, "크기", 60, 250, widgetScale, "%"
         , (v) => (widgetScale := v, SetTimer(RebuildWidgetSoon, -200)), 10)
-    AddColorRow(settingsGui, 174, "Widget")
     ; 투명도는 창 속성만 바꾸면 되므로 슬라이더를 끄는 대로 바로 반영된다(다시 만들 필요 없음)
-    AddSliderRow(settingsGui, 214, "투명도", 20, 100, widgetOpacity, "%"
+    AddSliderRow(settingsGui, 212, "투명도", 20, 100, widgetOpacity, "%"
         , (v) => (widgetOpacity := v, ApplyWidgetOpacity()), 5)
 
-    settingsGui.AddText("x30 y260 w70", "위치")
-    btnResetPos := settingsGui.AddButton("x100 y256 w160 h28", "처음 자리로 되돌리기")
+    settingsGui.AddText("x30 y256 w70", "위치")
+    btnResetPos := settingsGui.AddButton("x100 y252 w160 h28", "처음 자리로 되돌리기")
     btnResetPos.OnEvent("Click", (*) => MoveWidgetToDefaultPos())
-    lblResetPos := settingsGui.AddText("x100 y290 w340", "어디 뒀는지 모를 때 화면 오른쪽 아래로 가져옵니다.")
+    lblResetPos := settingsGui.AddText("x100 y286 w340", "어디 뒀는지 모를 때 화면 오른쪽 아래로 가져옵니다.")
     lblResetPos.SetFont("s9 c999999")
 
     tabs.UseTab("일반")
+    ; 항목이 하나뿐인 탭이라 왼쪽 위에 붙여두면 허전하고 잘못 만든 것처럼 보인다.
+    ; 탭 한가운데에 놓아 "여기는 이것 하나"라는 것이 분명해지게 한다.
     ; 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는 항상
     ; IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
-    chkStartup := settingsGui.AddCheckbox("x30 y52 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y53 w220", "Windows 시작 시 자동 실행")
+    chkStartup := settingsGui.AddCheckbox("x133 y280 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
+    settingsGui.AddText("x157 y281 w220", "Windows 시작 시 자동 실행")
     chkStartup.OnEvent("Click", (ctrl, *) => SetRunAtStartup(ctrl.Value))
-
-    ; 색상은 포인터/클릭효과/드로잉이 각각 다른 색을 가지므로, 공용 항목으로 여기 두지 않고
-    ; 각 탭에 하나씩 둔다. (예전에는 셋이 한 색이라 이 자리에 하나만 있었다)
 
     ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
     ; 제작자 표시도 같이 둔다 — 수업 화면을 가리지 않으면서 찾으려는 사람은 확실히 볼 수 있는
-    ; 자리가 여기라서, 위젯이나 트레이 툴팁 대신 이곳을 골랐다.
+    ; 자리가 여기라서, 위젯이나 트레이 툴팁 대신 이곳을 골랐다. 탭 아래 가운데에 둔다.
     ; +0x80 = SS_NOPREFIX. 이게 없으면 Text 컨트롤이 &를 단축키 표시용 기호로 삼아 먹어버려서
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
-    ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
-    ; 않아 눈에 걸리지도 않는다.
-    lblVersion := settingsGui.AddText("x30 y384 w410 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion := settingsGui.AddText("x22 y500 w436 Center +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y404 w410", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x22 y520 w436 Center", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
@@ -1982,18 +2223,18 @@ OpenSettingsWindow(*) {
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y448 w130 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y576 w130 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x265 y448 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x265 y576 w90 h30", "저장")
     ; 저장에 실패하면 안내 창이 뜨므로, 버튼 글자를 "저장됨"으로 바꾸지 않는다 —
     ; 실패했는데 됐다고 보이면 그게 제일 나쁘다.
     btnSave.OnEvent("Click", (*) => SaveSettings() && (btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x365 y448 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x365 y576 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w480 h500")
+    settingsGui.Show("w480 h628")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -2104,7 +2345,7 @@ WidgetPx(base) {
 BuildWidget() {
     global widget, grip, btnSpotOff, btnSpotOn, btnDrawOff, btnDrawOn, btnSettings, btnClose
     global hBtnSpotOff, hBtnSpotOn, hBtnDrawOff, hBtnDrawOn, hBtnSettings
-    global widgetW, widgetH, widgetScale, widgetBgColor
+    global widgetW, widgetH, widgetScale, widgetBgColor, widgetX, widgetY
     global CHIP_SIZE, CHIP_CORNER, CHIP_ICON_SIZE, ICON_OFF_COLOR, TRAY_ON_COLOR
     global ICON_SPOT_DARK_PATH, ICON_DRAW_DARK_PATH, ICON_SETTINGS_PATH
 
@@ -2115,6 +2356,9 @@ BuildWidget() {
         for h in [hBtnSpotOff, hBtnSpotOn, hBtnDrawOff, hBtnDrawOn, hBtnSettings]
             try DllCall("DeleteObject", "ptr", h)
         try widget.Destroy()
+        ; 없앤 창을 가리키는 채로 두면, 다시 만들기 전에 들어온 클릭이 죽은 창을 건드린다.
+        ; 비워둬야 그 사이에 온 메시지가 "지금은 위젯이 없다"를 알아볼 수 있다.
+        widget := "", grip := ""
     }
 
     chip := WidgetPx(CHIP_SIZE)
@@ -2165,6 +2409,12 @@ BuildWidget() {
     ; 다시 나타나지 않는 버그가 있었다. 그래서 global을 선언할 수 있는 보통 함수로 둔다.
     btnClose.OnEvent("Click", (*) => SetWidgetVisible(false))
 
+    ; 이전 위젯이 없었으면(= 프로그램을 막 켠 것) 지난번에 옮겨둔 자리부터 찾는다.
+    ; 그마저 없으면(처음 쓰는 PC) 화면 오른쪽 아래에서 시작한다.
+    ; 저장된 자리가 지금 모니터 구성에서 화면 밖이더라도, 아래 ClampWidgetIntoScreen이 들여놓는다.
+    if (keepX = "" || keepY = "") {
+        keepX := widgetX, keepY := widgetY
+    }
     if (keepX = "" || keepY = "") {
         DefaultWidgetPos(&keepX, &keepY)
     }
@@ -2190,6 +2440,7 @@ DefaultWidgetPos(&x, &y) {
 }
 
 ; 위젯을 어디 뒀는지 잊었거나 화면 밖 어딘가로 보내버렸을 때를 위한 탈출구.
+; **늘 처음 자리(오른쪽 아래)로 간다** — 저장해둔 자리가 아니라 계산한 기본 자리다.
 MoveWidgetToDefaultPos() {
     global widget
     if (!IsSet(widget) || !widget)
@@ -2198,6 +2449,26 @@ MoveWidgetToDefaultPos() {
     try {
         WinMove(x, y, , , widget)
         RaiseWidget()
+    }
+    SaveWidgetPos() ; 되돌린 자리도 기억한다 — 다시 켰을 때 또 엉뚱한 곳에 있으면 곤란하다
+}
+
+; 위젯을 옮긴 자리를 settings.ini에 바로 적는다.
+; **다른 설정과 달리 "저장" 버튼을 기다리지 않는다.** 위젯 위치는 눈금으로 맞추는 설정이
+; 아니라 손으로 끌어다 놓는 상태라, 옮겨두면 그 자리에 있는 것이 당연하게 느껴진다.
+; 옮길 때마다 설정 창을 열어 저장을 누르라고 할 수는 없다(자동 실행 체크도 같은 이유로
+; 저장 버튼과 무관하게 바로 반영된다).
+; 쓰기가 막힌 폴더에서는 조용히 넘어간다 — 위치가 안 남을 뿐이고, 여기서 오류 창을 띄우면
+; 위젯을 옮길 때마다 창이 뜨는 꼴이 된다(저장 버튼 쪽은 안내를 띄운다).
+SaveWidgetPos() {
+    global widget, widgetX, widgetY, SETTINGS_PATH
+    if (!IsSet(widget) || !widget)
+        return
+    try {
+        WinGetPos(&x, &y, , , widget)
+        widgetX := x, widgetY := y
+        IniWrite(x, SETTINGS_PATH, "Common", "WidgetX")
+        IniWrite(y, SETTINGS_PATH, "Common", "WidgetY")
     }
 }
 
@@ -2300,6 +2571,7 @@ OnWidgetExitMove(wParam, lParam, msg, hwnd) {
     if (IsSet(widget) && widget && hwnd = widget.Hwnd) {
         widgetDragging := false
         RaiseWidget()
+        SaveWidgetPos() ; 옮긴 자리를 바로 기억한다 (다음에 켤 때 그 자리에서 시작)
     }
 }
 OnMessage(0x0232, OnWidgetExitMove) ; WM_EXITSIZEMOVE
@@ -2561,10 +2833,18 @@ OnExit((*) => (RemoveQuickTrayIcon(1), RemoveQuickTrayIcon(2)))
 
 ; 위젯을 제목 표시줄 없이도 마우스로 끌어서 옮길 수 있게 함
 OnMessage(0x0201, OnWidgetDrag) ; WM_LBUTTONDOWN
+; **위젯이 없는 순간이 실제로 있다.** 크기나 배경색을 바꾸면 위젯을 통째로 다시 만드는데,
+; 그 사이(옛 창을 없앤 뒤 새 창을 만들기 전)에도 Windows는 메시지를 계속 보낸다. 슬라이더를
+; 끌면서 클릭이 이어지는 상황이 딱 그래서, 그냥 두면 "Gui has no window" 오류 창이 떴다.
+; 창이 없으면 조용히 넘어간다 — 그 찰나의 클릭 하나를 놓치는 것은 아무 문제가 없다.
 OnWidgetDrag(wParam, lParam, msg, hwnd) {
     global widget, grip
-    if (hwnd = widget.Hwnd || hwnd = grip.Hwnd)
-        PostMessage(0xA1, 2, , , widget.Hwnd) ; WM_NCLBUTTONDOWN, HTCAPTION
+    if (!IsSet(widget) || !widget || !IsSet(grip) || !grip)
+        return
+    try {
+        if (hwnd = widget.Hwnd || hwnd = grip.Hwnd)
+            PostMessage(0xA1, 2, , , widget.Hwnd) ; WM_NCLBUTTONDOWN, HTCAPTION
+    }
 }
 
 BuildWidget() ; 위젯을 처음 만든다 (크기·배경색 설정에 맞춰 그려진다)
