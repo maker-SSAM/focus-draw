@@ -96,6 +96,40 @@ ERASER_BASE_PX := 10, ERASER_STEP_RATIO := 1.5 ; 10 · 15 · 23 · 34 · 51 · 7
 DEFAULT_DRAW_STEP := 5   ; 8.6px
 DEFAULT_ERASER_STEP := 5 ; 51px
 
+; ================= 전자칠판에서 "넓게 닿으면 지우개" =================
+; 칠판이 Windows에 펜 앞뒤를 알려주면 그 정보를 그대로 쓴다. 안 알려주는 칠판에서는
+; **닿는 면적**으로 가른다 — 이 값보다 크게 닿으면 지우개로 친다.
+;
+; 경계는 실제로 1789번 찍어보고 정했다(덕치초 전자칠판, 2026-09-21). 긴 쪽 길이 기준으로
+; 세 덩어리가 또렷하게 갈린다:
+;   펜      1~5      (3x3이 240회로 최다)
+;   손가락  6~38     (7x7·8x8·16x16·18x18 등, 세게 누르면 20대까지 간다)
+;   손날    53~91    (67x64, 71x58 …)
+; 손가락 최대 38과 손날 최소 53 사이가 비어 있으므로 그 한가운데인 **45**를 쓴다.
+;
+; 여기까지 오는 데 두 번 틀렸고, 둘 다 같은 실수였다 — **재보면 값이 다르다는 것과 실제로
+; 안정적으로 갈린다는 것은 다르다.**
+;   5로 뒀을 때: 펜 앞쪽(3~4)과 뒤쪽(6~7)을 가르려 했는데 여유가 없어 글씨를 쓰다 지우개가
+;                튀어나왔다. 펜의 앞뒤 굵기 차이는 애초에 판정을 걸 만한 크기가 아니었다
+;   15로 뒀을 때: 손가락이 16~23을 예사로 넘는 줄 몰랐다. 손가락이 닿는 순간 "손날"로
+;                판단되어 지우개 획이 시작되고, 그 바람에 **두 손가락 제스처가 영영 안 걸렸다**
+;                (아래 OnPointerDown에서 지우는 중에는 제스처를 막아두기 때문이다)
+; 경계를 사이에 끼울 수 있는지가 아니라, 경계 **양쪽에 여유가 얼마나 있는지**를 봐야 한다.
+;
+; 그래서 지금 배치는 이렇다: **펜도 손가락도 전부 글씨, 손날로 문질러야 지우개.**
+;
+; **칠판마다 숫자가 다르다.** 같은 폴더의 `터치펜-확인.ahk`를 실행해 펜·손가락·손날로 각각
+; 대보면 그 칠판의 값과 함께 **권하는 경계값**까지 알려준다.
+; **0으로 두면 이 판정을 아예 끈다.** 접촉 크기를 상수로 박아 보내는 칠판이라면(= 무엇으로
+; 닿아도 같은 값이 나온다면) 0으로 꺼두는 것이 맞다. 안 그러면 그 상수가 경계를 넘어
+; 모든 획이 지우개가 되어버린다.
+ERASER_CONTACT_PX := 45
+
+; 손날로 지울 때 폭을 설정값의 몇 배로 할지. 손이 덮는 면적이 마우스 커서보다 훨씬 넓어서
+; 같은 폭으로 지우면 답답하다. 자세한 이유는 EraserThickness() 위의 설명 참고.
+; (펜 뒤쪽으로 지울 때는 펜만 한 크기이므로 이 배율을 쓰지 않는다)
+HAND_ERASER_SCALE := 2.0
+
 StepToPx(step, basePx, ratio) {
     global STEP_MAX
     step := Max(1, Min(STEP_MAX, step))
@@ -979,11 +1013,21 @@ RestoreSnapshotBox(box) {
     }
 }
 
-; ================= 지우개 (오른쪽 버튼 드래그) =================
+; ================= 지우개 (오른쪽 버튼 드래그 / 전자칠판 손날) =================
 ; 굵기는 펜보다 넉넉하게 — 지우개는 대충 문질러도 지워져야 쓸 만하다.
+;
+; **손날로 지울 때는 설정값의 HAND_ERASER_SCALE배로 넓어진다.** 손이 덮는 면적이 마우스
+; 커서보다 훨씬 넓어서, 같은 폭으로 지우면 손보다 좁게 지워져 답답하다.
+; 닿은 면적에 **비례**시키는 방법도 있었지만 일부러 **고정 배율**로 했다(사용자 결정) —
+; 손날 면적은 프레임마다 53~91로 출렁여서, 그대로 따라가면 지워지는 띠가 울렁거린다.
+; 고정 배율이면 설정 창의 "지우개 크기" 슬라이더가 그대로 기준으로 살아 있으면서
+; (칠판에 가기 전에 미리 맞춰둘 수 있다) 손날일 때만 일정하게 넓어진다.
+;
+; 이 함수는 지워지는 폭과 **커서 테두리 원**을 함께 정한다. 그래서 손날일 때는 원도 같이
+; 커져 어디까지 지워질지 그대로 보인다.
 EraserThickness() {
-    global activeEraserSize
-    return activeEraserSize
+    global activeEraserSize, penEraserWide, HAND_ERASER_SCALE
+    return penEraserWide ? Round(activeEraserSize * HAND_ERASER_SCALE) : activeEraserSize
 }
 
 ; 지나간 자리를 배경과 똑같은 값(1,1,1)으로 덧칠한 뒤, 그 픽셀들의 알파를 1로 낮춰 도로
@@ -1276,10 +1320,44 @@ MouseDown(vk) => (DllCall("GetAsyncKeyState", "int", vk, "short") & 0x8000) != 0
 PT_TOUCH := 2
 PT_PEN := 3
 penStroke := false      ; 터치·펜으로 획을 긋고 있는 중인가
-penErasing := false     ; 그 획이 펜 뒤쪽(지우개)으로 긋는 것인가
+penErasing := false     ; 그 획이 지우개인가 (펜 뒤쪽이든 손날이든)
+penEraserWide := false  ; 그 지우개가 **손날**인가 (설정값의 HAND_ERASER_SCALE배로 넓게 지운다)
 penLastX := 0
 penLastY := 0
 penIgnoreMouse := false ; 터치 뒤에 따라 들어오는 마우스 입력을 흘려보내는 중인가
+penContacts := Map()    ; 지금 화면에 닿아 있는 접촉들 (두 손가락 판정용)
+penGesture := false     ; 두 손가락 제스처가 걸려 이번 터치는 그리지 않는 상태
+
+; 접촉이 끝났는데 POINTERUP을 놓치는 일이 생기면 목록에 유령이 남고, 그때부터 **한 손가락
+; 터치가 전부 "두 손가락"으로 보인다.** 그러면 그릴 때마다 실행 취소가 걸리는 최악의 상태가
+; 되므로, 새로 닿을 때마다 이미 끝난 id를 걸러낸다.
+PrunePenContacts() {
+    global penContacts
+    info := Buffer(96, 0)
+    for id in penContacts.Clone()
+        if !DllCall("GetPointerInfo", "UInt", id, "Ptr", info, "Int")
+            penContacts.Delete(id)
+}
+
+; 두 손가락으로 톡 = 실행 취소. 칠판 앞에서는 Ctrl+Z를 누르러 키보드까지 갈 수가 없다.
+TwoFingerUndo() {
+    global penStroke, penErasing, penEraserWide, undoStack
+    ; 두 손가락이 정확히 동시에 닿지는 않으므로, 먼저 닿은 손가락이 이미 짧은 자국을
+    ; 그려놓았을 수 있다. 그 자국부터 없던 일로 하고 나서 진짜 실행 취소를 한다.
+    ; (아무것도 안 그렸으면 그 단계는 비어 있고, UndoDrawing이 빈 단계를 건너뛴다)
+    abortedInk := penStroke && undoStack.Length > 0 && undoStack[undoStack.Length].Count > 0
+    if penStroke {
+        penStroke := false
+        if penErasing {
+            penErasing := false
+            penEraserWide := false
+            SetBrushMode("pen")
+        }
+    }
+    if abortedInk
+        UndoDrawing() ; 두 손가락을 대다 생긴 자국 지우기
+    UndoDrawing()     ; 사용자가 의도한 실행 취소
+}
 
 ; 전자칠판 터치펜의 **앞뒤 구분**. Windows가 표준으로 알려준다 — 펜 입력에는 POINTER_PEN_INFO가
 ; 딸려오고, 그 안의 penFlags에 "뒤집힘"과 "지우개" 표시가 들어 있다.
@@ -1296,14 +1374,38 @@ penIgnoreMouse := false ; 터치 뒤에 따라 들어오는 마우스 입력을 
 PEN_FLAG_INVERTED := 0x02
 PEN_FLAG_ERASER := 0x04
 
-IsEraserEnd(id) {
+; 이 접촉이 무엇으로 지우려는 것인지 가린다.
+;   ""      글씨 (펜이든 손가락이든)
+;   "pen"   펜 뒤쪽 지우개 — 펜만 한 크기라 설정값 그대로 지운다
+;   "hand"  손날 지우개 — 설정값의 HAND_ERASER_SCALE배로 넓게 지운다
+EraserKind(id) {
     global PEN_FLAG_INVERTED, PEN_FLAG_ERASER
     ; POINTER_PEN_INFO = POINTER_INFO(x64에서 96바이트) + penFlags + penMask + ...
     info := Buffer(120, 0)
-    if !DllCall("GetPointerPenInfo", "UInt", id, "Ptr", info, "Int")
-        return false ; 펜 정보가 없는 기기 — 앞쪽으로 친다
-    penFlags := NumGet(info, 96, "UInt")
-    return (penFlags & (PEN_FLAG_INVERTED | PEN_FLAG_ERASER)) != 0
+    if DllCall("GetPointerPenInfo", "UInt", id, "Ptr", info, "Int") {
+        penFlags := NumGet(info, 96, "UInt")
+        ; 펜으로 보고하는 기기다 — 플래그를 믿고 면적은 안 본다
+        return (penFlags & (PEN_FLAG_INVERTED | PEN_FLAG_ERASER)) ? "pen" : ""
+    }
+    ; 펜 정보를 안 주는 칠판이면 접촉 면적으로 가른다 (ERASER_CONTACT_PX 설명 참고)
+    return IsWideContact(id) ? "hand" : ""
+}
+
+; 닿은 면적이 경계보다 크면(= 손날처럼 넓게 대면) 지우개로 본다. 가로·세로 중 **긴 쪽**을
+; 보는 이유는 손날이 한쪽으로 길쭉하게 닿기 때문이다 — 면적으로 재면 긴 쪽이 희석된다.
+; 면적을 못 읽거나 경계가 0이면 언제나 펜이다 — 못 알아들었다고 안 그려지는 것보다
+; 평소대로 그려지는 쪽이 낫다.
+IsWideContact(id) {
+    global ERASER_CONTACT_PX
+    if (ERASER_CONTACT_PX <= 0)
+        return false
+    ; POINTER_TOUCH_INFO = POINTER_INFO(96) + touchFlags + touchMask + rcContact(104~)
+    ti := Buffer(144, 0)
+    if !DllCall("GetPointerTouchInfo", "UInt", id, "Ptr", ti, "Int")
+        return false
+    w := NumGet(ti, 112, "Int") - NumGet(ti, 104, "Int")
+    h := NumGet(ti, 116, "Int") - NumGet(ti, 108, "Int")
+    return (Max(w, h) >= ERASER_CONTACT_PX)
 }
 
 ; 포인터 메시지의 좌표는 lParam에 화면 좌표로 실려온다. **보조 모니터는 좌표가 음수라
@@ -1323,9 +1425,28 @@ IsPenOrTouch(wp) {
 }
 
 OnPointerDown(wp, lp, msg, hwnd) {
-    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY, penIgnoreMouse
-    global drawing, erasing, dragOnOtherWindow, dragShapeMode
+    global drawOn, drawGui, penStroke, penErasing, penEraserWide, penLastX, penLastY, penIgnoreMouse
+    global drawing, erasing, dragOnOtherWindow, dragShapeMode, penContacts, penGesture
     if (!drawOn || hwnd != drawGui.Hwnd || !IsPenOrTouch(wp))
+        return
+    id := wp & 0xFFFF
+    PrunePenContacts()
+    penContacts[id] := true
+    ; ---- 두 손가락으로 톡 = 실행 취소 ----
+    if (penContacts.Count >= 2) {
+        penIgnoreMouse := true
+        ; **손날로 지우는 중이면 건드리지 않는다.** 칠판에 따라 손날 하나가 여러 접촉으로
+        ; 잡히기도 하는데, 그걸 "두 손가락"으로 오해하면 문지를 때마다 실행 취소가 걸린다.
+        ; 새로 닿은 것이 넓은 접촉일 때도 손의 일부로 보고 넘긴다.
+        ; 한 번 걸리면 손을 다 뗄 때까지 다시 걸리지 않는다(penGesture).
+        if (!penErasing && !penGesture && !IsWideContact(id)) {
+            penGesture := true
+            TwoFingerUndo()
+        }
+        return
+    }
+    ; 제스처가 걸린 동안에는 손을 다 뗄 때까지 아무것도 그리지 않는다
+    if penGesture
         return
     ; 도형(Shift·Ctrl·Z·X·C)은 기존 마우스 경로에 맡긴다. 전자칠판 앞에 서서 수식키를 쥐고
     ; 끄는 일은 드물어서, 미리보기와 스냅샷까지 여기에 다시 만들 이유가 없다고 봤다.
@@ -1335,7 +1456,11 @@ OnPointerDown(wp, lp, msg, hwnd) {
     penStroke := true
     ; **닿는 순간 한 번만** 앞뒤를 판단하고 획이 끝날 때까지 유지한다. 긋는 도중에 계속
     ; 물어보면, 펜이 기울어져 플래그가 한 프레임 흔들릴 때 한 획이 반은 글씨 반은 지우개가 된다.
-    penErasing := IsEraserEnd(wp & 0xFFFF)
+    ; 손날인지 펜 뒤쪽인지는 **지우는 폭이 달라지므로** 함께 기억해둔다.
+    ; SetBrushMode보다 먼저 정해야 커서 테두리 원도 같은 폭으로 그려진다.
+    eraseKind := EraserKind(id)
+    penErasing := (eraseKind != "")
+    penEraserWide := (eraseKind = "hand")
     penIgnoreMouse := true
     drawing := false
     erasing := false
@@ -1369,10 +1494,18 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
 }
 
 OnPointerUp(wp, lp, msg, hwnd) {
-    global penStroke, penErasing
+    global penStroke, penErasing, penEraserWide, penContacts, penGesture
+    id := wp & 0xFFFF
+    if penContacts.Has(id)
+        penContacts.Delete(id)
+    ; 손을 전부 떼야 제스처가 풀린다. 두 손가락 중 하나만 떼었을 때 바로 풀어버리면,
+    ; 남은 손가락이 이어서 선을 긋기 시작한다.
+    if (penContacts.Count = 0)
+        penGesture := false
     penStroke := false
     if penErasing {
         penErasing := false
+        penEraserWide := false
         SetBrushMode("pen") ; 펜을 떼면 커서는 다시 펜 원으로
     }
 }
