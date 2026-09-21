@@ -62,7 +62,7 @@ DllCall("gdiplus\GdiplusStartup", "ptr*", &gdipToken, "ptr", gdipStartupInput, "
 ; 지우기는 전역 단축키로 두지 않는다. 드로잉 모드가 꺼져 있으면 그린 내용이 화면에 보이지도
 ; 않아서 그때 지울 일이 없고, 드로잉 중에는 Delete와 Esc가 같은 일을 한다. 전역 단축키는
 ; 하나 등록할 때마다 그 키를 Windows 전체에서 빼앗으므로, 값어치가 낮은 것은 두지 않는 게 낫다.
-HOTKEY_DEFAULTS := Map("Spotlight", "^!h", "Draw", "^!d")
+HOTKEY_DEFAULTS := Map("Spotlight", "F8", "Draw", "F9")
 HOTKEY_LABELS := Map("Spotlight", "강조", "Draw", "드로잉")
 hotkeyCombos := Map()     ; 지금 설정된 조합 (settings.ini에서 불러옴)
 hotkeyRegistered := Map() ; 실제로 등록에 성공해 살아있는 조합 (해제할 때 필요)
@@ -92,6 +92,9 @@ hotkeyApplying := false   ; 값을 되돌리느라 Change가 다시 불려 무�
 STEP_MAX := 10
 PEN_BASE_PX := 3,   PEN_STEP_RATIO := 1.3    ; 3 · 3.9 · 5.1 · 6.6 · 8.6 · 11.1 · 14.5 · 18.8 · 24.5 · 31.8px
 ERASER_BASE_PX := 10, ERASER_STEP_RATIO := 1.5 ; 10 · 15 · 23 · 34 · 51 · 76 · 114 · 171 · 256 · 384px
+; 처음 받아 쓰는 PC(= settings.ini가 없을 때)가 시작하는 단계
+DEFAULT_DRAW_STEP := 4   ; 6.6px
+DEFAULT_ERASER_STEP := 3 ; 23px
 
 StepToPx(step, basePx, ratio) {
     global STEP_MAX
@@ -128,23 +131,26 @@ LoadSettings() {
     global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
     global spotColor, clickColor, drawColor
     global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
-    global HOTKEY_DEFAULTS, hotkeyCombos
+    global HOTKEY_DEFAULTS, hotkeyCombos, DEFAULT_DRAW_STEP, DEFAULT_ERASER_STEP
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
-    spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 30)))
+    spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 40)))
     SpotThickness := Max(2, Min(12, IniRead(SETTINGS_PATH, "Highlight", "RingThickness", 7)))
     clickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "ClickEffect", 1) = 1
-    clickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "ClickSpeed", 24)))
+    clickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "ClickSpeed", 26)))
     clickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "ClickOpacity", 50)))
     CLICK_ANIM_INTERVAL := 41 - clickSpeed ; 1(40ms, 예전보다 더 느린 옵션)~30(11ms, 예전 "20" 정도의 체감 속도가 새 최대)
     hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 1) = 1
-    DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 70)))
-    ; 굵기와 지우개 크기는 1~10단계로 다룬다(아래 StepToPx 참고). 예전에는 픽셀값을 그대로
-    ; 저장했으므로, 새 항목이 없으면 옛 픽셀값을 가장 가까운 단계로 바꿔서 이어받는다.
+    DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 100)))
+    ; 굵기와 지우개 크기는 1~10단계로 다룬다(위 StepToPx 참고). 읽는 순서는 세 단계다 —
+    ; (1) 새 항목이 있으면 그대로, (2) 없고 옛 픽셀값이 남아 있으면 가장 가까운 단계로 변환,
+    ; (3) 둘 다 없으면(= 처음 받아 쓰는 PC) 아래 기본 단계.
+    legacyThickness := IniRead(SETTINGS_PATH, "Draw", "Thickness", "")
+    legacyEraser := IniRead(SETTINGS_PATH, "Draw", "EraserSize", "")
     DrawStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "ThicknessStep"
-        , PxToStep(IniRead(SETTINGS_PATH, "Draw", "Thickness", 6), PEN_BASE_PX, PEN_STEP_RATIO))))
+        , legacyThickness != "" ? PxToStep(legacyThickness, PEN_BASE_PX, PEN_STEP_RATIO) : DEFAULT_DRAW_STEP)))
     EraserStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "EraserStep"
-        , PxToStep(IniRead(SETTINGS_PATH, "Draw", "EraserSize", 24), ERASER_BASE_PX, ERASER_STEP_RATIO))))
+        , legacyEraser != "" ? PxToStep(legacyEraser, ERASER_BASE_PX, ERASER_STEP_RATIO) : DEFAULT_ERASER_STEP)))
     ; 색은 포인터/클릭효과/드로잉이 각각 따로 갖는다. 예전 버전은 셋이 같은 색([Common] Color)을
     ; 썼으므로, 새 항목이 아직 없으면 그 값을 세 곳의 기본값으로 쓴다 — 쓰던 사람이 업데이트해도
     ; 화면이 갑자기 달라지지 않는다.
@@ -162,7 +168,28 @@ LoadSettings() {
     }
 }
 
+; 저장에 성공하면 참을 돌려준다.
+; **쓸 수 없는 곳에 두고 실행하는 경우가 실제로 있다** — 압축 파일 안에서 바로 실행했거나
+; (임시 폴더에서 돌아간다), Program Files처럼 권한이 막힌 곳에 두었거나, 읽기 전용 USB인
+; 경우다. 그냥 두면 IniWrite가 던진 오류가 그대로 튀어나와 수업 중에 오류 창이 뜨고 스크립트가
+; 멈춘다. 무엇을 어떻게 하면 되는지 알려주고 계속 쓸 수 있게 한다(바꾼 값은 이번 실행 동안 유효).
 SaveSettings() {
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
+    try
+        return WriteSettings()
+    catch as err {
+        MsgBox("설정을 저장하지 못했습니다.`n`n"
+            . "이 폴더에 파일을 쓸 수 없습니다:`n" SETTINGS_PATH "`n`n"
+            . "압축 파일 안에서 바로 실행했거나, 쓰기가 막힌 폴더에 두었을 때 생깁니다.`n"
+            . "압축을 풀어 바탕화면이나 문서 폴더로 옮긴 뒤 다시 실행해 주세요.`n`n"
+            . "방금 바꾼 설정은 프로그램을 끄기 전까지는 그대로 쓰실 수 있습니다.`n`n"
+            . "(자세한 이유: " err.Message ")"
+            , "Focus & Draw — 설정 저장 실패", "Icon!")
+        return false
+    }
+}
+
+WriteSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
@@ -190,6 +217,7 @@ SaveSettings() {
     ; 굵기·지우개 크기를 픽셀로 저장하던 시절의 항목도 치운다(이제 단계로 저장한다)
     try IniDelete(SETTINGS_PATH, "Draw", "Thickness")
     try IniDelete(SETTINGS_PATH, "Draw", "EraserSize")
+    return true
 }
 
 LoadSettings()
@@ -1891,7 +1919,9 @@ OpenSettingsWindow(*) {
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
     btnSave := settingsGui.AddButton("x125 y448 w90 h30", "저장")
-    btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
+    ; 저장에 실패하면 안내 창이 뜨므로, 버튼 글자를 "저장됨"으로 바꾸지 않는다 —
+    ; 실패했는데 됐다고 보이면 그게 제일 나쁘다.
+    btnSave.OnEvent("Click", (*) => SaveSettings() && (btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
     btnCloseSettings := settingsGui.AddButton("x225 y448 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
