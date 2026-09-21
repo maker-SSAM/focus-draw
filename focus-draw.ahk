@@ -68,11 +68,65 @@ hotkeyCombos := Map()     ; 지금 설정된 조합 (settings.ini에서 불러�
 hotkeyRegistered := Map() ; 실제로 등록에 성공해 살아있는 조합 (해제할 때 필요)
 hotkeyApplying := false   ; 값을 되돌리느라 Change가 다시 불려 무한히 반복되는 것을 막는 빗장
 
+; ##########################################################################
+; ## 손으로 고쳐가며 시험해보는 숫자들                                    ##
+; ##                                                                      ##
+; ## 여기 값을 고치고 저장한 뒤 **Ctrl+Alt+R**을 누르면 그 자리에서 바로  ##
+; ## 새 값으로 다시 시작한다(소스로 실행 중일 때만. 트레이 메뉴에도 같은  ##
+; ## 항목이 있다). 프로그램을 껐다 켜거나 exe로 다시 컴파일할 필요 없다.  ##
+; ##                                                                      ##
+; ## 이 블록 말고 자주 만지게 되는 곳:                                    ##
+; ##   DRAW_COLORS  — 숫자키 1~9의 색     (아래쪽 "상태값" 절)            ##
+; ##   BOARD_KEYS   — 칠판 Q/W/E/R의 색   (아래쪽 "칠판" 절)              ##
+; ##   STEP_BADGE_* — 단계 숫자 배지 크기·거리 (아래쪽 "단계 숫자" 절)    ##
+; ##########################################################################
+
+; ================= 굵기·지우개 크기의 "단계" =================
+; 굵기와 지우개 크기는 쓰는 사람에게 1~10단계로만 보여준다. 픽셀 숫자는 의미를 짐작하기
+; 어렵고(6이 굵은 건지 가는 건지 알 수 없다) 폭도 넓어서, 단계로 나누면 "3단계쯤" 하고
+; 고르기 쉬워진다. 실제 그릴 때 쓰는 픽셀값은 여기서 환산한다.
+; 단계가 하나 오를 때마다 **직전 단계의 일정 배율**만큼 커진다. 일정한 픽셀씩 더하면 가는
+; 쪽에서는 차이가 너무 크고 굵은 쪽에서는 거의 티가 안 나는데, 비율로 키우면 어느 구간에서나
+; "한 단계 굵어졌다"는 느낌이 고르게 난다. 펜과 지우개는 쓰임이 달라서 배율을 따로 둔다 —
+; 지우개는 넓게 쓸 일이 많아 더 가파르게 커진다.
+STEP_MAX := 10
+PEN_BASE_PX := 3,   PEN_STEP_RATIO := 1.3    ; 3 · 3.9 · 5.1 · 6.6 · 8.6 · 11.1 · 14.5 · 18.8 · 24.5 · 31.8px
+ERASER_BASE_PX := 10, ERASER_STEP_RATIO := 1.5 ; 10 · 15 · 23 · 34 · 51 · 76 · 114 · 171 · 256 · 384px
+
+StepToPx(step, basePx, ratio) {
+    global STEP_MAX
+    step := Max(1, Min(STEP_MAX, step))
+    return basePx * (ratio ** (step - 1))
+}
+
+; 펜은 소수점 한 자리까지 쓴다. 정수로 반올림하면 2단계(3.6)와 3단계(4.3)가 둘 다 4가 되어
+; 서로 다른 단계인데 굵기가 같아진다. GDI+ 펜은 실수 굵기를 그대로 받으므로 그럴 이유가 없다.
+PenPx(step) {
+    global PEN_BASE_PX, PEN_STEP_RATIO
+    return Round(StepToPx(step, PEN_BASE_PX, PEN_STEP_RATIO), 1)
+}
+
+; 지우개는 GDI 펜으로 지우므로 정수여야 한다 (10·12·14·17·21·25·30·36·43·52 — 겹치지 않는다)
+EraserPx(step) {
+    global ERASER_BASE_PX, ERASER_STEP_RATIO
+    return Round(StepToPx(step, ERASER_BASE_PX, ERASER_STEP_RATIO))
+}
+
+; 예전 설정(픽셀값)을 단계로 되돌릴 때 쓴다
+PxToStep(px, basePx, ratio) {
+    global STEP_MAX
+    if (px <= basePx)
+        return 1
+    return Max(1, Min(STEP_MAX, Round(Log(px / basePx) / Log(ratio)) + 1))
+}
+
 ; ================= 설정값 (settings.ini에서 불러옴, 없으면 기본값) =================
 ; spotOpacity는 0~100(%)로 저장/표시하고, 실제 WinSetTransparent에 쓸 때만 0~255로 환산한다.
 ; clickSpeed는 "클수록 빠름"(1~30)으로 저장/표시하고, 타이머 간격(ms)으로 쓸 때만 뒤집어 계산한다.
 LoadSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep
+    global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
+    global spotColor, clickColor, drawColor
     global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
     global HOTKEY_DEFAULTS, hotkeyCombos
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
@@ -84,9 +138,20 @@ LoadSettings() {
     clickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "ClickOpacity", 50)))
     CLICK_ANIM_INTERVAL := 41 - clickSpeed ; 1(40ms, 예전보다 더 느린 옵션)~30(11ms, 예전 "20" 정도의 체감 속도가 새 최대)
     hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 1) = 1
-    DrawThickness := Max(1, Min(12, IniRead(SETTINGS_PATH, "Draw", "Thickness", 6)))
     DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 70)))
-    penColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "Color", "FF0000"))
+    ; 굵기와 지우개 크기는 1~10단계로 다룬다(아래 StepToPx 참고). 예전에는 픽셀값을 그대로
+    ; 저장했으므로, 새 항목이 없으면 옛 픽셀값을 가장 가까운 단계로 바꿔서 이어받는다.
+    DrawStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "ThicknessStep"
+        , PxToStep(IniRead(SETTINGS_PATH, "Draw", "Thickness", 6), PEN_BASE_PX, PEN_STEP_RATIO))))
+    EraserStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "EraserStep"
+        , PxToStep(IniRead(SETTINGS_PATH, "Draw", "EraserSize", 24), ERASER_BASE_PX, ERASER_STEP_RATIO))))
+    ; 색은 포인터/클릭효과/드로잉이 각각 따로 갖는다. 예전 버전은 셋이 같은 색([Common] Color)을
+    ; 썼으므로, 새 항목이 아직 없으면 그 값을 세 곳의 기본값으로 쓴다 — 쓰던 사람이 업데이트해도
+    ; 화면이 갑자기 달라지지 않는다.
+    legacyColor := IniRead(SETTINGS_PATH, "Common", "Color", "FF0000")
+    spotColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "Color", legacyColor))
+    clickColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "ClickColor", legacyColor))
+    drawColor := Integer("0x" IniRead(SETTINGS_PATH, "Draw", "Color", legacyColor))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 0) = 1
     ; 저장된 단축키가 이상하면(사람이 ini를 잘못 고쳤다거나) 기본값으로 돌려서, 단축키가
@@ -98,7 +163,7 @@ LoadSettings() {
 }
 
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, penColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
@@ -106,9 +171,12 @@ SaveSettings() {
     IniWrite(clickSpeed, SETTINGS_PATH, "Highlight", "ClickSpeed")
     IniWrite(clickOpacity, SETTINGS_PATH, "Highlight", "ClickOpacity")
     IniWrite(hideCursorOnHighlight ? 1 : 0, SETTINGS_PATH, "Highlight", "HideCursor")
-    IniWrite(DrawThickness, SETTINGS_PATH, "Draw", "Thickness")
+    IniWrite(HexColor(spotColor), SETTINGS_PATH, "Highlight", "Color")
+    IniWrite(HexColor(clickColor), SETTINGS_PATH, "Highlight", "ClickColor")
+    IniWrite(DrawStep, SETTINGS_PATH, "Draw", "ThicknessStep")
     IniWrite(DrawOpacity, SETTINGS_PATH, "Draw", "Opacity")
-    IniWrite(HexColor(penColor), SETTINGS_PATH, "Common", "Color")
+    IniWrite(EraserStep, SETTINGS_PATH, "Draw", "EraserStep")
+    IniWrite(HexColor(drawColor), SETTINGS_PATH, "Draw", "Color")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
     for name, combo in hotkeyCombos
@@ -116,6 +184,12 @@ SaveSettings() {
     ; 예전 버전에 있던 전역 "지우기" 단축키의 잔재를 치운다. 안 읽히는 값이라 그냥 둬도
     ; 동작에는 문제가 없지만, 설정 파일을 열어본 사람이 헷갈리지 않도록 지운다.
     try IniDelete(SETTINGS_PATH, "Hotkeys", "Clear")
+    ; 색이 세 곳으로 갈라지기 전에 쓰던 공용 색 항목도 같은 이유로 치운다. 위에서 세 색을
+    ; 모두 적어둔 뒤라, 지워도 다음 실행 때 색이 달라지지 않는다.
+    try IniDelete(SETTINGS_PATH, "Common", "Color")
+    ; 굵기·지우개 크기를 픽셀로 저장하던 시절의 항목도 치운다(이제 단계로 저장한다)
+    try IniDelete(SETTINGS_PATH, "Draw", "Thickness")
+    try IniDelete(SETTINGS_PATH, "Draw", "EraserSize")
 }
 
 LoadSettings()
@@ -157,11 +231,13 @@ dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 �
 erasing := false ; 오른쪽 버튼으로 지우는 중인지
 lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리만 되돌리고 다시 합성하면 된다)
 
-; 드로잉 중 숫자키 1~7로 바로 바꿀 수 있는 색 (무지개 순서: 빨주노초파남보).
-; 노랑과 초록은 표준 무지개값(FFFF00, 00FF00)을 그대로 쓰면 흰 배경에서 잘 안 보이고
-; 판서 투명도까지 겹치면 더 흐려져서, 색감은 유지하되 조금 진한 값으로 골랐다.
-DRAW_COLORS := [0xFF0000, 0xFF7F00, 0xFFC800, 0x00A000, 0x0000FF, 0x4B0082, 0x9400D3]
-DRAW_COLOR_NAMES := ["빨강", "주황", "노랑", "초록", "파랑", "남색", "보라"]
+; 드로잉 중 숫자키 1~9로 바로 바꿀 수 있는 색 (무지개 순서: 빨주노초파남보 + 검정 + 흰색).
+; **표준 무지개값을 그대로 쓴다.** 한때 노랑과 초록을 "흰 배경에서 잘 안 보인다"는 이유로
+; 조금 진하게 바꿔뒀었는데, 어떤 배경에 어떤 색이 잘 보이는지는 쓰는 사람이 그 자리에서
+; 판단할 문제지 프로그램이 대신 정할 일이 아니다(빨간 바탕화면을 쓰는 사람에게는 빨강도
+; 안 보인다 — 그렇다고 빨강을 손볼 수는 없다). 안 보이면 숫자키 한 번으로 바꾸면 된다.
+DRAW_COLORS := [0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF, 0x4B0082, 0x9400D3, 0x000000, 0xFFFFFF]
+DRAW_COLOR_NAMES := ["빨강", "주황", "노랑", "초록", "파랑", "남색", "보라", "검정", "흰색"]
 
 ; 드로잉 중 "누른 채 드래그"로 도형을 고르는 키 (위에 있는 것이 우선).
 ; 수식키(Shift/Ctrl)만 쓰면 자리가 네 개뿐이라 도형을 늘릴 수 없는데, 드로잉 모드에서는
@@ -172,10 +248,16 @@ SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"]]
 ; 지금 눌려 있는 도형 키. 핫키에 삼켜진 키는 GetKeyState(..., "P")로 읽히리라 기대할 수 없어서
 ; (흉내낸 입력으로 확인해보면 0으로 나온다) 누를 때와 뗄 때를 직접 받아 여기에 기록한다.
 shapeKeyHeld := Map()
-; 실제로 선을 그릴 때 쓰는 색. 설정에 저장된 penColor를 기본으로 하되 숫자키로 잠깐 바꿀 수
-; 있고, 드로잉 모드를 켜고 끌 때마다 설정값으로 되돌아간다. (penColor를 직접 바꾸면 강조
-; 하이라이트와 클릭 효과 색까지 같이 변하고, 저장까지 눌리면 임시 색이 굳어버린다)
-activeDrawColor := penColor
+; 실제로 선을 그릴 때 쓰는 색과 굵기. 설정에 저장된 값(drawColor / DrawStep / EraserStep)을
+; 기본으로 하되 드로잉 중에 숫자키와 +/-로 잠깐 바꿀 수 있고, 드로잉 모드를 켜고 끌 때마다
+; 설정값으로 되돌아간다. 설정값을 직접 바꾸지 않는 이유는, 그랬다가 "저장"까지 눌리면 수업 중에
+; 잠깐 쓰려고 바꾼 값이 그대로 굳어버리고, 설정 창의 슬라이더 표시와도 어긋나기 때문이다.
+; activeDrawStep/activeEraserStep이 실제 값이고, ...Thickness/...Size는 거기서 환산한 픽셀값이다.
+activeDrawColor := drawColor
+activeDrawStep := DrawStep
+activeEraserStep := EraserStep
+activeDrawThickness := PenPx(DrawStep)
+activeEraserSize := EraserPx(EraserStep)
 
 ; 실행 취소용 기록. 단계 수(UNDO_LIMIT)는 화면 크기를 알아야 정할 수 있어서 아래쪽
 ; 백버퍼를 만드는 곳에서 함께 계산한다.
@@ -337,6 +419,282 @@ ClearBackBuffer()
 drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80000", "FocusDraw-Draw") ; E0x80000 = WS_EX_LAYERED
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
+; ================= 칠판 (판서 층 아래에 까는 단색 판) =================
+; 화면을 가리고 칠판처럼 쓰고 싶을 때를 위한 층이다. **판서 오버레이 아래에** 깔기 때문에
+; 그려둔 내용을 건드리지 않고 배경색만 갈아끼울 수 있고, 지우개도 손볼 필요가 없다 —
+; 지우개는 그 자리를 도로 투명하게 만드는 방식이라, 지우면 아래의 칠판이 드러난다.
+; (배경을 판서 층 자체에 칠하는 방법도 있지만, 그러면 색을 바꿀 때마다 그림이 지워지고
+;  지우개가 "투명하게"가 아니라 "칠판색으로" 칠하도록 고쳐야 해서 훨씬 번거로워진다)
+;
+; 단색이라 픽셀 단위 투명도가 필요 없어서, 판서 오버레이처럼 화면 크기의 그림판을 들고 있을
+; 필요가 없다. 창 배경색만 칠하면 되므로 메모리를 거의 쓰지 않는다.
+BOARD_KEYS := [["q", -1, "투명"], ["w", 0xFFFFFF, "흰색"], ["e", 0x14472F, "초록"], ["r", 0x000000, "검정"]]
+boardColor := -1 ; -1 = 칠판 없음(화면이 그대로 비침)
+boardGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Board")
+boardGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
+WinSetTransparent(255, boardGui) ; 레이어드 창이지만 불투명하게 — 클릭 통과만 쓴다
+
+SetBoardColor(color) {
+    global boardColor, boardGui, drawGui, brushGui, widget, drawOn, brushMode, vx, vy, vw, vh
+    boardColor := color
+    if (!drawOn || color < 0) {
+        boardGui.Hide()
+        return
+    }
+    boardGui.BackColor := HexColor(color)
+    boardGui.Show("NA x" vx " y" vy " w" vw " h" vh)
+    ; 판서 층 **바로 아래**에 끼워 넣는다. 그냥 띄우면 판서 층 위로 올라와 그림을 덮어버린다.
+    ; (hWndInsertAfter에 판서 창을 주면 그 뒤에 놓인다 / 0x1 = 크기 유지, 0x2 = 위치 유지,
+    ;  0x10 = 활성화하지 않음)
+    DllCall("SetWindowPos", "ptr", boardGui.Hwnd, "ptr", drawGui.Hwnd
+        , "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x1 | 0x2 | 0x10)
+    ; 칠판을 띄우면서 창 순서가 흔들려 커서 원이 칠판 뒤로 밀리는 일이 없도록, 원과 위젯을
+    ; 다시 위로 올려둔다. (칠판은 불투명해서 뒤로 밀리면 커서가 통째로 안 보이게 된다)
+    if DllCall("IsWindowVisible", "ptr", widget.Hwnd)
+        WinSetAlwaysOnTop(true, widget)
+    if DllCall("IsWindowVisible", "ptr", brushGui.Hwnd)
+        brushGui.Show("NA")
+    ; 지우개 테두리는 칠판의 보색이라, 칠판이 바뀌면 테두리 색도 따라가야 한다
+    if (brushMode = "eraser")
+        RedrawBrushCursor()
+}
+
+; 숫자키 색과 같은 이유로(반복문 안에서 화살표 함수를 바로 쓰면 마지막 값 하나만 남는다) 가둬둔다.
+MakeBoardSetter(color) => (*) => SetBoardColor(color)
+
+; ================= +/- 로 크기를 바꿀 때 뜨는 단계 숫자 =================
+; 커서 원만으로는 "몇 단계인지"를 알 수 없다 — 특히 굵기 7과 8처럼 두 픽셀 차이는 눈으로
+; 구분되지 않는다. 그래서 바꾼 순간에만 커서 옆에 숫자를 띄우고 1초 뒤 사라지게 한다.
+; 커서 원 옆(원의 가장자리 바깥)에 붙여서, 지우개처럼 원이 커져도 숫자가 원 안에 묻히지 않는다.
+; 모양은 Windows 풍선 도움말(작업표시줄 아이콘에 마우스를 올리면 뜨는 그것)에 맞춘다 —
+; 흰 바탕에 가는 회색 테두리, 둥근 모서리, 진한 글자. 처음엔 검은 알약 모양으로 만들었는데
+; 화면 위에 혼자 튀어서, 시스템이 쓰는 모양을 그대로 따르는 쪽이 눈에 덜 걸린다.
+; 창 배경색으로는 테두리를 만들 수 없어서(테마 적용된 창에서는 Text 컨트롤 배경색이 안 먹는다)
+; 다른 창들과 같은 방식으로 알파 캔버스에 GDI+로 직접 그린다.
+STEP_BADGE_W := 30, STEP_BADGE_H := 24 ; 배지 크기
+STEP_BADGE_MS := 500 ; 화면에 머무는 시간(ms)
+STEP_BADGE_GAP := 22 ; 커서 중심에서 배지 왼쪽 위까지의 거리 — **굵기와 무관하게 늘 같다**
+stepGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Step")
+stepGui.Show("w" STEP_BADGE_W " h" STEP_BADGE_H " Hide")
+stepCanvas := ""
+stepFontFamily := 0, stepFont := 0, stepFormat := 0
+
+; 글꼴과 정렬은 한 번만 만들어 두고 계속 쓴다 (누를 때마다 만들면 낭비다)
+InitStepBadgeFont() {
+    global stepFontFamily, stepFont, stepFormat
+    if stepFont
+        return
+    DllCall("gdiplus\GdipCreateFontFamilyFromName", "wstr", "Segoe UI", "ptr", 0, "ptr*", &stepFontFamily)
+    if !stepFontFamily ; 없는 PC를 대비한 대체 글꼴
+        DllCall("gdiplus\GdipCreateFontFamilyFromName", "wstr", "Malgun Gothic", "ptr", 0, "ptr*", &stepFontFamily)
+    if stepFontFamily
+        DllCall("gdiplus\GdipCreateFont", "ptr", stepFontFamily, "float", 12, "int", 0, "int", 2, "ptr*", &stepFont) ; 2 = 픽셀 단위
+    DllCall("gdiplus\GdipCreateStringFormat", "int", 0, "int", 0, "ptr*", &stepFormat)
+    if stepFormat {
+        DllCall("gdiplus\GdipSetStringFormatAlign", "ptr", stepFormat, "int", 1)     ; 가로 가운데
+        DllCall("gdiplus\GdipSetStringFormatLineAlign", "ptr", stepFormat, "int", 1) ; 세로 가운데
+    }
+}
+
+; 모서리가 둥근 사각형 경로. 네 귀퉁이를 90도 호로 잇는다.
+RoundedRectPath(x, y, w, h, r) {
+    path := 0
+    DllCall("gdiplus\GdipCreatePath", "int", 0, "ptr*", &path)
+    if !path
+        return 0
+    d := r * 2
+    DllCall("gdiplus\GdipAddPathArc", "ptr", path, "float", x, "float", y, "float", d, "float", d, "float", 180, "float", 90)
+    DllCall("gdiplus\GdipAddPathArc", "ptr", path, "float", x + w - d, "float", y, "float", d, "float", d, "float", 270, "float", 90)
+    DllCall("gdiplus\GdipAddPathArc", "ptr", path, "float", x + w - d, "float", y + h - d, "float", d, "float", d, "float", 0, "float", 90)
+    DllCall("gdiplus\GdipAddPathArc", "ptr", path, "float", x, "float", y + h - d, "float", d, "float", d, "float", 90, "float", 90)
+    DllCall("gdiplus\GdipClosePathFigure", "ptr", path)
+    return path
+}
+
+DrawStepBadge(text) {
+    global stepCanvas, stepFont, stepFormat, STEP_BADGE_W, STEP_BADGE_H
+    InitStepBadgeFont()
+    w := STEP_BADGE_W, h := STEP_BADGE_H
+    DestroyAlphaCanvas(stepCanvas)
+    stepCanvas := CreateAlphaCanvas(w, h)
+    if !stepCanvas.graphics
+        return false
+    g := stepCanvas.graphics
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", g, "uint", 0x00000000)
+    ; 테두리가 잘리지 않도록 반 픽셀 안쪽에 그린다
+    path := RoundedRectPath(0.5, 0.5, w - 1, h - 1, 5)
+    if path {
+        fill := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFFFFFFFF, "ptr*", &fill)
+        if fill {
+            DllCall("gdiplus\GdipFillPath", "ptr", g, "ptr", fill, "ptr", path)
+            DllCall("gdiplus\GdipDeleteBrush", "ptr", fill)
+        }
+        border := 0
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFFA0A0A0, "float", 1, "int", 2, "ptr*", &border)
+        if border {
+            DllCall("gdiplus\GdipDrawPath", "ptr", g, "ptr", border, "ptr", path)
+            DllCall("gdiplus\GdipDeletePen", "ptr", border)
+        }
+        DllCall("gdiplus\GdipDeletePath", "ptr", path)
+    }
+    if (stepFont && stepFormat) {
+        rect := Buffer(16, 0)
+        NumPut("Float", 0, rect, 0), NumPut("Float", 0, rect, 4)
+        NumPut("Float", w, rect, 8), NumPut("Float", h, rect, 12)
+        ink := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF1A1A1A, "ptr*", &ink)
+        if ink {
+            DllCall("gdiplus\GdipDrawString", "ptr", g, "wstr", String(text), "int", -1
+                , "ptr", stepFont, "ptr", rect, "ptr", stepFormat, "ptr", ink)
+            DllCall("gdiplus\GdipDeleteBrush", "ptr", ink)
+        }
+    }
+    DllCall("gdiplus\GdipFlush", "ptr", g, "int", 0)
+    return true
+}
+
+ShowStepNumber(step) {
+    global stepGui, stepCanvas, drawOn, STEP_BADGE_W, STEP_BADGE_H, STEP_BADGE_GAP, STEP_BADGE_MS
+    if !drawOn
+        return
+    if !DrawStepBadge(step)
+        return
+    MouseGetPos(&mx, &my)
+    ; **커서 중심에서 늘 같은 거리**에 둔다. 예전에는 커서 원 가장자리에 붙여서, 굵기를 바꿀
+    ; 때마다 숫자가 조금씩 움직여 눈이 따라가야 했다.
+    x := mx + STEP_BADGE_GAP, y := my + STEP_BADGE_GAP
+    if (x + STEP_BADGE_W > A_ScreenWidth)
+        x := mx - STEP_BADGE_GAP - STEP_BADGE_W
+    if (y + STEP_BADGE_H > A_ScreenHeight)
+        y := my - STEP_BADGE_GAP - STEP_BADGE_H
+    stepGui.Show("NA")
+    PushCanvasToWindow(stepGui.Hwnd, stepCanvas, x, y)
+    SetTimer(HideStepNumber, -STEP_BADGE_MS) ; 잠깐 보였다가 사라짐 (다시 누르면 시계가 새로 시작된다)
+}
+
+HideStepNumber() {
+    global stepGui
+    stepGui.Hide()
+}
+
+; ================= 드로잉 커서 (그어질 선을 미리 보여주는 원) =================
+; 이 원은 **Windows 커서가 아니라 우리가 직접 띄우는 작은 창**이다. 커서로 만들면 Windows가
+; "마우스 포인터 크기" 설정(CursorBaseSize) 배율을 마지막에 한 번 더 곱해서 그리기 때문에,
+; 지름을 아무리 정확히 계산해 넘겨도 화면에서는 그만큼 커지고 늘어나느라 흐려진다. 넘기는
+; 비트맵 크기를 시스템 크기에 맞춰봐도 배율은 그 위에 또 걸려서 소용이 없었다.
+; 창으로 그리면 선을 그리는 것과 **같은 GDI+ 경로**를 타므로, 크기·색·투명도·가장자리 처리가
+; 계산으로 맞추는 게 아니라 구조적으로 같아진다. 대신 진짜 커서는 완전히 투명하게 만들어 감춘다.
+;
+; E0x20(WS_EX_TRANSPARENT)을 준 창은 MouseGetPos와 WindowFromPoint 양쪽에서 건너뛴다(직접
+; 확인함). 그래서 이 창이 커서 밑에 깔려 있어도 DrawPoll의 "커서 아래 창이 판서 오버레이인가"
+; 판정을 가리지 않는다 — 위젯 클릭이나 캡처 도구 감지가 그대로 동작한다.
+brushGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Brush")
+brushGui.Show("w16 h16 Hide")
+brushCanvas := ""
+brushPad := 0 ; 원의 중심이 창 왼쪽 위에서 얼마나 떨어져 있는지 (창을 놓을 위치 계산에 쓴다)
+brushMode := "pen" ; "pen" = 그어질 선을 담은 원 / "eraser" = 지워질 범위를 보여주는 테두리 원
+
+; 지우개 테두리 원의 색 — **지금 깔려 있는 칠판의 보색**으로 정한다. 칠판 색을 R·G·B 채널마다
+; 255에서 뺀 값이라, 흰 칠판이면 검정 / 검정 칠판이면 흰색 / 초록 칠판(14472F)이면 연분홍
+; (EBB8D0)이 되어 어느 칠판에서도 테두리가 배경에 묻히지 않는다.
+; 칠판이 없을 때(투명)는 아래로 무엇이 비칠지 알 수 없으므로 검정을 기본으로 쓴다.
+EraserRingColor() {
+    global boardColor
+    if (boardColor < 0)
+        return 0x000000
+    r := 255 - ((boardColor >> 16) & 0xFF)
+    g := 255 - ((boardColor >> 8) & 0xFF)
+    b := 255 - (boardColor & 0xFF)
+    return (r << 16) | (g << 8) | b
+}
+
+; 오른쪽 버튼을 누르면 지우개 범위를, 떼면 다시 펜을 보여준다. 바뀔 때만 다시 그린다.
+SetBrushMode(mode) {
+    global brushMode, drawOn
+    if (!drawOn || brushMode = mode)
+        return
+    brushMode := mode
+    RedrawBrushCursor()
+}
+
+; 판서 중에는 진짜 마우스 커서를 완전히 감추고 우리가 그리는 원으로 대신한다. 그런데 판서
+; 오버레이 위로 다른 창이 올라오면(Win+Shift+S 캡처 도구, 위젯 등) 그 창이 우리 원보다 위에
+; 그려져서, 커서가 아예 없는 것처럼 보인다 — 캡처 범위를 끌 수가 없다.
+; 그래서 커서 아래 창이 판서 오버레이가 아닐 때는 진짜 커서를 잠시 돌려주고 원을 감춘다.
+; 판정은 이미 드래그를 걸러낼 때 쓰던 것과 같은 것(winUnder)을 그대로 쓴다. 우리 원은 클릭
+; 통과 창이라 MouseGetPos가 건너뛰므로 스스로를 "다른 창"으로 착각할 일이 없다.
+cursorOverOtherWindow := false
+
+UpdateDrawCursorForWindow(winUnder) {
+    global drawOn, drawGui, brushGui, cursorOverOtherWindow
+    if !drawOn
+        return
+    onOther := (winUnder != drawGui.Hwnd)
+    if (onOther = cursorOverOtherWindow)
+        return ; 바뀔 때만 손댄다 (10ms마다 커서를 다시 씌우면 낭비다)
+    cursorOverOtherWindow := onOther
+    if onOther {
+        RestoreSystemCursor()
+        brushGui.Hide()
+    } else {
+        UpdateCursorHiddenState() ; 다시 감추고
+        brushGui.Show("NA")       ; 원을 도로 띄운다
+    }
+}
+
+; 지름은 선 굵기 그대로, 색도 그대로, 투명도는 판서 오버레이와 똑같이 **창 전체에 한 번**
+; 곱하는 방식으로 준다(픽셀은 불투명하게 그리고 PushCanvasToWindow의 constAlpha로 곱한다).
+; 오버레이가 선을 화면에 올리는 방식과 같아야 눈에 보이는 결과가 같아지기 때문이다.
+RedrawBrushCursor() {
+    global brushGui, brushCanvas, brushPad, brushMode, activeDrawColor, activeDrawThickness
+    ; 펜은 그어질 선 그대로, 지우개는 지워질 범위 그대로 — 둘 다 실제 크기를 보여준다.
+    d := (brushMode = "eraser") ? EraserThickness() : activeDrawThickness
+    ; 창을 놓는 위치는 정수여야 하는데 지름이 홀수면 중심이 반 픽셀에 걸린다. 그래서 중심을
+    ; 정수 자리(brushPad)에 두고, 원 쪽을 반 픽셀 밀어 그린다 — 그래야 실제 자리와 정확히 겹친다.
+    brushPad := Ceil(d / 2) + 2 ; 창 위치·크기는 정수여야 한다
+    size := brushPad * 2
+    DestroyAlphaCanvas(brushCanvas)
+    brushCanvas := CreateAlphaCanvas(size, size)
+    if !brushCanvas.graphics
+        return
+    DllCall("gdiplus\GdipGraphicsClear", "ptr", brushCanvas.graphics, "uint", 0x00000000)
+    if (brushMode = "eraser") {
+        ; 지우개는 안쪽이 비치는 가느다란 테두리 원 — 지울 범위를 가리지 않으면서
+        ; 어디까지 지워지는지 보여준다. 색은 칠판의 보색이라 어느 칠판에서도 또렷하다.
+        pen := 0
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | EraserRingColor(), "float", 1, "int", 2, "ptr*", &pen)
+        if pen {
+            DllCall("gdiplus\GdipDrawEllipse", "ptr", brushCanvas.graphics, "ptr", pen
+                , "float", brushPad - d / 2, "float", brushPad - d / 2, "float", d, "float", d)
+            DllCall("gdiplus\GdipDeletePen", "ptr", pen)
+        }
+    } else {
+        brush := 0
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF000000 | activeDrawColor, "ptr*", &brush)
+        if brush {
+            DllCall("gdiplus\GdipFillEllipse", "ptr", brushCanvas.graphics, "ptr", brush
+                , "float", brushPad - d / 2, "float", brushPad - d / 2, "float", d, "float", d)
+            DllCall("gdiplus\GdipDeleteBrush", "ptr", brush)
+        }
+    }
+    DllCall("gdiplus\GdipFlush", "ptr", brushCanvas.graphics, "int", 0)
+    MoveBrushCursor()
+}
+
+; 선은 마우스 위치를 중심으로 그려지므로(그 점은 해당 픽셀의 좌상단 모서리다) 원의 중심도
+; 같은 점에 둔다. 창 위치와 그림을 한 번에 올려서 따라다녀도 깜빡이지 않는다.
+MoveBrushCursor() {
+    global drawOn, brushGui, brushCanvas, brushPad, brushMode, DrawOpacity
+    if (!drawOn || !IsObject(brushCanvas) || !brushCanvas.graphics)
+        return
+    MouseGetPos(&mx, &my)
+    ; 펜은 그어질 선과 같은 투명도로 보여줘야 결과가 예상된다. 지우개 테두리는 안내선이라
+    ; 판서 투명도와 상관없이 또렷하게 둔다.
+    alpha := (brushMode = "eraser") ? 255 : Max(0, Min(255, Round(DrawOpacity * 255 / 100)))
+    PushCanvasToWindow(brushGui.Hwnd, brushCanvas, mx - brushPad, my - brushPad, alpha)
+}
+
 ; UpdateLayeredWindow은 부를 때마다 창 전체(가상 화면 전체 크기)를 합성하기 때문에,
 ; 판서 중 10ms마다 호출하면 그만큼 CPU를 많이 먹는다. UpdateLayeredWindowIndirect는
 ; "실제로 바뀐 영역(prcDirty)"만 알려줄 수 있어서, 선 하나 그릴 때 화면 전체가 아니라
@@ -390,8 +748,8 @@ UpdateDrawOpacity() {
 ; GDI로 그린 픽셀은 알파 값이 채워지지 않으므로, 그린 영역만 알파를 255로 채워준다.
 ; 실제로 훑은 사각형 범위를 돌려줘서, 호출한 쪽이 그 부분만 화면에 다시 합성하면 되게 한다.
 PatchAlpha(x1, y1, x2, y2) {
-    global ppvBits, vw, vh, DrawThickness
-    pad := DrawThickness + 2
+    global ppvBits, vw, vh, activeDrawThickness
+    pad := Ceil(activeDrawThickness) + 2 ; 굵기는 실수일 수 있는데 여기 계산은 픽셀 단위라 올림한다
     minX := Max(0, Min(x1, x2) - pad)
     maxX := Min(vw - 1, Max(x1, x2) + pad)
     minY := Max(0, Min(y1, y2) - pad)
@@ -439,10 +797,10 @@ PatchAlphaPolyline(pts, segLen := 24) {
 ; 펜이 지나간 범위(굵기만큼 여유를 둔다). GDI+로 그릴 때는 픽셀을 훑을 필요가 없으므로,
 ; 되돌리기와 화면 갱신에 쓸 범위만 이렇게 계산해서 쓴다. 자유선과 도형이 함께 쓴다.
 PenDirtyBox(x1, y1, x2, y2, thickness := 0) {
-    global vw, vh, DrawThickness
+    global vw, vh, activeDrawThickness
     if !thickness
-        thickness := DrawThickness
-    pad := thickness // 2 + 6 ; 펜 굵기의 절반 + 부드럽게 처리한 가장자리만큼 여유
+        thickness := activeDrawThickness
+    pad := Ceil(thickness / 2) + 6 ; 펜 굵기의 절반 + 부드럽게 처리한 가장자리만큼 여유 (굵기가 실수라 올림)
     return [Max(0, Min(x1, x2) - pad), Max(0, Min(y1, y2) - pad)
         , Min(vw, Max(x1, x2) + pad + 1), Min(vh, Max(y1, y2) + pad + 1)]
 }
@@ -453,7 +811,7 @@ PenDirtyBox(x1, y1, x2, y2, thickness := 0) {
 ; 화살표 머리의 기준점들. 머리 밑변의 중심(bx, by)과 좌우 끝점, 그리고 머리가 몸통 선
 ; 바깥으로 삐져나가는 폭(halfW)을 돌려준다. 길이가 거의 0이면 방향을 정할 수 없어 0을 돌려준다.
 ArrowGeometry(x1, y1, x2, y2) {
-    global DrawThickness
+    global activeDrawThickness
     dx := x2 - x1, dy := y2 - y1
     len := Sqrt(dx * dx + dy * dy)
     if (len < 1)
@@ -462,7 +820,7 @@ ArrowGeometry(x1, y1, x2, y2) {
     px := -uy, py := ux            ; 그에 수직인 방향
     ; 머리는 선 굵기에 비례해야 한다 — 굵은 펜에 작은 머리가 붙으면 화살표로 보이지 않는다.
     ; 다만 짧게 끌었을 때 머리가 전체를 잡아먹지 않도록 길이의 절반으로 제한한다.
-    head := Min(Max(DrawThickness * 4, 14), len * 0.5)
+    head := Min(Max(activeDrawThickness * 4, 14), len * 0.5)
     halfW := head * 0.45 ; 머리 끝 각도가 약 48도가 되는 폭
     bx := x2 - ux * head, by := y2 - uy * head
     return {bx: bx, by: by, halfW: halfW
@@ -473,16 +831,16 @@ ArrowGeometry(x1, y1, x2, y2) {
 ; 물결의 진폭(굽이 높이). 끈 높이가 아니라 선 굵기에 매어 둔 이유는, 글 밑에 밑줄 긋듯
 ; 가로로 곧게 끌었을 때도 물결이 나와야 하기 때문이다(높이에 매면 곧게 끌 때 0이라 직선이 된다).
 WaveAmplitude() {
-    global DrawThickness
-    return Max(DrawThickness * 0.75, 3)
+    global activeDrawThickness
+    return Max(activeDrawThickness * 0.75, 3)
 }
 
 ; 한 굽이의 길이. 진폭과 따로 두었다 — 진폭만 줄이면 물결이 더 완만해지고, 둘을 같이 줄이면
 ; 같은 모양이 작아진다. 지금은 굵기 6에서 높이 4.5, 굽이 길이 33 — 글 밑에 치는 물결 밑줄에
 ; 가까운, 작고 촘촘한 물결이다.
 WaveLength() {
-    global DrawThickness
-    return Max(DrawThickness * 5.5, 18)
+    global activeDrawThickness
+    return Max(activeDrawThickness * 5.5, 18)
 }
 
 ; 시작점에서 끝점으로 가는 선 위에 사인파를 얹은 점들.
@@ -555,8 +913,8 @@ RestoreSnapshotBox(box) {
 ; ================= 지우개 (오른쪽 버튼 드래그) =================
 ; 굵기는 펜보다 넉넉하게 — 지우개는 대충 문질러도 지워져야 쓸 만하다.
 EraserThickness() {
-    global DrawThickness
-    return Max(24, DrawThickness * 4)
+    global activeEraserSize
+    return activeEraserSize
 }
 
 ; 지나간 자리를 배경과 똑같은 값(1,1,1)으로 덧칠한 뒤, 그 픽셀들의 알파를 1로 낮춰 도로
@@ -630,13 +988,13 @@ ClearAlpha(x1, y1, x2, y2, pad) {
 ; 굵기가 바뀔 때만 다시 만들고 그 외에는 만들어둔 것을 재사용한다.
 freehandPen := 0, freehandPenColor := -1, freehandPenWidth := -1
 GetFreehandPen() {
-    global freehandPen, freehandPenColor, freehandPenWidth, activeDrawColor, DrawThickness
-    if (freehandPen && freehandPenColor = activeDrawColor && freehandPenWidth = DrawThickness)
+    global freehandPen, freehandPenColor, freehandPenWidth, activeDrawColor, activeDrawThickness
+    if (freehandPen && freehandPenColor = activeDrawColor && freehandPenWidth = activeDrawThickness)
         return freehandPen
     if freehandPen
         DllCall("gdiplus\GdipDeletePen", "ptr", freehandPen)
     freehandPen := 0
-    DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", DrawThickness, "int", 2, "ptr*", &freehandPen)
+    DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", activeDrawThickness, "int", 2, "ptr*", &freehandPen)
     if freehandPen {
         ; 자유선은 10ms마다 짧은 선을 이어 붙여 만드는 것이라, 선 끝이 평평하면 이음매마다
         ; 모난 자국이 남아 획이 끊겨 보인다. 끝과 이음매를 둥글게 해야 한 획처럼 이어진다.
@@ -646,15 +1004,15 @@ GetFreehandPen() {
         DllCall("gdiplus\GdipSetPenLineJoin", "ptr", freehandPen, "int", 2) ; LineJoinRound
     }
     freehandPenColor := activeDrawColor
-    freehandPenWidth := DrawThickness
+    freehandPenWidth := activeDrawThickness
     return freehandPen
 }
 
 DrawSegment(x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, activeDrawColor, pShapeGraphics
+    global memDC, vx, vy, activeDrawThickness, activeDrawColor, pShapeGraphics
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
     ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
-    CaptureUndoBands(Min(ly1, ly2) - DrawThickness, Max(ly1, ly2) + DrawThickness)
+    CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness, Max(ly1, ly2) + activeDrawThickness)
     if pShapeGraphics {
         ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
         ; 테두리도 도형과 똑같이 매끄럽게 나온다.
@@ -665,7 +1023,7 @@ DrawSegment(x1, y1, x2, y2) {
         box := PenDirtyBox(lx1, ly1, lx2, ly2)
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 (예전 방식: GDI로 긋고 투명도는 직접 채우기)
-        pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
+        pen := DllCall("CreatePen", "int", 0, "int", Round(activeDrawThickness), "uint", ToBGR(activeDrawColor), "ptr") ; GDI 펜은 정수만 받는다
         old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
         DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
         DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
@@ -679,7 +1037,7 @@ DrawSegment(x1, y1, x2, y2) {
 ; mode: "line" | "rect" | "ellipse". 시작점~현재점 사이의 도형을 매 프레임 다시 그린다.
 ; (매번 스냅샷으로 되돌린 뒤 새로 그려서, 드래그 중인 미리보기가 쌓이지 않고 하나만 보이게 함)
 DrawShapePreview(mode, x1, y1, x2, y2) {
-    global memDC, vx, vy, DrawThickness, activeDrawColor, lastShapeBox, pShapeGraphics
+    global memDC, vx, vy, activeDrawThickness, activeDrawColor, lastShapeBox, pShapeGraphics
     ; 직전 프레임이 그린 자리만 되돌리면 된다. 첫 프레임은 되돌릴 것이 없다(스냅샷을 방금 떴다).
     if (lastShapeBox.Length = 4)
         RestoreSnapshotBox(lastShapeBox)
@@ -689,14 +1047,14 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
     overhang := ShapeOverhang(mode, lx1, ly1, lx2, ly2)
     ; 그리기 전 모습을 담아둔다. 미리보기는 매 프레임 스냅샷으로 되돌렸다 다시 그리는데,
     ; 그 되돌리기는 드래그 시작 시점(= 이 단계의 기준 모습)으로 돌리는 것이라 따로 담을 필요가 없다.
-    CaptureUndoBands(Min(ly1, ly2) - DrawThickness - overhang, Max(ly1, ly2) + DrawThickness + overhang)
+    CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness - overhang, Max(ly1, ly2) + activeDrawThickness + overhang)
 
     if pShapeGraphics {
         ; GDI가 아직 버퍼에 반영하지 않은 작업이 남아 있을 수 있으므로 먼저 밀어 넣는다
         DllCall("gdi32\GdiFlush")
         pPen := 0
         ; GDI+ 색은 0xAARRGGBB — GDI처럼 BGR로 뒤집지 않는다
-        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", DrawThickness, "int", 2, "ptr*", &pPen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
         if mode = "line"
             DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
         else if mode = "rect"
@@ -710,11 +1068,11 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
         DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
         ; 화살표 머리와 물결의 굽이는 두 끝점을 잇는 선 바깥으로 나가므로, 그만큼 여유를 더 준다.
         ; (여유가 모자라면 되돌릴 때 지워지지 않은 자국이 화면에 남는다)
-        box := PenDirtyBox(lx1, ly1, lx2, ly2, DrawThickness + 2 * overhang)
+        box := PenDirtyBox(lx1, ly1, lx2, ly2, activeDrawThickness + 2 * overhang)
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 — 예전 방식(GDI로 그리고 알파는 직접 채우기).
         ; 테두리를 따라가며 훑어서, 도형을 감싸는 네모 전체를 훑던 때보다는 훨씬 가볍다.
-        pen := DllCall("CreatePen", "int", 0, "int", DrawThickness, "uint", ToBGR(activeDrawColor), "ptr")
+        pen := DllCall("CreatePen", "int", 0, "int", Round(activeDrawThickness), "uint", ToBGR(activeDrawColor), "ptr") ; GDI 펜은 정수만 받는다
         oldPen := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
         nullBrush := DllCall("GetStockObject", "int", 5, "ptr") ; NULL_BRUSH (안쪽은 채우지 않음)
         oldBrush := DllCall("SelectObject", "ptr", memDC, "ptr", nullBrush, "ptr")
@@ -820,15 +1178,24 @@ DrawPoll() {
     global dragOnOtherWindow, lastShapeBox
     if !drawOn
         return
+    MouseGetPos(&mx, &my, &winUnder)
+    ; 판서 오버레이 위에 다른 창이 올라와 있으면(캡처 도구, 위젯 등) 진짜 마우스 커서를
+    ; 돌려준다. 안 그러면 그 창 위에서 커서가 아예 안 보인다 — 판서 중에는 진짜 커서를
+    ; 완전히 감추고 우리가 그리는 원으로 대신하는데, 그 원은 저 창들 아래에 깔리기 때문이다.
+    UpdateDrawCursorForWindow(winUnder)
+    ; 커서 노릇을 하는 원을 옮긴다. 버튼을 안 누르고 있어도 따라와야 하므로 아래
+    ; "아무 버튼도 안 눌림 → 그냥 빠져나감"보다 앞에 둔다.
+    MoveBrushCursor()
 
     leftDown := GetKeyState("LButton", "P")
     rightDown := GetKeyState("RButton", "P")
+    ; 오른쪽 버튼을 누르고 있는 동안에는 커서가 지우개 범위를 보여주는 원으로 바뀐다
+    SetBrushMode(rightDown && !drawing ? "eraser" : "pen")
     if (!leftDown && !rightDown) {
         drawing := false
         erasing := false
         return
     }
-    MouseGetPos(&mx, &my, &winUnder)
 
     ; 오른쪽 버튼 드래그는 지우개. 왼쪽으로 이미 그리는 중이면 그 획을 방해하지 않는다.
     if (rightDown && !drawing) {
@@ -940,7 +1307,7 @@ spotGui.Show("w" SpotSize " h" SpotSize " Hide")
 spotCanvas := ""
 
 RedrawSpotlight() {
-    global spotGui, spotCanvas, SpotSize, spotOpacity, penColor
+    global spotGui, spotCanvas, SpotSize, spotOpacity, spotColor
     DestroyAlphaCanvas(spotCanvas)
     spotCanvas := CreateAlphaCanvas(SpotSize, SpotSize)
     if !spotCanvas.graphics
@@ -950,7 +1317,7 @@ RedrawSpotlight() {
     ; 투명도와 같이 쓸 수 없다.
     alpha := Max(0, Min(255, Round(spotOpacity * 255 / 100)))
     brush := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "uint", (alpha << 24) | penColor, "ptr*", &brush)
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", (alpha << 24) | spotColor, "ptr*", &brush)
     if brush {
         ; 매끄럽게 처리한 가장자리가 잘리지 않도록 반 픽셀씩 안쪽으로 채운다
         DllCall("gdiplus\GdipFillEllipse", "ptr", spotCanvas.graphics, "ptr", brush
@@ -1004,7 +1371,7 @@ SetupClickCanvas()
 clickAnimFrame := 0
 
 ClickAnimStep() {
-    global clickAnimFrame, CLICK_ANIM_FRAMES, clickGui, clickCanvas, SpotSize, SpotThickness, penColor, clickOpacity
+    global clickAnimFrame, CLICK_ANIM_FRAMES, clickGui, clickCanvas, SpotSize, SpotThickness, clickColor, clickOpacity
     if clickAnimFrame >= CLICK_ANIM_FRAMES {
         SetTimer(ClickAnimStep, 0)
         clickGui.Hide()
@@ -1021,7 +1388,7 @@ ClickAnimStep() {
         radius := (SpotSize / 2 - SpotThickness / 2 - 1) * (1 - eased)
         cx := SpotSize / 2, cy := SpotSize / 2
         pen := 0
-        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | penColor, "float", SpotThickness, "int", 2, "ptr*", &pen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | clickColor, "float", SpotThickness, "int", 2, "ptr*", &pen)
         if pen {
             DllCall("gdiplus\GdipDrawEllipse", "ptr", clickCanvas.graphics, "ptr", pen
                 , "float", cx - radius, "float", cy - radius, "float", radius * 2, "float", radius * 2)
@@ -1048,7 +1415,7 @@ StartClickAnimation(*) {
 }
 ~LButton::StartClickAnimation()
 
-; ================= 강조 중 마우스 커서를 작은 십자선으로 바꾸기 =================
+; ================= 마우스 커서 바꿔치기 (강조 중 십자선 / 드로잉 중 원) =================
 ; 마우스 커서는 각 창이 스스로 그리기 때문에, 단순히 "커서 숨김" API 하나로는 다른 프로그램
 ; 창 위로 마우스가 지나가는 순간 커서가 다시 나타난다. 대신 시스템 커서 전체(화살표, 손,
 ; 입력창의 I자 등 전부)를 작은 십자선 모양의 커서로 통째로 바꿔치기해서, 어떤 창 위에 있든
@@ -1069,6 +1436,11 @@ SetMonoBit(mask, x, y, bit) {
     NumPut("UChar", b, mask, byteIndex)
 }
 
+; 참고: Windows는 여기서 넘긴 커서에 "마우스 포인터 크기" 설정 배율을 한 번 더 곱해서 그린다.
+; 비트맵을 그 크기로 키워 넘겨봐도 배율은 그 위에 또 걸려서 소용이 없었다(실제로 해봄).
+; 그래서 커서로는 화면 픽셀과 정확히 맞아떨어지는 그림을 그릴 수 없다 — 드로잉 모드의 원을
+; 커서가 아니라 별도의 창(brushGui)으로 만든 이유다. 십자선은 "커서를 눈에 안 띄게 한다"가
+; 목적이라 배율이 걸려도 상관없으므로 예전처럼 32x32로 둔다.
 CreateCrosshairCursor() {
     size := 32, center := 16, armLen := 2 ; 중심에서 양쪽으로 2px — 가늘고 작은 십자선
     andMask := Buffer(128, 0xFF) ; 기본은 전부 투명(원래 화면 그대로 통과)
@@ -1080,31 +1452,57 @@ CreateCrosshairCursor() {
     return DllCall("CreateCursor", "ptr", 0, "int", center, "int", center, "int", size, "int", size, "ptr", andMask, "ptr", xorMask, "ptr")
 }
 
-HideSystemCursor() {
-    global CURSOR_IDS, systemCursorHidden
-    for id in CURSOR_IDS
-        DllCall("SetSystemCursor", "ptr", CreateCrosshairCursor(), "uint", id) ; 넘긴 커서는 시스템이 소유/해제함
+; 드로잉 모드용 — 아무것도 그리지 않는 완전히 투명한 커서. 드로잉 중에는 그어질 선을 그대로
+; 보여주는 원(brushGui)이 커서 노릇을 하므로, Windows가 그리는 커서는 완전히 치운다.
+; 마스크 전체가 AND=1, XOR=0이면 화면이 그대로 통과해 아무것도 보이지 않는다.
+; 아무것도 안 그리는 커서라 포인터 크기 배율이 걸려도 상관없어서 크기는 32로 둔다.
+CreateBlankCursor() {
+    size := 32, stride := 4
+    andMask := Buffer(stride * size, 0xFF)
+    xorMask := Buffer(stride * size, 0x00)
+    return DllCall("CreateCursor", "ptr", 0, "int", 0, "int", 0, "int", size, "int", size, "ptr", andMask, "ptr", xorMask, "ptr")
+}
+
+; 지금 어떤 커서를 씌워두었는지 — 같은 커서를 다시 씌우는 헛수고를 피하려고 기억해둔다.
+; "" = 시스템 기본 커서.
+currentCursorKind := ""
+
+ApplySystemCursor(kind) {
+    global CURSOR_IDS, systemCursorHidden, currentCursorKind
+    for id in CURSOR_IDS {
+        ; 넘긴 커서는 시스템이 소유/해제하므로 ID마다 따로 만들어 넘겨야 한다
+        hCursor := (kind = "blank") ? CreateBlankCursor() : CreateCrosshairCursor()
+        if hCursor
+            DllCall("SetSystemCursor", "ptr", hCursor, "uint", id)
+    }
     systemCursorHidden := true
+    currentCursorKind := kind
 }
 
 RestoreSystemCursor(*) {
-    global systemCursorHidden
+    global systemCursorHidden, currentCursorKind
     if !systemCursorHidden
         return
     DllCall("SystemParametersInfo", "uint", 0x57, "uint", 0, "ptr", 0, "uint", 0) ; SPI_SETCURSORS
     systemCursorHidden := false
+    currentCursorKind := ""
 }
 OnExit(RestoreSystemCursor) ; 커서가 숨겨진 채로 프로그램이 종료되는 일이 없도록 보험
 
-; 커서를 십자선으로 바꿔야 하는 이유가 두 가지(강조 중 커서 숨기기 설정 + 판서 모드)라서,
-; 매번 따로 켜고 끄는 대신 "지금 상태 종합해서 켜져 있어야 하나?"를 한곳에서 판단한다.
+; 커서를 바꿔야 하는 이유가 두 가지(강조 중 커서 숨기기 설정 + 판서 모드)이고 모양도 서로
+; 달라서, 매번 따로 켜고 끄는 대신 "지금 상태를 종합하면 어떤 커서여야 하나?"를 한곳에서
+; 판단한다. 판서 중에는 그어질 선을 보여주는 원(brushGui)이 커서 노릇을 하므로 진짜 커서는
+; 완전히 감추고("blank"), 강조 중 커서 숨기기는 예전처럼 작은 십자선("cross")을 쓴다.
 UpdateCursorHiddenState() {
-    global spotlightOn, hideCursorOnHighlight, drawOn, systemCursorHidden
-    shouldHide := (spotlightOn && hideCursorOnHighlight) || drawOn
-    if shouldHide && !systemCursorHidden
-        HideSystemCursor()
-    else if !shouldHide && systemCursorHidden
-        RestoreSystemCursor()
+    global spotlightOn, hideCursorOnHighlight, drawOn, systemCursorHidden, currentCursorKind
+    kind := drawOn ? "blank" : ((spotlightOn && hideCursorOnHighlight) ? "cross" : "")
+    if (kind = "") {
+        if systemCursorHidden
+            RestoreSystemCursor()
+        return
+    }
+    if (!systemCursorHidden || currentCursorKind != kind)
+        ApplySystemCursor(kind)
 }
 
 ; SetSystemCursor로 바꾼 커서는 이 프로그램이 아니라 Windows 세션 전체에 적용되는
@@ -1137,16 +1535,33 @@ ToggleSpotlight(*) {
 }
 
 ToggleDraw(*) {
-    global drawOn, drawGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, penColor, erasing
+    global drawOn, drawGui, brushGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, drawColor
+    global activeDrawThickness, activeDrawStep, DrawStep, activeEraserSize, activeEraserStep, EraserStep
+    global PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
+    global erasing, brushMode, cursorOverOtherWindow, boardGui, stepGui
     drawOn := !drawOn
-    ; 숫자키로 잠깐 바꿔둔 색은 여기서 초기화한다. 드로잉을 켤 때마다 설정에 저장된 색으로
-    ; 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
-    activeDrawColor := penColor
+    ; 숫자키와 +/-로 잠깐 바꿔둔 색·굵기·지우개 크기는 여기서 초기화한다. 드로잉을 켤 때마다
+    ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
+    activeDrawColor := drawColor
+    activeDrawStep := DrawStep
+    activeEraserStep := EraserStep
+    activeDrawThickness := PenPx(DrawStep)
+    activeEraserSize := EraserPx(EraserStep)
+    SetTimer(HideStepNumber, 0)
+    stepGui.Hide() ; 단계 숫자가 떠 있는 채로 모드가 바뀌면 화면에 남는다
+    brushMode := "pen"
+    cursorOverOtherWindow := false
     erasing := false
+    ; 칠판도 임시값이라 켤 때마다 "없음"(화면이 그대로 비침)으로 시작한다
+    SetBoardColor(-1)
     if drawOn {
         drawGui.Show("NA")
         ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
         WinSetAlwaysOnTop(true, widget)
+        ; 커서 노릇을 할 원은 위젯보다도 위에 띄운다 — 판서 중에는 진짜 커서가 완전히 감춰져
+        ; 있어서, 위젯 위에서도 이 원이 보여야 어디를 누르는지 알 수 있다. 클릭 통과 창이라
+        ; 위에 있어도 위젯 클릭이나 판서 입력을 가로채지 않는다(MouseGetPos가 건너뛴다).
+        brushGui.Show("NA")
         ; 오버레이는 그린 자국 말고는 거의 투명해서, 설정 창이 열려 있으면 눈에는 보이는데
         ; 클릭은 오버레이가 가로채는 이상한 상태가 된다. 아예 잠시 감춰서 헷갈리지 않게 한다.
         settingsHiddenByDraw := false
@@ -1159,6 +1574,7 @@ ToggleDraw(*) {
     } else {
         SetTimer(DrawPoll, 0)
         SetDrawModeHotkeys("Off")
+        brushGui.Hide()
         drawGui.Hide()
         ; 판서를 켜느라 감췄던 설정 창이라면 하던 작업을 이어갈 수 있게 다시 띄운다
         if settingsHiddenByDraw {
@@ -1168,7 +1584,9 @@ ToggleDraw(*) {
         }
     }
     UpdateSpotlightVisibility()
-    UpdateCursorHiddenState() ; 판서 모드에서도 십자선 커서를 쓴다 (그림 도구다운 커서)
+    UpdateCursorHiddenState() ; 판서 중에는 진짜 커서를 완전히 감춘다 (원이 커서 노릇을 한다)
+    if drawOn
+        RedrawBrushCursor() ; 이번에 쓸 색·굵기로 원을 그려둔다
     UpdateWidgetState()
 }
 
@@ -1182,13 +1600,41 @@ ClearDrawing(*) {
     UpdateOverlay()
 }
 
-; 드로잉 중 숫자키 1~7로 선 색을 바로 바꾼다. 설정에 저장된 색(penColor)은 건드리지 않아서,
-; 드로잉을 껐다 켜면 원래 색으로 돌아온다.
+; 드로잉 중 숫자키 1~9로 선 색을 바로 바꾼다. 설정에 저장된 색(drawColor)은 건드리지 않아서,
+; 드로잉을 껐다 켜면 원래 색으로 돌아온다. 커서 원도 바뀐 색으로 다시 그린다.
 SetDrawColor(index) {
     global DRAW_COLORS, activeDrawColor
-    if (index >= 1 && index <= DRAW_COLORS.Length)
+    if (index >= 1 && index <= DRAW_COLORS.Length) {
         activeDrawColor := DRAW_COLORS[index]
+        RedrawBrushCursor()
+    }
 }
+
+; 드로잉 중 +(크게) / -(작게). 그냥 누르면 **펜 굵기**를, **오른쪽 버튼을 누른 채로** 누르면
+; **지우개 크기**를 바꾼다. 오른쪽 버튼을 누르고 있는 동안에는 커서가 지우개 테두리 원으로
+; 바뀌어 있으므로, 바뀌는 크기가 그 자리에서 눈에 보인다.
+; 색과 마찬가지로 설정값(DrawThickness / EraserSize)은 건드리지 않아, 드로잉을 껐다 켜면
+; 되돌아온다.
+AdjustDrawThickness(delta) {
+    global activeDrawThickness, activeDrawStep, activeEraserSize, activeEraserStep
+    global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
+    if GetKeyState("RButton", "P") {
+        newStep := Max(1, Min(STEP_MAX, activeEraserStep + delta))
+        activeEraserStep := newStep
+        activeEraserSize := EraserPx(newStep)
+        RedrawBrushCursor()
+        ShowStepNumber(newStep) ; 상·하한에 걸려 안 바뀌어도 보여준다 — 끝에 닿았다는 신호가 된다
+        return
+    }
+    newStep := Max(1, Min(STEP_MAX, activeDrawStep + delta))
+    activeDrawStep := newStep
+    activeDrawThickness := PenPx(newStep)
+    RedrawBrushCursor()
+    ShowStepNumber(newStep)
+}
+
+; 숫자키와 같은 이유로(반복문 안에서 화살표 함수를 바로 쓰면 마지막 값 하나만 남는다) 가둬둔다.
+MakeThicknessSetter(delta) => (*) => AdjustDrawThickness(delta)
 
 ; 숫자키마다 서로 다른 색을 기억한 함수를 만들어준다. 반복문 안에서 화살표 함수를 바로 쓰면
 ; 모두 같은 변수를 붙들어 마지막 색 하나만 적용되므로, 이렇게 매개변수로 가둬야 한다.
@@ -1211,18 +1657,26 @@ ExitDrawMode(*) {
     ToggleDraw()
 }
 
-; Windows 기본 색상 선택 대화상자(ChooseColor)를 띄워서 강조/판서 색을 자유롭게 고른다.
+; 포인터(강조 원) / 클릭효과(링) / 드로잉(선)은 각각 자기 색을 갖는다. 셋을 한 색으로 묶어두면
+; 예컨대 "강조는 은은한 노랑, 판서는 진한 빨강"처럼 쓰임새가 다른 조합을 만들 수 없다.
+; 어느 색을 가리키는지는 문자열 하나로 넘기고, 읽고 쓰는 곳을 이 두 함수에만 모아둔다.
+GetColorOf(target) {
+    global spotColor, clickColor, drawColor
+    return (target = "Spot") ? spotColor : (target = "Click") ? clickColor : drawColor
+}
+
+; Windows 기본 색상 선택 대화상자(ChooseColor)를 띄워서 색을 자유롭게 고른다.
 ; ownerHwnd를 지정하지 않으면 위젯을 소유 창으로 쓴다 — 설정 창 등 다른 창에서 호출할 때는
 ; 그 창의 Hwnd를 넘겨줘야 대화상자가 그 창 뒤에 가려지지 않는다.
-PickColor(ownerHwnd := 0, *) {
-    global penColor, widget
+PickColor(target := "Spot", ownerHwnd := 0, *) {
+    global spotColor, clickColor, drawColor, activeDrawColor, widget
     if !ownerHwnd
         ownerHwnd := widget.Hwnd
     cc := Buffer(72, 0)
     custColors := Buffer(16 * 4, 0)
     NumPut("UInt", 72, cc, 0)          ; lStructSize
     NumPut("Ptr", ownerHwnd, cc, 8)    ; hwndOwner
-    NumPut("UInt", ToBGR(penColor), cc, 24) ; rgbResult (초기값)
+    NumPut("UInt", ToBGR(GetColorOf(target)), cc, 24) ; rgbResult (초기값)
     NumPut("Ptr", custColors.Ptr, cc, 32)   ; lpCustColors
     NumPut("UInt", 0x1 | 0x2, cc, 40)  ; CC_RGBINIT | CC_FULLOPEN
     if DllCall("comdlg32\ChooseColorW", "ptr", cc, "int") {
@@ -1230,9 +1684,19 @@ PickColor(ownerHwnd := 0, *) {
         r := bgr & 0xFF
         g := (bgr >> 8) & 0xFF
         b := (bgr >> 16) & 0xFF
-        penColor := (r << 16) | (g << 8) | b
-        UpdateSpotlightColor()
-        UpdateWidgetState()
+        picked := (r << 16) | (g << 8) | b
+        if (target = "Spot") {
+            spotColor := picked
+            UpdateSpotlightColor()
+        } else if (target = "Click") {
+            clickColor := picked ; 클릭 링은 다음 클릭 때 그려지므로 값만 바꿔두면 된다
+        } else {
+            drawColor := picked
+            ; 지금 쓰는 색까지 같이 맞춰둔다. 설정 창을 열면 드로잉 모드가 꺼지긴 하지만,
+            ; 그래도 "고른 색이 곧바로 반영된다"는 쪽이 헷갈리지 않는다.
+            activeDrawColor := picked
+            RedrawBrushCursor()
+        }
     }
 }
 
@@ -1271,6 +1735,19 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
     sliderEditHandlers[ed.Hwnd] := applyFromEdit
 }
 
+; 라벨 + 색상 견본 + "색상 선택..." 버튼을 한 줄로 만든다. 포인터·클릭효과·드로잉 세 탭이
+; 같은 모양으로 쓰므로, 탭마다 따로 적지 않고 여기 한 번만 적어둔다.
+AddColorRow(gui, y, target) {
+    gui.AddText("x30 y" (y + 4) " w70", "색상")
+    ; Text 컨트롤의 배경색 지정은 이 창(테마 적용된 일반 창)에서 반영되지 않는 문제가 있어서,
+    ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
+    ; Progress 컨트롤은 안쪽 채움 영역이 테두리보다 살짝 안으로 들어가 있어서, 모서리를
+    ; 둥글게 잘라내면 그 여백 부분이 직선 자국으로 비쳐 보인다 — 그냥 사각형으로 둔다.
+    swatch := gui.AddProgress("x100 y" y " w40 h24 Range0-100 -Smooth c" HexColor(GetColorOf(target)), 100)
+    btnPick := gui.AddButton("x150 y" (y - 2) " w110 h28", "색상 선택...")
+    btnPick.OnEvent("Click", (*) => (PickColor(target, gui.Hwnd), swatch.Opt("c" HexColor(GetColorOf(target)))))
+}
+
 ; 라벨 + 단축키 입력칸 + "기본값" 버튼을 한 줄로 만든다. 입력칸은 사용자가 누른 키 조합을
 ; 그대로 받아주는 전용 컨트롤이라, 직접 문자열을 타이핑하게 하는 것보다 훨씬 덜 헷갈린다.
 ; (이 컨트롤은 윈도우 키 조합을 담지 못한다 — 어차피 Windows 자체 단축키와 겹쳐서 권하지 않는다)
@@ -1288,7 +1765,7 @@ AddHotkeyRow(gui, y, name) {
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawThickness, DrawOpacity, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, penColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl
+    global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl
 
     ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
     ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
@@ -1317,14 +1794,17 @@ OpenSettingsWindow(*) {
     ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
     ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
     ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
-    tabs := settingsGui.AddTab3("x10 y10 w320 h385", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    ; 키 목록이 12줄이라 그만큼 자리를 준다 — 줄이 하나 늘 때마다 여기와 아래 버튼 위치,
+    ; 창 높이를 같이 키워야 마지막 줄이 잘리지 않는다.
+    tabs := settingsGui.AddTab3("x10 y10 w320 h428", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
     AddSliderRow(settingsGui, 90, "투명도", 0, 100, spotOpacity, "%", (v) => (spotOpacity := v, RedrawSpotlight()))
+    AddColorRow(settingsGui, 130, "Spot")
 
-    chkHideCursor := settingsGui.AddCheckbox("x30 y132 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
-    settingsGui.AddText("x54 y133 w220", "활성화 시 마우스 커서 숨기기")
+    chkHideCursor := settingsGui.AddCheckbox("x30 y172 w20 h20 " (hideCursorOnHighlight ? "Checked" : ""), "")
+    settingsGui.AddText("x54 y173 w220", "활성화 시 마우스 커서 숨기기")
     chkHideCursor.OnEvent("Click", (ctrl, *) => (hideCursorOnHighlight := ctrl.Value, UpdateCursorHiddenState()))
 
     tabs.UseTab("클릭효과")
@@ -1339,10 +1819,16 @@ OpenSettingsWindow(*) {
     AddSliderRow(settingsGui, 130, "빠르기", 1, 30, clickSpeed, "", (v) => (clickSpeed := v, CLICK_ANIM_INTERVAL := 41 - v))
     ; 클릭 링은 클릭할 때만 잠깐 나타나므로, 투명도는 값만 바꿔두면 다음 클릭부터 적용된다
     AddSliderRow(settingsGui, 170, "투명도", 0, 100, clickOpacity, "%", (v) => clickOpacity := v)
+    AddColorRow(settingsGui, 210, "Click")
 
     tabs.UseTab("드로잉")
-    AddSliderRow(settingsGui, 50, "선 굵기", 1, 12, DrawThickness, "", (v) => DrawThickness := v)
+    ; 설정 창이 열려 있다는 것은 드로잉 모드가 꺼져 있다는 뜻이라(OpenSettingsWindow에서 끈다)
+    ; 여기서 바꾼 값은 다음에 드로잉을 켤 때부터 쓰인다. 드로잉 중에 쓰는 값(activeDrawThickness)은
+    ; 켤 때마다 이 값으로 초기화된다.
+    AddSliderRow(settingsGui, 50, "선 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
     AddSliderRow(settingsGui, 90, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()))
+    AddColorRow(settingsGui, 130, "Draw")
+    AddSliderRow(settingsGui, 170, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
 
     tabs.UseTab("위젯")
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
@@ -1362,14 +1848,8 @@ OpenSettingsWindow(*) {
     settingsGui.AddText("x54 y53 w220", "Windows 시작 시 자동 실행")
     chkStartup.OnEvent("Click", (ctrl, *) => SetRunAtStartup(ctrl.Value))
 
-    settingsGui.AddText("x30 y98 w70", "색상")
-    ; Text 컨트롤의 배경색 지정은 이 창(테마 적용된 일반 창)에서 반영되지 않는 문제가 있어서,
-    ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
-    ; Progress 컨트롤은 안쪽 채움 영역이 테두리보다 살짝 안으로 들어가 있어서, 모서리를
-    ; 둥글게 잘라내면 그 여백 부분이 직선 자국으로 비쳐 보인다 — 그냥 사각형으로 둔다.
-    swatch := settingsGui.AddProgress("x100 y94 w40 h24 Range0-100 -Smooth c" HexColor(penColor), 100)
-    btnPick := settingsGui.AddButton("x150 y92 w110 h28", "색상 선택...")
-    btnPick.OnEvent("Click", (*) => (PickColor(settingsGui.Hwnd), swatch.Opt("c" HexColor(penColor))))
+    ; 색상은 포인터/클릭효과/드로잉이 각각 다른 색을 가지므로, 공용 항목으로 여기 두지 않고
+    ; 각 탭에 하나씩 둔다. (예전에는 셋이 한 색이라 이 자리에 하나만 있었다)
 
     ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
     ; 제작자 표시도 같이 둔다 — 수업 화면을 가리지 않으면서 찾으려는 사람은 확실히 볼 수 있는
@@ -1378,9 +1858,9 @@ OpenSettingsWindow(*) {
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
     ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
     ; 않아 눈에 걸리지도 않는다.
-    lblVersion := settingsGui.AddText("x30 y342 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion := settingsGui.AddText("x30 y384 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y362 w270", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x30 y404 w270", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
@@ -1393,30 +1873,30 @@ OpenSettingsWindow(*) {
     ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
     ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
     settingsGui.AddText("x30 y164 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
-    keyNames := settingsGui.AddText("x38 y188 w130 h196",
-        "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 7`nDelete`nEsc")
+    keyNames := settingsGui.AddText("x38 y186 w130 h232",
+        "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 9`nQ / W / E / R`n+ / -`n오른쪽 버튼 + / -`nDelete`nEsc")
     ; (도형 순서: 자유선 / 사각형 / 원 / 직선 / 물결 / 화살표 — 위 키 목록과 줄이 맞아야 한다)
     keyNames.SetFont("s9")
     ; 오른쪽 칸 글자가 한 줄을 넘기면 그 아래 줄들이 왼쪽 칸과 어긋나 보인다. 색 설명은
-    ; "1 ~ 7"과 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
-    keyMeans := settingsGui.AddText("x176 y188 w140 h196",
-        "자유선 그리기`n사각형`n원(타원)`n직선`n물결`n화살표`n지우개`n실행 취소`n색: 빨주노초파남보`n전부 지우기`n지우고 드로잉 끄기")
+    ; "1 ~ 9"와 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
+    keyMeans := settingsGui.AddText("x176 y186 w140 h232",
+        "자유선 그리기`n사각형`n원(타원)`n직선`n물결`n화살표`n지우개`n실행 취소`n색: 빨주노초파남보검흰`n칠판: 투명·흰색·초록·검정`n선 굵게 / 가늘게`n지우개 크게 / 작게`n전부 지우기`n지우고 드로잉 끄기")
     keyMeans.SetFont("s9 c666666")
 
     tabs.UseTab()
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y405 w90 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y448 w90 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x125 y405 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x125 y448 w90 h30", "저장")
     btnSave.OnEvent("Click", (*) => (SaveSettings(), btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x225 y405 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x225 y448 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h452")
+    settingsGui.Show("w340 h495")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -1750,6 +2230,18 @@ HOTKEY_ACTIONS := Map("Spotlight", ToggleSpotlight, "Draw", ToggleDraw)
 for name, combo in hotkeyCombos
     RegisterHotkey(name, combo)
 
+; ================= 개발용: 소스를 고치고 바로 확인하기 =================
+; 소스(.ahk)로 실행 중일 때만 켜지는 단축키다. 파일을 고쳐 저장한 뒤 Ctrl+Alt+R을 누르면
+; 프로그램이 그 자리에서 새 코드로 다시 시작한다 — 트레이에서 종료하고 다시 여는 과정이
+; 필요 없고, exe로 다시 컴파일할 필요도 없다. 위쪽 "조절용 숫자"들을 시험할 때 쓰라고 둔 것.
+; 컴파일된 exe에서는 등록하지 않는다 — 받아 쓰는 분의 Ctrl+Alt+R을 빼앗을 이유가 없다.
+; (Reload는 OnExit을 거치므로 숨겨둔 커서도 정상적으로 복구되고, 새 인스턴스가 시작할 때
+;  한 번 더 기본 커서로 되돌리므로 이중으로 안전하다)
+if !A_IsCompiled {
+    try Hotkey("^!r", (*) => Reload(), "On")
+    A_TrayMenu.Insert("종료", "소스 다시 불러오기 (Ctrl+Alt+R)", (*) => Reload()) ; "종료" 바로 위에 둔다
+}
+
 ; (Win+Shift+S 캡처 도구 드래그가 판서로 그려지는 문제는 DrawPoll에서 "드래그를 시작한 창이
 ; 판서 오버레이인지"를 보고 걸러내므로, 별도 핫키 감지가 필요 없다.)
 ; 아래 두 단축키는 판서 모드 중에만 켜짐 (ToggleDraw에서 On/Off 제어). 판서 모드 중엔 이 키가
@@ -1758,7 +2250,18 @@ Hotkey("Esc", ExitDrawMode, "Off")    ; 내용 지우고 드로잉 모드 종료
 Hotkey("Delete", ClearDrawing, "Off") ; 드로잉 모드 유지한 채 내용만 지움
 Hotkey("^z", UndoDrawing, "Off")      ; 직전 획/지우기/전체 지우기 한 단계 되돌리기
 loop DRAW_COLORS.Length
-    Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~7 = 빨주노초파남보
+    Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~9 = 빨주노초파남보 + 검정 + 흰색
+
+; 선 굵기 조절. "+"는 키보드에서 Shift를 함께 눌러야 나오는 글자라, 굵게 하려고 Shift 없이
+; 그 키를 눌러도(=) 되도록 둘 다 잡는다. 숫자 키패드가 있는 키보드도 함께 챙긴다.
+THICKNESS_KEYS := [["=", 1], ["+=", 1], ["NumpadAdd", 1], ["-", -1], ["NumpadSub", -1]]
+for pair in THICKNESS_KEYS
+    Hotkey(pair[1], MakeThicknessSetter(pair[2]), "Off")
+
+; 칠판 색 (Q/W/E/R). 도형 키(Z·X·C)와 마찬가지로 드로잉 모드일 때만 잡으므로, 모드를 끄면
+; 평소대로 글자 키로 돌아간다.
+for pair in BOARD_KEYS
+    Hotkey(pair[1], MakeBoardSetter(pair[2]), "Off")
 
 ; 도형 키(Z/X/C)는 "누르고 있는 동안"만 뜻이 있어서 눌렀을 때 할 일이 따로 없다. 그런데도
 ; 핫키로 잡아두는 이유는 두 가지다 — (1) 키를 삼켜서 뒤에 있는 프로그램에 글자가 입력되지
@@ -1774,12 +2277,16 @@ for pair in SHAPE_HOLD_KEYS {
 ; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
 ; 그대로 쓸 수 있다.
 SetDrawModeHotkeys(state) {
-    global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld
+    global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld, THICKNESS_KEYS, BOARD_KEYS
     Hotkey("Esc", state)
     Hotkey("Delete", state)
     Hotkey("^z", state)
     loop DRAW_COLORS.Length
         Hotkey(String(A_Index), state)
+    for pair in THICKNESS_KEYS
+        Hotkey(pair[1], state)
+    for pair in BOARD_KEYS
+        Hotkey(pair[1], state)
     for pair in SHAPE_HOLD_KEYS {
         Hotkey(pair[1], state)
         Hotkey(pair[1] " up", state)
