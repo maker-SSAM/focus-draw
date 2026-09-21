@@ -130,7 +130,7 @@ LoadSettings() {
     global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep
     global STEP_MAX, PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
     global spotColor, clickColor, drawColor
-    global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight
+    global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, hideCursorOnHighlight, widgetScale, widgetBgColor, widgetOpacity
     global HOTKEY_DEFAULTS, hotkeyCombos, DEFAULT_DRAW_STEP, DEFAULT_ERASER_STEP
     SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
@@ -160,6 +160,11 @@ LoadSettings() {
     drawColor := Integer("0x" IniRead(SETTINGS_PATH, "Draw", "Color", legacyColor))
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 0) = 1
+    ; 위젯 크기는 100%가 기준. 빔프로젝터로 크게 띄우거나 고해상도 노트북에서 작게 보일 때 쓴다.
+    widgetScale := Max(60, Min(250, IniRead(SETTINGS_PATH, "Common", "WidgetScale", 100)))
+    widgetBgColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "WidgetColor", "F2F2F2"))
+    ; ìì ¯ì´ ìì íë©´ì ê°ë¦¬ë ê² ì ê²½ ì°ì¼ ë ì´ë¤. ëë¬´ ë®ì¶ë©´ ëë¬ì¼ í  ë²í¼ì´ ì ë³´ì¬ì 20%ê¹ì§ë§.
+    widgetOpacity := Max(20, Min(100, IniRead(SETTINGS_PATH, "Common", "WidgetOpacity", 100)))
     ; 저장된 단축키가 이상하면(사람이 ini를 잘못 고쳤다거나) 기본값으로 돌려서, 단축키가
     ; 하나도 안 먹는 상태로 시작하는 일이 없게 한다.
     for name, def in HOTKEY_DEFAULTS {
@@ -174,7 +179,7 @@ LoadSettings() {
 ; 경우다. 그냥 두면 IniWrite가 던진 오류가 그대로 튀어나와 수업 중에 오류 창이 뜨고 스크립트가
 ; 멈춘다. 무엇을 어떻게 하면 되는지 알려주고 계속 쓸 수 있게 한다(바꾼 값은 이번 실행 동안 유효).
 SaveSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity
     try
         return WriteSettings()
     catch as err {
@@ -190,7 +195,7 @@ SaveSettings() {
 }
 
 WriteSettings() {
-    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos
+    global SETTINGS_PATH, SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, spotColor, clickColor, drawColor, clickEffectEnabled, clickSpeed, clickOpacity, showWidget, showTrayIcons, hideCursorOnHighlight, hotkeyCombos, widgetScale, widgetBgColor, widgetOpacity
     IniWrite(SpotSize, SETTINGS_PATH, "Highlight", "Size")
     IniWrite(spotOpacity, SETTINGS_PATH, "Highlight", "Opacity")
     IniWrite(SpotThickness, SETTINGS_PATH, "Highlight", "RingThickness")
@@ -206,6 +211,9 @@ WriteSettings() {
     IniWrite(HexColor(drawColor), SETTINGS_PATH, "Draw", "Color")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
+    IniWrite(widgetScale, SETTINGS_PATH, "Common", "WidgetScale")
+    IniWrite(HexColor(widgetBgColor), SETTINGS_PATH, "Common", "WidgetColor")
+    IniWrite(widgetOpacity, SETTINGS_PATH, "Common", "WidgetOpacity")
     for name, combo in hotkeyCombos
         IniWrite(combo, SETTINGS_PATH, "Hotkeys", name)
     ; 예전 버전에 있던 전역 "지우기" 단축키의 잔재를 치운다. 안 읽히는 값이라 그냥 둬도
@@ -444,7 +452,13 @@ ClearBackBuffer()
 ; ================= 판서 오버레이 창 (레이어드 윈도우 + 픽셀 단위 알파) =================
 ; 색상 키(투명색) 방식 대신 진짜 픽셀 알파를 쓰면, 안 그려진 빈 공간도 창이 그대로
 ; 마우스 입력을 받아서 아래 화면(링크 클릭, 텍스트 드래그 등)으로 클릭이 새지 않는다.
-drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80000", "FocusDraw-Draw") ; E0x80000 = WS_EX_LAYERED
+; E0x80000 = WS_EX_LAYERED, E0x8000000 = WS_EX_NOACTIVATE.
+; **NOACTIVATE가 꼭 필요하다.** 이게 없으면 그림을 그리려고 오버레이를 클릭하는 순간 오버레이가
+; 활성화되면서 "항상 위" 무리의 맨 앞으로 올라가고, 그 위에 있어야 할 위젯이 뒤로 밀린다.
+; 그러면 판서 중에 위젯을 눌러도 클릭이 오버레이에 막혀 아무 일도 일어나지 않는다
+; (한 획 긋고 나면 위젯으로 끄지 못하던 원인이 이것이었다). 오버레이는 포커스를 받을 일이
+; 없으므로(단축키는 전역이고 그리기는 마우스 상태를 직접 읽는다) 활성화를 막아도 손해가 없다.
+drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080000", "FocusDraw-Draw")
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
 ; ================= 칠판 (판서 층 아래에 까는 단색 판) =================
@@ -652,22 +666,25 @@ SetBrushMode(mode) {
 ; 그래서 커서 아래 창이 판서 오버레이가 아닐 때는 진짜 커서를 잠시 돌려주고 원을 감춘다.
 ; 판정은 이미 드래그를 걸러낼 때 쓰던 것과 같은 것(winUnder)을 그대로 쓴다. 우리 원은 클릭
 ; 통과 창이라 MouseGetPos가 건너뛰므로 스스로를 "다른 창"으로 착각할 일이 없다.
-cursorOverOtherWindow := false
-
+; **지금 어떤 상태인지는 따로 기억하지 않고 화면에서 직접 읽는다.**
+; 예전에는 "위젯 위인가"를 변수에 적어두고 값이 바뀔 때만 손댔는데, 그 변수와 실제 화면이
+; 한 번 어긋나면(드로잉을 켜는 순간 커서가 이미 위젯 위에 있는 경우 등) 영영 복구되지 않았다 —
+; 겉으로는 화살표가 떠 있는데 기록은 "오버레이 위"라서, 오버레이로 돌아가도 아무 일도 하지
+; 않는 상태로 굳었다. 원이 떠 있는지를 그대로 물어보면 어긋날 수가 없다.
 UpdateDrawCursorForWindow(winUnder) {
-    global drawOn, drawGui, brushGui, cursorOverOtherWindow
+    global drawOn, drawGui, brushGui
     if !drawOn
         return
-    onOther := (winUnder != drawGui.Hwnd)
-    if (onOther = cursorOverOtherWindow)
-        return ; 바뀔 때만 손댄다 (10ms마다 커서를 다시 씌우면 낭비다)
-    cursorOverOtherWindow := onOther
-    if onOther {
-        RestoreSystemCursor()
-        brushGui.Hide()
-    } else {
-        UpdateCursorHiddenState() ; 다시 감추고
+    wantCircle := (winUnder = drawGui.Hwnd) ; 오버레이 위에서만 원을 쓴다
+    hasCircle := DllCall("IsWindowVisible", "ptr", brushGui.Hwnd) ? true : false
+    if (wantCircle = hasCircle)
+        return ; 이미 맞다 (10ms마다 커서를 다시 씌우면 낭비다)
+    if wantCircle {
+        UpdateCursorHiddenState() ; 진짜 커서를 다시 감추고
         brushGui.Show("NA")       ; 원을 도로 띄운다
+    } else {
+        RestoreSystemCursor()     ; 위젯·캡처 도구 위에서는 평소 화살표를 돌려준다
+        brushGui.Hide()
     }
 }
 
@@ -1566,7 +1583,7 @@ ToggleDraw(*) {
     global drawOn, drawGui, brushGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, drawColor
     global activeDrawThickness, activeDrawStep, DrawStep, activeEraserSize, activeEraserStep, EraserStep
     global PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
-    global erasing, brushMode, cursorOverOtherWindow, boardGui, stepGui
+    global erasing, brushMode, boardGui, stepGui
     drawOn := !drawOn
     ; 숫자키와 +/-로 잠깐 바꿔둔 색·굵기·지우개 크기는 여기서 초기화한다. 드로잉을 켤 때마다
     ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
@@ -1578,7 +1595,6 @@ ToggleDraw(*) {
     SetTimer(HideStepNumber, 0)
     stepGui.Hide() ; 단계 숫자가 떠 있는 채로 모드가 바뀌면 화면에 남는다
     brushMode := "pen"
-    cursorOverOtherWindow := false
     erasing := false
     ; 칠판도 임시값이라 켤 때마다 "없음"(화면이 그대로 비침)으로 시작한다
     SetBoardColor(-1)
@@ -1615,6 +1631,12 @@ ToggleDraw(*) {
     UpdateCursorHiddenState() ; 판서 중에는 진짜 커서를 완전히 감춘다 (원이 커서 노릇을 한다)
     if drawOn
         RedrawBrushCursor() ; 이번에 쓸 색·굵기로 원을 그려둔다
+    ; 드로잉을 켤 때만이 아니라 **끌 때도** 위젯을 맨 앞으로 올려야 한다. 켤 때 올려둔 순서가
+    ; 끄면서 풀려, 작업표시줄 위에 둔 위젯이 작업표시줄 뒤로 밀려 사라진 것처럼 보였다.
+    ; 여기서 한 번 올리고, **조금 있다가 한 번 더** 올린다 — 오버레이를 감추고 나면 Windows가
+    ; 뒤늦게 작업표시줄을 앞으로 올리기 때문에, 지금 올려둔 것만으로는 도로 밀린다.
+    RaiseWidget()
+    SetTimer(RaiseWidget, -150)
     UpdateWidgetState()
 }
 
@@ -1685,19 +1707,33 @@ ExitDrawMode(*) {
     ToggleDraw()
 }
 
+; 위젯의 판서 버튼. **끌 때는 그려둔 내용까지 지운다 — Esc와 같은 효과다.**
+; 단축키로 끌 때는 일부러 그대로 남긴다. 그쪽은 "잠시 다른 걸 만졌다가 이어서 쓴다"는 흐름이고,
+; 버튼은 "이제 다 썼으니 정리한다"는 흐름이기 때문이다. Esc를 쓰기 어려워하는 분들에게는
+; 이 버튼이 사실상 유일한 "지우고 나가기" 수단이 된다.
+; (실수로 지웠더라도 실행 취소 기록은 남아 있다 — 판서를 다시 켜고 Ctrl+Z를 누르면 돌아온다)
+ToggleDrawFromWidget(*) {
+    global drawOn
+    if drawOn
+        ExitDrawMode()
+    else
+        ToggleDraw()
+}
+
 ; 포인터(강조 원) / 클릭효과(링) / 드로잉(선)은 각각 자기 색을 갖는다. 셋을 한 색으로 묶어두면
 ; 예컨대 "강조는 은은한 노랑, 판서는 진한 빨강"처럼 쓰임새가 다른 조합을 만들 수 없다.
 ; 어느 색을 가리키는지는 문자열 하나로 넘기고, 읽고 쓰는 곳을 이 두 함수에만 모아둔다.
 GetColorOf(target) {
-    global spotColor, clickColor, drawColor
-    return (target = "Spot") ? spotColor : (target = "Click") ? clickColor : drawColor
+    global spotColor, clickColor, drawColor, widgetBgColor
+    return (target = "Spot") ? spotColor : (target = "Click") ? clickColor
+        : (target = "Widget") ? widgetBgColor : drawColor
 }
 
 ; Windows 기본 색상 선택 대화상자(ChooseColor)를 띄워서 색을 자유롭게 고른다.
 ; ownerHwnd를 지정하지 않으면 위젯을 소유 창으로 쓴다 — 설정 창 등 다른 창에서 호출할 때는
 ; 그 창의 Hwnd를 넘겨줘야 대화상자가 그 창 뒤에 가려지지 않는다.
 PickColor(target := "Spot", ownerHwnd := 0, *) {
-    global spotColor, clickColor, drawColor, activeDrawColor, widget
+    global spotColor, clickColor, drawColor, widgetBgColor, showWidget, activeDrawColor, widget
     if !ownerHwnd
         ownerHwnd := widget.Hwnd
     cc := Buffer(72, 0)
@@ -1716,6 +1752,11 @@ PickColor(target := "Spot", ownerHwnd := 0, *) {
         if (target = "Spot") {
             spotColor := picked
             UpdateSpotlightColor()
+        } else if (target = "Widget") {
+            widgetBgColor := picked
+            ; 버튼 그림이 배경색에 합성되어 있어서 위젯을 다시 만들어야 한다
+            BuildWidget()
+            SetWidgetVisible(showWidget)
         } else if (target = "Click") {
             clickColor := picked ; 클릭 링은 다음 클릭 때 그려지므로 값만 바꿔두면 된다
         } else {
@@ -1743,22 +1784,26 @@ OnSliderEditKeyDown(wParam, lParam, msg, hwnd) {
 
 ; 라벨 + "-"버튼 + 슬라이더 + "+"버튼 + 숫자 직접입력 칸을 한 줄로 만들어주는 공용 함수.
 ; onChange(새값)은 슬라이더/버튼/입력칸(Enter 또는 포커스 이동 시) 중 무엇으로 바꾸든 동일하게 호출된다.
-AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChange) {
+; step은 슬라이더와 -/+ 버튼이 한 번에 움직이는 크기다. 위젯 크기(%)처럼 1씩 움직여봐야
+; 차이가 안 보이는 값에 쓴다. **숫자칸에 직접 적을 때는 step을 무시한다** — 굳이 105%를
+; 적어 넣겠다는 사람을 100이나 110으로 되돌릴 이유가 없다.
+AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChange, step := 1) {
     global sliderEditHandlers
     gui.AddText("x30 y" (y + 4) " w70", labelText)
     btnMinus := gui.AddButton("x100 y" y " w24 h24", "-")
-    sl := gui.AddSlider("x126 y" (y + 2) " w104 Range" rangeMin "-" rangeMax, initial)
-    btnPlus := gui.AddButton("x232 y" y " w24 h24", "+")
-    ed := gui.AddEdit("x260 y" y " w40 h24 Center Number", initial)
-    RoundRegion(ed.Hwnd, 40, 24, 12) ; 숫자칸 모서리를 둥글게
+    sl := gui.AddSlider("x126 y" (y + 2) " w204 Range" rangeMin "-" rangeMax, initial)
+    btnPlus := gui.AddButton("x332 y" y " w24 h24", "+")
+    ed := gui.AddEdit("x360 y" y " w44 h24 Center Number", initial)
+    RoundRegion(ed.Hwnd, 44, 24, 12) ; 숫자칸 모서리를 둥글게
     if suffixText != ""
-        gui.AddText("x302 y" (y + 4) " w30", suffixText)
+        gui.AddText("x410 y" (y + 4) " w40", suffixText)
 
-    apply := (v) => (v := Max(rangeMin, Min(rangeMax, v)), sl.Value := v, ed.Text := v, onChange(v))
+    apply := (v) => (v := Max(rangeMin, Min(rangeMax, Round(v))), sl.Value := v, ed.Text := v, onChange(v))
+    snap := (v) => (step > 1) ? Round(v / step) * step : v
     applyFromEdit := () => apply(ed.Text = "" ? rangeMin : Integer(ed.Text))
-    sl.OnEvent("Change", (ctrl, *) => apply(ctrl.Value))
-    btnMinus.OnEvent("Click", (*) => apply(sl.Value - 1))
-    btnPlus.OnEvent("Click", (*) => apply(sl.Value + 1))
+    sl.OnEvent("Change", (ctrl, *) => apply(snap(ctrl.Value)))
+    btnMinus.OnEvent("Click", (*) => apply(sl.Value - step))
+    btnPlus.OnEvent("Click", (*) => apply(sl.Value + step))
     ed.OnEvent("LoseFocus", (*) => applyFromEdit())
     sliderEditHandlers[ed.Hwnd] := applyFromEdit
 }
@@ -1771,6 +1816,12 @@ AddColorRow(gui, y, target) {
     ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
     ; Progress 컨트롤은 안쪽 채움 영역이 테두리보다 살짝 안으로 들어가 있어서, 모서리를
     ; 둥글게 잘라내면 그 여백 부분이 직선 자국으로 비쳐 보인다 — 그냥 사각형으로 둔다.
+    ; 견본 색이 설정 창 배경과 비슷하면(위젯 기본색 F2F2F2가 딱 그렇다) 견본이 아예 안 보여서
+    ; 고장난 것처럼 보인다. 한 겹 큰 회색 막대를 뒤에 깔아 테두리처럼 쓴다.
+    ; **여백을 1px만 주면 안 된다** — Progress는 자기 테두리 안쪽으로 색을 채우기 때문에,
+    ; 바깥 1px은 그 컨트롤 자신의 테두리에 먹힌다. 그래서 보이는 회색 두께는 "여백 - 1px"이다.
+    ; 여기서는 2px을 줘서 1px 테두리로 보이게 한다(화면을 찍어 픽셀을 세어 맞췄다).
+    gui.AddProgress("x98 y" (y - 2) " w44 h28 Range0-100 -Smooth c808080", 100)
     swatch := gui.AddProgress("x100 y" y " w40 h24 Range0-100 -Smooth c" HexColor(GetColorOf(target)), 100)
     btnPick := gui.AddButton("x150 y" (y - 2) " w110 h28", "색상 선택...")
     btnPick.OnEvent("Click", (*) => (PickColor(target, gui.Hwnd), swatch.Opt("c" HexColor(GetColorOf(target)))))
@@ -1793,7 +1844,7 @@ AddHotkeyRow(gui, y, name) {
 }
 
 OpenSettingsWindow(*) {
-    global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl
+    global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl, widgetScale, widgetOpacity
 
     ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
     ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
@@ -1824,7 +1875,7 @@ OpenSettingsWindow(*) {
     ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
     ; 키 목록이 12줄이라 그만큼 자리를 준다 — 줄이 하나 늘 때마다 여기와 아래 버튼 위치,
     ; 창 높이를 같이 키워야 마지막 줄이 잘리지 않는다.
-    tabs := settingsGui.AddTab3("x10 y10 w320 h428", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
+    tabs := settingsGui.AddTab3("x10 y10 w460 h428", ["일반", "포인터", "클릭효과", "드로잉", "위젯", "단축키"])
 
     tabs.UseTab("포인터")
     AddSliderRow(settingsGui, 50, "크기", 30, 200, SpotSize, "", (v) => (SpotSize := v, ApplySpotlightAppearance()))
@@ -1869,6 +1920,22 @@ OpenSettingsWindow(*) {
     settingsGui.AddText("x54 y93 w200", "작업표시줄 아이콘 활성화")
     chkTray.OnEvent("Click", (ctrl, *) => SetTrayIconsVisible(ctrl.Value))
 
+    ; 크기를 바꾸면 위젯을 통째로 다시 만든다(버튼 그림이 크기에 맞춰 다시 그려져야 한다).
+    ; 슬라이더를 끄는 동안 매번 다시 만들면 깜빡이므로, 손을 뗀 뒤 잠깐 있다가 한 번만 만든다.
+    ; 1%씩 움직여봐야 차이가 안 보여서 슬라이더와 -/+는 10%씩 간다. 숫자칸에 직접 적으면 1% 단위.
+    AddSliderRow(settingsGui, 132, "크기", 60, 250, widgetScale, "%"
+        , (v) => (widgetScale := v, SetTimer(RebuildWidgetSoon, -200)), 10)
+    AddColorRow(settingsGui, 174, "Widget")
+    ; 투명도는 창 속성만 바꾸면 되므로 슬라이더를 끄는 대로 바로 반영된다(다시 만들 필요 없음)
+    AddSliderRow(settingsGui, 214, "투명도", 20, 100, widgetOpacity, "%"
+        , (v) => (widgetOpacity := v, ApplyWidgetOpacity()), 5)
+
+    settingsGui.AddText("x30 y260 w70", "위치")
+    btnResetPos := settingsGui.AddButton("x100 y256 w160 h28", "처음 자리로 되돌리기")
+    btnResetPos.OnEvent("Click", (*) => MoveWidgetToDefaultPos())
+    lblResetPos := settingsGui.AddText("x100 y290 w340", "어디 뒀는지 모를 때 화면 오른쪽 아래로 가져옵니다.")
+    lblResetPos.SetFont("s9 c999999")
+
     tabs.UseTab("일반")
     ; 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는 항상
     ; IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
@@ -1886,28 +1953,28 @@ OpenSettingsWindow(*) {
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
     ; 탭 아래쪽에 붙여둔다. 프로그램 정보는 보통 이 자리에 있고, 위쪽 설정 항목들과 섞이지
     ; 않아 눈에 걸리지도 않는다.
-    lblVersion := settingsGui.AddText("x30 y384 w270 +0x80", "Focus & Draw 버전 " APP_VERSION)
+    lblVersion := settingsGui.AddText("x30 y384 w410 +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
-    lblAuthor := settingsGui.AddText("x30 y404 w270", "제작자: maker_SSAM")
+    lblAuthor := settingsGui.AddText("x30 y404 w410", "제작자: maker_SSAM")
     lblAuthor.SetFont("s9 c999999")
 
     tabs.UseTab("단축키")
     AddHotkeyRow(settingsGui, 50, "Spotlight")
     AddHotkeyRow(settingsGui, 90, "Draw")
-    lblHotkeyHelp := settingsGui.AddText("x30 y126 w280 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
+    lblHotkeyHelp := settingsGui.AddText("x30 y126 w420 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
     lblHotkeyHelp.SetFont("s9 c999999")
 
     ; 드로잉 중에만 쓰는 키들은 바꿀 수 없지만, 모르면 못 쓰는 기능이라 여기에 같이 적어둔다.
     ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
     ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
-    settingsGui.AddText("x30 y164 w280", "드로잉 모드에서 쓰는 키 (변경 불가)")
+    settingsGui.AddText("x30 y164 w420", "드로잉 모드에서 쓰는 키 (변경 불가)")
     keyNames := settingsGui.AddText("x38 y186 w130 h232",
         "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 9`nQ / W / E / R`n+ / -`n오른쪽 버튼 + / -`nDelete`nEsc")
     ; (도형 순서: 자유선 / 사각형 / 원 / 직선 / 물결 / 화살표 — 위 키 목록과 줄이 맞아야 한다)
     keyNames.SetFont("s9")
     ; 오른쪽 칸 글자가 한 줄을 넘기면 그 아래 줄들이 왼쪽 칸과 어긋나 보인다. 색 설명은
     ; "1 ~ 9"와 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
-    keyMeans := settingsGui.AddText("x176 y186 w140 h232",
+    keyMeans := settingsGui.AddText("x176 y186 w260 h232",
         "자유선 그리기`n사각형`n원(타원)`n직선`n물결`n화살표`n지우개`n실행 취소`n색: 빨주노초파남보검흰`n칠판: 투명·흰색·초록·검정`n선 굵게 / 가늘게`n지우개 크게 / 작게`n전부 지우기`n지우고 드로잉 끄기")
     keyMeans.SetFont("s9 c666666")
 
@@ -1915,18 +1982,18 @@ OpenSettingsWindow(*) {
 
     ; 배경색은 테마가 적용된 버튼이라 바꿀 수 없어서, 대신 글자색을 연하게 해 일반
     ; 버튼과 다르다는 느낌만 은은하게 준다.
-    btnExit := settingsGui.AddButton("x25 y448 w90 h30", "프로그램 종료")
+    btnExit := settingsGui.AddButton("x25 y448 w130 h30", "프로그램 종료")
     btnExit.SetFont("c999999")
     btnExit.OnEvent("Click", (*) => ExitApp())
-    btnSave := settingsGui.AddButton("x125 y448 w90 h30", "저장")
+    btnSave := settingsGui.AddButton("x265 y448 w90 h30", "저장")
     ; 저장에 실패하면 안내 창이 뜨므로, 버튼 글자를 "저장됨"으로 바꾸지 않는다 —
     ; 실패했는데 됐다고 보이면 그게 제일 나쁘다.
     btnSave.OnEvent("Click", (*) => SaveSettings() && (btnSave.Text := "저장됨", SetTimer(() => btnSave.Text := "저장", -1000)))
-    btnCloseSettings := settingsGui.AddButton("x225 y448 w90 h30", "닫기")
+    btnCloseSettings := settingsGui.AddButton("x365 y448 w90 h30", "닫기")
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
-    settingsGui.Show("w340 h495")
+    settingsGui.Show("w480 h500")
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
@@ -2016,49 +2083,300 @@ RenderButtonBitmap(fillColor, bgColor, size, corner, iconPath, iconSize, iconCol
     return hBmp
 }
 
-hBtnSpotOff := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SPOT_DARK_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
-hBtnSpotOn := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SPOT_DARK_PATH, CHIP_ICON_SIZE, TRAY_ON_COLOR)
-hBtnDrawOff := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_DRAW_DARK_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
-hBtnDrawOn := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_DRAW_DARK_PATH, CHIP_ICON_SIZE, TRAY_ON_COLOR)
-hBtnSettings := RenderButtonBitmap(0xFFFFFF, WIDGET_BG_COLOR, CHIP_SIZE, CHIP_CORNER, ICON_SETTINGS_PATH, CHIP_ICON_SIZE, ICON_OFF_COLOR)
-
-widget := Gui("+AlwaysOnTop -Caption +ToolWindow", "FocusDraw")
-widget.BackColor := "F2F2F2"
-widget.SetFont("s10", "Malgun Gothic")
-
-; 강조/판서 버튼은 "꺼짐/켜짐" 그림을 한 컨트롤에서 바꿔치기(STM_SETIMAGE)하는 대신,
-; 같은 자리에 꺼짐용/켜짐용 Picture 컨트롤을 각각 만들어두고 보이기/숨기기만 전환한다.
-; (STM_SETIMAGE로 비트맵을 다시 넣으면, 그 핸들이 이미 한 번 다른 곳에 쓰였는지 여부에
-; 따라 안 보이게 되는 경우가 있어서 — Show/Hide 전환이 훨씬 안정적이다)
-grip := widget.AddText("x6 y4 w14 h32 Center +0x200", "⋮")
-btnSpotOff := widget.AddPicture("x24 y4 w32 h32", "HBITMAP:" hBtnSpotOff)
-btnSpotOn := widget.AddPicture("x24 y4 w32 h32 Hidden", "HBITMAP:" hBtnSpotOn)
-btnDrawOff := widget.AddPicture("x60 y4 w32 h32", "HBITMAP:" hBtnDrawOff)
-btnDrawOn := widget.AddPicture("x60 y4 w32 h32 Hidden", "HBITMAP:" hBtnDrawOn)
-btnSettings := widget.AddPicture("x96 y4 w32 h32", "HBITMAP:" hBtnSettings)
-btnClose := widget.AddText("x132 y4 w14 h32 Center +0x200", "✕")
-
-for ctrl in [btnSpotOff, btnSpotOn]
-    ctrl.OnEvent("Click", ToggleSpotlight)
-for ctrl in [btnDrawOff, btnDrawOn]
-    ctrl.OnEvent("Click", ToggleDraw)
-btnSettings.OnEvent("Click", OpenSettingsWindow)
-; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 메뉴의 "위젯 표시"나 설정 창의
-; "위젯" 탭에서 다시 켤 수 있음)
-; 주의: 여기서 (*) => (showWidget := false, ...) 처럼 화살표 함수 안에서 전역 변수에 값을
-; 넣으면 안 된다. AutoHotkey v2에서 함수 안의 대입은 global 선언이 없으면 같은 이름의
-; 지역 변수를 새로 만들 뿐이라 전역값이 그대로 남는다. 실제로 그 탓에 ✕로 위젯을 숨겨도
-; showWidget은 계속 참이어서, 설정 창의 "위젯 활성화"가 체크된 채로 보이고 한 번 눌러도
-; 다시 나타나지 않는 버그가 있었다. 그래서 global을 선언할 수 있는 보통 함수로 둔다.
-btnClose.OnEvent("Click", (*) => SetWidgetVisible(false))
-
 ; 위젯 창 자체의 바깥 테두리도 둥글게 잘라낸다 (칩과 달리 배경이 단색 하나뿐이라
 ; SetWindowRgn만으로 충분히 자연스럽게 보인다).
 RoundRegion(hwnd, w, h, corner) {
     rgn := DllCall("CreateRoundRectRgn", "int", 0, "int", 0, "int", w, "int", h, "int", corner, "int", corner, "ptr")
     DllCall("SetWindowRgn", "ptr", hwnd, "ptr", rgn, "int", true)
 }
-RoundRegion(widget.Hwnd, widgetW, widgetH, 16)
+
+; 위젯은 크기·배경색이 바뀔 때마다 **통째로 다시 만든다.** 버튼 그림이 배경색에 미리
+; 합성된 비트맵이라 배경색이 바뀌면 그림도 다시 그려야 하고, 만들어둔 Picture 컨트롤에
+; 비트맵을 나중에 바꿔 넣는(STM_SETIMAGE) 방식은 예전에 간헐적으로 안 보이는 문제가 있었다
+; (그래서 꺼짐/켜짐 그림도 컨트롤을 둘 만들어 보이기/숨기기로 전환한다). 다시 만드는 편이
+; 훨씬 확실하고, 자주 일어나는 일도 아니다.
+; 위치는 유지한다 — 크기를 조절하는 동안 위젯이 구석으로 튀면 곤란하다.
+WidgetPx(base) {
+    global widgetScale
+    return Max(1, Round(base * widgetScale / 100))
+}
+
+BuildWidget() {
+    global widget, grip, btnSpotOff, btnSpotOn, btnDrawOff, btnDrawOn, btnSettings, btnClose
+    global hBtnSpotOff, hBtnSpotOn, hBtnDrawOff, hBtnDrawOn, hBtnSettings
+    global widgetW, widgetH, widgetScale, widgetBgColor
+    global CHIP_SIZE, CHIP_CORNER, CHIP_ICON_SIZE, ICON_OFF_COLOR, TRAY_ON_COLOR
+    global ICON_SPOT_DARK_PATH, ICON_DRAW_DARK_PATH, ICON_SETTINGS_PATH
+
+    ; 이전 위젯이 있으면 자리를 기억해두고 치운다 (비트맵도 함께 — 안 지우면 조절할 때마다 샌다)
+    keepX := "", keepY := ""
+    if IsSet(widget) && widget {
+        try WinGetPos(&keepX, &keepY, , , widget)
+        for h in [hBtnSpotOff, hBtnSpotOn, hBtnDrawOff, hBtnDrawOn, hBtnSettings]
+            try DllCall("DeleteObject", "ptr", h)
+        try widget.Destroy()
+    }
+
+    chip := WidgetPx(CHIP_SIZE)
+    corner := WidgetPx(CHIP_CORNER)
+    icon := WidgetPx(CHIP_ICON_SIZE)
+    pad := WidgetPx(6)   ; 좌우 여백
+    top := WidgetPx(4)   ; 위아래 여백
+    narrow := WidgetPx(14) ; 그립(⋮)·닫기(✕)처럼 글자 폭에 맞춘 좁은 칸
+    gap := WidgetPx(4)   ; 칩 사이 간격
+    widgetH := chip + top * 2
+    widgetW := pad * 2 + narrow * 2 + chip * 3 + gap * 4
+
+    hBtnSpotOff := RenderButtonBitmap(0xFFFFFF, widgetBgColor, chip, corner, ICON_SPOT_DARK_PATH, icon, ICON_OFF_COLOR)
+    hBtnSpotOn := RenderButtonBitmap(0xFFFFFF, widgetBgColor, chip, corner, ICON_SPOT_DARK_PATH, icon, TRAY_ON_COLOR)
+    hBtnDrawOff := RenderButtonBitmap(0xFFFFFF, widgetBgColor, chip, corner, ICON_DRAW_DARK_PATH, icon, ICON_OFF_COLOR)
+    hBtnDrawOn := RenderButtonBitmap(0xFFFFFF, widgetBgColor, chip, corner, ICON_DRAW_DARK_PATH, icon, TRAY_ON_COLOR)
+    hBtnSettings := RenderButtonBitmap(0xFFFFFF, widgetBgColor, chip, corner, ICON_SETTINGS_PATH, icon, ICON_OFF_COLOR)
+
+    widget := Gui("+AlwaysOnTop -Caption +ToolWindow", "FocusDraw")
+    widget.BackColor := HexColor(widgetBgColor)
+    ; 배경이 어두우면 ⋮와 ✕가 묻히므로 글자색을 뒤집는다 (밝기 기준은 사람 눈의 민감도 가중치)
+    widget.SetFont("s" Max(6, WidgetPx(10)) " c" (WidgetIsDark() ? "E6E6E6" : "000000"), "Malgun Gothic")
+
+    x := pad
+    grip := widget.AddText("x" x " y" top " w" narrow " h" chip " Center +0x200", "⋮")
+    x += narrow + gap
+    btnSpotOff := widget.AddPicture("x" x " y" top " w" chip " h" chip, "HBITMAP:" hBtnSpotOff)
+    btnSpotOn := widget.AddPicture("x" x " y" top " w" chip " h" chip " Hidden", "HBITMAP:" hBtnSpotOn)
+    x += chip + gap
+    btnDrawOff := widget.AddPicture("x" x " y" top " w" chip " h" chip, "HBITMAP:" hBtnDrawOff)
+    btnDrawOn := widget.AddPicture("x" x " y" top " w" chip " h" chip " Hidden", "HBITMAP:" hBtnDrawOn)
+    x += chip + gap
+    btnSettings := widget.AddPicture("x" x " y" top " w" chip " h" chip, "HBITMAP:" hBtnSettings)
+    x += chip + gap
+    btnClose := widget.AddText("x" x " y" top " w" narrow " h" chip " Center +0x200", "✕")
+
+    for ctrl in [btnSpotOff, btnSpotOn]
+        ctrl.OnEvent("Click", ToggleSpotlight)
+    for ctrl in [btnDrawOff, btnDrawOn]
+        ctrl.OnEvent("Click", ToggleDrawFromWidget) ; 끌 때는 그려둔 것도 지운다 (Esc와 같은 효과)
+    btnSettings.OnEvent("Click", OpenSettingsWindow)
+    ; 위젯의 ✕는 프로그램 종료가 아니라 위젯만 숨김 (트레이 메뉴의 "위젯 표시"나 설정 창의
+    ; "위젯" 탭에서 다시 켤 수 있음)
+    ; 주의: 여기서 (*) => (showWidget := false, ...) 처럼 화살표 함수 안에서 전역 변수에 값을
+    ; 넣으면 안 된다. AutoHotkey v2에서 함수 안의 대입은 global 선언이 없으면 같은 이름의
+    ; 지역 변수를 새로 만들 뿐이라 전역값이 그대로 남는다. 실제로 그 탓에 ✕로 위젯을 숨겨도
+    ; showWidget은 계속 참이어서, 설정 창의 "위젯 활성화"가 체크된 채로 보이고 한 번 눌러도
+    ; 다시 나타나지 않는 버그가 있었다. 그래서 global을 선언할 수 있는 보통 함수로 둔다.
+    btnClose.OnEvent("Click", (*) => SetWidgetVisible(false))
+
+    if (keepX = "" || keepY = "") {
+        DefaultWidgetPos(&keepX, &keepY)
+    }
+    widget.Show("x" keepX " y" keepY " w" widgetW " h" widgetH " Hide")
+    RoundRegion(widget.Hwnd, widgetW, widgetH, WidgetPx(16))
+    ApplyWidgetOpacity() ; 새로 만든 창이라 투명도를 다시 걸어줘야 한다
+    ClampWidgetIntoScreen() ; 커진 뒤 화면 밖으로 밀려나 있으면 도로 들여놓는다
+}
+
+; 슬라이더를 끄는 동안 매 칸마다 위젯을 다시 만들면 깜빡인다. 마지막 움직임에서 조금 있다가
+; 한 번만 만들도록 미뤄둔다 (SetTimer의 음수 간격 = 한 번만 실행, 다시 부르면 시계가 새로 시작).
+RebuildWidgetSoon() {
+    global showWidget
+    BuildWidget()
+    SetWidgetVisible(showWidget)
+}
+
+; 위젯을 처음 자리(오른쪽 아래)로. 크기를 키우면 폭·높이가 달라지므로 그때그때 계산한다.
+DefaultWidgetPos(&x, &y) {
+    global widgetW, widgetH
+    x := A_ScreenWidth - widgetW - 20
+    y := A_ScreenHeight - widgetH - 60
+}
+
+; 위젯을 어디 뒀는지 잊었거나 화면 밖 어딘가로 보내버렸을 때를 위한 탈출구.
+MoveWidgetToDefaultPos() {
+    global widget
+    if (!IsSet(widget) || !widget)
+        return
+    DefaultWidgetPos(&x, &y)
+    try {
+        WinMove(x, y, , , widget)
+        RaiseWidget()
+    }
+}
+
+; 위젯 투명도. 100%면 레이어드 속성 자체를 떼어내 평소와 똑같이 그려지게 한다 —
+; 굳이 반투명 처리를 거칠 이유가 없다.
+ApplyWidgetOpacity() {
+    global widget, widgetOpacity
+    if (!IsSet(widget) || !widget)
+        return
+    try {
+        if (widgetOpacity >= 100)
+            WinSetTransparent("Off", widget)
+        else
+            WinSetTransparent(Max(0, Min(255, Round(widgetOpacity * 255 / 100))), widget)
+    }
+}
+
+; 배경색이 어두운 편인지 (글자색을 뒤집을지 판단)
+WidgetIsDark() {
+    global widgetBgColor
+    r := (widgetBgColor >> 16) & 0xFF, g := (widgetBgColor >> 8) & 0xFF, b := widgetBgColor & 0xFF
+    return (r * 299 + g * 587 + b * 114) / 1000 < 128
+}
+
+; ================= 위젯이 화면 밖으로 나가지 않게 =================
+; 옮기는 동안 Windows가 보내주는 WM_MOVING을 받아 목적지를 고쳐 쓴다. 위젯을 끄는 드래그는
+; 우리가 직접 좌표를 계산하는 게 아니라 Windows에 맡기는 방식(WM_NCLBUTTONDOWN + HTCAPTION)
+; 이라, 놓은 뒤에 되돌리는 것보다 이렇게 옮겨지는 중에 잡아주는 쪽이 자연스럽다.
+;
+; **모니터가 둘 이상일 때가 문제다.** 가상 화면(모든 모니터를 감싼 사각형) 안으로만 묶으면,
+; 크기가 다른 모니터를 나란히 쓸 때 생기는 빈 구역(어느 모니터에도 안 걸리는 자리)에 위젯을
+; 놓을 수 있어 그대로 사라져 보인다. 그래서 **커서가 지금 있는 모니터**의 작업 영역 안으로
+; 묶는다 — 커서를 옆 모니터로 옮기면 기준도 같이 넘어가므로 모니터 사이 이동은 그대로 되고,
+; 빈 구역에는 애초에 놓일 수 없다. 작업 영역을 쓰므로 작업표시줄 아래로도 숨지 않는다.
+;
+; **못 가게 막는 선과 자석이 붙는 선은 다르다.**
+;  - 막는 선: 모니터의 실제 가장자리. 여기까지는 갈 수 있으므로 **작업표시줄 위에도 놓을 수 있다**
+;    (수업 중 작업표시줄 자리에 위젯을 두고 싶다는 요구가 있었다). 화면 밖으로만 못 나간다.
+;  - 자석이 붙는 선: **작업표시줄 안쪽 선 하나뿐**이다. 작업표시줄 바로 위에 반듯하게 세우기
+;    쉬우면서, 더 밀면 작업표시줄 위로 넘어간다. **화면 테두리에는 자석을 걸지 않는다** —
+;    거기는 어차피 더 갈 수 없어 저절로 멈추므로, 자석까지 있으면 안 떨어지는 느낌만 준다.
+; 붙는 거리 15px. 예전에 "붙으면 안 떨어진다"고 느껴졌던 것은 이 거리 탓이 아니라 기준값이
+; 자석에 끌려다니던 버그 탓이었다(아래 widgetGrabX 설명 참고). 그것을 고친 뒤로는 넉넉히
+; 잡아도 밀면 그냥 지나간다.
+WIDGET_SNAP_PX := 15
+
+; 화면 좌표 (x, y)가 속한 모니터. 전체 영역과 작업 영역을 함께 돌려준다.
+; 어디에도 안 속하면 가장 가까운 모니터를 준다.
+GetMonitorAt(x, y, &ml, &mt, &mr, &mb, &wl, &wt, &wr, &wb) {
+    pt := (x & 0xFFFFFFFF) | (y << 32)
+    hMon := DllCall("MonitorFromPoint", "int64", pt, "uint", 2, "ptr") ; MONITOR_DEFAULTTONEAREST
+    if !hMon
+        return false
+    mi := Buffer(40, 0)
+    NumPut("UInt", 40, mi, 0) ; cbSize
+    if !DllCall("GetMonitorInfo", "ptr", hMon, "ptr", mi)
+        return false
+    ml := NumGet(mi, 4, "Int"), mt := NumGet(mi, 8, "Int")            ; rcMonitor
+    mr := NumGet(mi, 12, "Int"), mb := NumGet(mi, 16, "Int")
+    wl := NumGet(mi, 20, "Int"), wt := NumGet(mi, 24, "Int")          ; rcWork
+    wr := NumGet(mi, 28, "Int"), wb := NumGet(mi, 32, "Int")
+    return true
+}
+
+; 후보 선들 중 가장 가까운 것에 붙인다. 못 붙이면 원래 값 그대로.
+SnapEdge(pos, size, nearEdges, farEdges, threshold) {
+    for e in nearEdges
+        if (Abs(pos - e) <= threshold)
+            return e
+    for e in farEdges
+        if (Abs(pos + size - e) <= threshold)
+            return e - size
+    return pos
+}
+
+; **커서와 위젯의 거리를 우리가 직접 들고 있어야 한다.**
+; Windows가 알려주는 "옮겨질 자리"를 그대로 믿고 거기서 자석을 계산하면, 붙은 순간 위젯이
+; 선 위로 당겨지고 **다음 계산의 기준도 그 당겨진 자리가 된다.** 그러면 1px씩 천천히 끌 때
+; 매번 "1px 이동 → 자석 범위 안 → 도로 선 위로"가 반복되어 **영원히 못 벗어난다**
+; (빠르게 흔들면 한 번에 범위를 넘겨서 빠져나가는 것이 그 증거였다).
+; 그래서 진짜 위치는 늘 커서에서 다시 계산하고, 자석은 **보이는 자리에만** 적용한다.
+widgetDragging := false
+widgetGrabX := 0, widgetGrabY := 0 ; 잡은 지점이 위젯 왼쪽 위에서 얼마나 떨어져 있는지
+
+OnWidgetEnterMove(wParam, lParam, msg, hwnd) {
+    global widget, widgetDragging, widgetGrabX, widgetGrabY
+    if (!IsSet(widget) || !widget || hwnd != widget.Hwnd)
+        return
+    MouseGetPos(&mx, &my)
+    try {
+        WinGetPos(&x, &y, , , widget)
+        widgetGrabX := mx - x, widgetGrabY := my - y
+        widgetDragging := true
+    }
+}
+OnMessage(0x0231, OnWidgetEnterMove) ; WM_ENTERSIZEMOVE
+
+OnWidgetExitMove(wParam, lParam, msg, hwnd) {
+    global widget, widgetDragging
+    if (IsSet(widget) && widget && hwnd = widget.Hwnd) {
+        widgetDragging := false
+        RaiseWidget()
+    }
+}
+OnMessage(0x0232, OnWidgetExitMove) ; WM_EXITSIZEMOVE
+
+; 위젯을 "항상 위" 무리의 맨 앞으로 다시 올린다.
+; 작업표시줄도 "항상 위" 창이라, 위젯을 그 위에 얹어두면 상황에 따라 작업표시줄에 가려
+; 아래로 들어간 것처럼 보일 수 있다. 자리를 옮긴 뒤나 다시 보여줄 때 한 번씩 올려둔다.
+; (-1 = HWND_TOPMOST / 0x1 = 크기 유지, 0x2 = 위치 유지, 0x10 = 활성화하지 않음)
+RaiseWidget() {
+    global widget
+    if (!IsSet(widget) || !widget)
+        return
+    try DllCall("SetWindowPos", "ptr", widget.Hwnd, "ptr", -1
+        , "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x1 | 0x2 | 0x10)
+}
+
+; 판서 오버레이를 클릭해도 그 창이 앞으로 올라오지 않게 한다.
+; WS_EX_NOACTIVATE는 "활성화"만 막을 뿐, 클릭했을 때 창을 앞으로 끌어올리는 것까지는 막지
+; 못한다. 그 단계는 여기서 MA_NOACTIVATE(3)를 돌려줘야 멈춘다 — 안 그러면 한 획 긋는 순간
+; 오버레이가 위젯 위로 올라가서, 그 뒤로는 위젯을 눌러도 클릭이 오버레이에 막힌다.
+OnDrawGuiMouseActivate(wParam, lParam, msg, hwnd) {
+    global drawGui
+    if (IsSet(drawGui) && drawGui && hwnd = drawGui.Hwnd)
+        return 3 ; MA_NOACTIVATE — 활성화도 앞으로 올리기도 하지 않고 클릭은 그대로 전달
+}
+OnMessage(0x0021, OnDrawGuiMouseActivate) ; WM_MOUSEACTIVATE
+
+OnWidgetMoving(wParam, lParam, msg, hwnd) {
+    global widget, WIDGET_SNAP_PX, widgetDragging, widgetGrabX, widgetGrabY
+    if (!IsSet(widget) || !widget || hwnd != widget.Hwnd)
+        return
+    l := NumGet(lParam, 0, "Int"), t := NumGet(lParam, 4, "Int")
+    w := NumGet(lParam, 8, "Int") - l, h := NumGet(lParam, 12, "Int") - t
+    MouseGetPos(&mx, &my)
+    if !GetMonitorAt(mx, my, &ml, &mt, &mr, &mb, &wl, &wt, &wr, &wb)
+        return
+    if widgetDragging {
+        ; 붙어 있든 말든 커서를 기준으로 다시 잡는다 — 자석이 기준을 흔들지 못한다
+        l := mx - widgetGrabX, t := my - widgetGrabY
+    }
+    ; 막는 것은 모니터 가장자리까지만 — 작업표시줄 위로는 갈 수 있다.
+    ; 벽에 부딪혀 멈췄으면 잡은 지점을 다시 맞춘다. 안 그러면 커서가 벽 너머로 간 만큼
+    ; 되돌아와야 위젯이 움직이기 시작하는 고무줄 느낌이 된다.
+    cl := Max(ml, Min(mr - w, l)), ct := Max(mt, Min(mb - h, t))
+    if widgetDragging {
+        if (cl != l)
+            widgetGrabX := mx - cl
+        if (ct != t)
+            widgetGrabY := my - ct
+    }
+    ; 자석은 **맨 마지막에, 보이는 자리에만** 건다 (위의 기준값은 건드리지 않는다).
+    ; **붙는 곳은 작업표시줄 안쪽 선뿐이다.** 화면 테두리에는 자석을 걸지 않는다 — 거기는
+    ; 어차피 더 갈 수 없어서 저절로 멈추므로, 자석까지 있으면 "왜 안 떨어지지" 하게 된다.
+    ; 작업 영역 가장자리가 모니터 가장자리와 다른 쪽이 곧 작업표시줄이 있는 쪽이다.
+    sl := SnapEdge(cl, w, (wl != ml) ? [wl] : [], (wr != mr) ? [wr] : [], WIDGET_SNAP_PX)
+    st := SnapEdge(ct, h, (wt != mt) ? [wt] : [], (wb != mb) ? [wb] : [], WIDGET_SNAP_PX)
+    NumPut("Int", sl, lParam, 0), NumPut("Int", st, lParam, 4)
+    NumPut("Int", sl + w, lParam, 8), NumPut("Int", st + h, lParam, 12)
+    return true
+}
+OnMessage(0x0216, OnWidgetMoving) ; WM_MOVING
+
+; 크기를 키웠거나 모니터 구성이 바뀌어 위젯이 화면 밖에 걸쳐 있으면 안으로 들여놓는다.
+; 여기서도 기준은 모니터 가장자리다 — 작업표시줄 위에 일부러 둔 위젯을 멋대로 끌어올리지 않는다.
+ClampWidgetIntoScreen() {
+    global widget
+    if (!IsSet(widget) || !widget)
+        return
+    try WinGetPos(&x, &y, &w, &h, widget)
+    catch
+        return
+    if !GetMonitorAt(x + w // 2, y + h // 2, &ml, &mt, &mr, &mb, &wl, &wt, &wr, &wb)
+        return
+    nx := Max(ml, Min(mr - w, x)), ny := Max(mt, Min(mb - h, y))
+    if (nx != x || ny != y)
+        try WinMove(nx, ny, , , widget)
+}
 
 UpdateWidgetState() {
     global spotlightOn, drawOn, btnSpotOff, btnSpotOn, btnDrawOff, btnDrawOn
@@ -2086,9 +2404,10 @@ TRAY_WIDGET_ITEM := "위젯 표시"
 SetWidgetVisible(show) {
     global showWidget, widget, TRAY_WIDGET_ITEM, chkWidgetCtrl
     showWidget := show ? true : false
-    if showWidget
+    if showWidget {
         widget.Show()
-    else
+        RaiseWidget() ; 작업표시줄 위에 둔 경우 가려지지 않도록 맨 앞으로
+    } else
         widget.Hide()
     if showWidget
         A_TrayMenu.Check(TRAY_WIDGET_ITEM)
@@ -2248,7 +2567,7 @@ OnWidgetDrag(wParam, lParam, msg, hwnd) {
         PostMessage(0xA1, 2, , , widget.Hwnd) ; WM_NCLBUTTONDOWN, HTCAPTION
 }
 
-widget.Show("x" (A_ScreenWidth - widgetW - 20) " y" (A_ScreenHeight - widgetH - 60) " w" widgetW " h" widgetH " Hide")
+BuildWidget() ; 위젯을 처음 만든다 (크기·배경색 설정에 맞춰 그려진다)
 SetWidgetVisible(showWidget) ; 트레이 메뉴 체크 표시까지 시작 상태에 맞춰준다
 
 ; ================= 단축키 =================
