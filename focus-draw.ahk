@@ -282,7 +282,59 @@ WriteSettings() {
     ; 굵기·지우개 크기를 픽셀로 저장하던 시절의 항목도 치운다(이제 단계로 저장한다)
     try IniDelete(SETTINGS_PATH, "Draw", "Thickness")
     try IniDelete(SETTINGS_PATH, "Draw", "EraserSize")
+    SavePalette()
     return true
+}
+
+; 설정 파일에 적힌 색을 읽는다. 사람이 ini를 잘못 고쳐 색이 아닌 글자가 들어 있어도
+; 프로그램이 멈추지 않고 기본값으로 넘어가게 한다.
+ReadIniColor(section, key, fallback) {
+    global SETTINGS_PATH
+    raw := IniRead(SETTINGS_PATH, section, key, "")
+    if (raw = "")
+        return fallback
+    try {
+        v := Integer("0x" raw)
+        if (v >= 0 && v <= 0xFFFFFF)
+            return v
+    }
+    return fallback
+}
+
+; 숫자키 1~9의 색·투명도와 칠판 W/E/R의 색·투명도를 불러온다.
+; **LoadSettings()와 따로 둔 이유는 순서 때문이다** — 이 값들이 담길 배열은 아래쪽 "색"과
+; "칠판" 절에서 만들어지는데, LoadSettings()는 그보다 먼저 불린다. 그래서 배열을 만든 직후에
+; 이 함수를 따로 부른다.
+LoadPalette() {
+    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS
+    global BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, BOARD_KEYS
+    loop DRAW_COLORS.Length {
+        DRAW_COLORS[A_Index] := ReadIniColor("DrawKeys", "Color" A_Index, DRAW_COLOR_DEFAULTS[A_Index])
+        ; 0%까지 내려가면 "안 그려지는 펜"이 되어 고장으로 보인다. 5%를 바닥으로 둔다.
+        DRAW_ALPHAS[A_Index] := Max(5, Min(100, IniRead(SETTINGS_PATH, "DrawKeys", "Opacity" A_Index, 100)))
+    }
+    loop BOARD_COLORS.Length {
+        if (BOARD_COLOR_DEFAULTS[A_Index] < 0) ; Q(투명)는 칠판을 걷는 자리라 색이 없다
+            continue
+        key := StrUpper(BOARD_KEYS[A_Index][1])
+        BOARD_COLORS[A_Index] := ReadIniColor("Boards", "Color" key, BOARD_COLOR_DEFAULTS[A_Index])
+        BOARD_ALPHAS[A_Index] := Max(5, Min(100, IniRead(SETTINGS_PATH, "Boards", "Opacity" key, 100)))
+    }
+}
+
+SavePalette() {
+    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, BOARD_KEYS
+    loop DRAW_COLORS.Length {
+        IniWrite(HexColor(DRAW_COLORS[A_Index]), SETTINGS_PATH, "DrawKeys", "Color" A_Index)
+        IniWrite(DRAW_ALPHAS[A_Index], SETTINGS_PATH, "DrawKeys", "Opacity" A_Index)
+    }
+    loop BOARD_COLORS.Length {
+        if (BOARD_COLOR_DEFAULTS[A_Index] < 0)
+            continue
+        key := StrUpper(BOARD_KEYS[A_Index][1])
+        IniWrite(HexColor(BOARD_COLORS[A_Index]), SETTINGS_PATH, "Boards", "Color" key)
+        IniWrite(BOARD_ALPHAS[A_Index], SETTINGS_PATH, "Boards", "Opacity" key)
+    }
 }
 
 LoadSettings()
@@ -329,8 +381,17 @@ lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리�
 ; 조금 진하게 바꿔뒀었는데, 어떤 배경에 어떤 색이 잘 보이는지는 쓰는 사람이 그 자리에서
 ; 판단할 문제지 프로그램이 대신 정할 일이 아니다(빨간 바탕화면을 쓰는 사람에게는 빨강도
 ; 안 보인다 — 그렇다고 빨강을 손볼 수는 없다). 안 보이면 숫자키 한 번으로 바꾸면 된다.
-DRAW_COLORS := [0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF, 0x4B0082, 0x9400D3, 0x000000, 0xFFFFFF]
+; **여기 있는 것은 기본값이고, 실제로 쓰이는 값은 아래 DRAW_COLORS다.** 설정 창에서 숫자키마다
+; 색과 투명도를 따로 정할 수 있고(settings.ini의 [DrawKeys]), 정한 값이 없으면 이 기본값으로
+; 시작한다. "기본값으로 되돌리기"도 이 배열을 그대로 다시 넣는다.
+DRAW_COLOR_DEFAULTS := [0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF, 0x4B0082, 0x9400D3, 0x000000, 0xFFFFFF]
 DRAW_COLOR_NAMES := ["빨강", "주황", "노랑", "초록", "파랑", "남색", "보라", "검정", "흰색"]
+DRAW_COLORS := DRAW_COLOR_DEFAULTS.Clone()
+; 숫자키마다의 불투명도(%). 100이면 지금까지와 똑같고, 낮추면 그 색이 형광펜처럼 비쳐 보인다.
+; (설정 창 "드로잉" 탭의 투명도는 **그려둔 것 전체**에 곱해지는 값이고, 이쪽은 **그 색으로 긋는
+;  선 하나하나**의 값이다. 둘 다 낮추면 둘이 곱해져 더 옅어진다)
+DRAW_ALPHA_DEFAULT := 100
+DRAW_ALPHAS := [100, 100, 100, 100, 100, 100, 100, 100, 100]
 
 ; 드로잉 중 "누른 채 드래그"로 도형을 고르는 키 (위에 있는 것이 우선).
 ; 수식키(Shift/Ctrl)만 쓰면 자리가 네 개뿐이라 도형을 늘릴 수 없는데, 드로잉 모드에서는
@@ -347,6 +408,7 @@ shapeKeyHeld := Map()
 ; 잠깐 쓰려고 바꾼 값이 그대로 굳어버리고, 설정 창의 슬라이더 표시와도 어긋나기 때문이다.
 ; activeDrawStep/activeEraserStep이 실제 값이고, ...Thickness/...Size는 거기서 환산한 픽셀값이다.
 activeDrawColor := drawColor
+activeDrawAlpha := 100 ; 지금 긋는 선의 불투명도(%) — 숫자키로 색을 고를 때 그 색의 값으로 바뀐다
 activeDrawStep := DrawStep
 activeEraserStep := EraserStep
 activeDrawThickness := PenPx(DrawStep)
@@ -527,20 +589,35 @@ drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 ;
 ; 단색이라 픽셀 단위 투명도가 필요 없어서, 판서 오버레이처럼 화면 크기의 그림판을 들고 있을
 ; 필요가 없다. 창 배경색만 칠하면 되므로 메모리를 거의 쓰지 않는다.
+; 키와 이름은 고정이고, **색과 불투명도는 설정 창에서 바꿀 수 있다**(settings.ini의 [Boards]).
+; Q(투명)는 칠판을 걷어내는 자리라 바꿀 것이 없어서 목록에서 색을 갖지 않는다.
 BOARD_KEYS := [["q", -1, "투명"], ["w", 0xFFFFFF, "흰색"], ["e", 0x14472F, "초록"], ["r", 0x000000, "검정"]]
+BOARD_COLOR_DEFAULTS := [-1, 0xFFFFFF, 0x14472F, 0x000000]
+BOARD_COLORS := BOARD_COLOR_DEFAULTS.Clone()
+; 칠판의 불투명도(%). 100이면 뒤가 완전히 가려지고, 낮추면 화면이 비쳐 보인다 — 예를 들어
+; 흰 칠판을 70%로 두면 아래 자료가 희미하게 비쳐서 그 위에 필기하듯 쓸 수 있다.
+BOARD_ALPHAS := [100, 100, 100, 100]
 boardColor := -1 ; -1 = 칠판 없음(화면이 그대로 비침)
+boardAlpha := 100 ; 지금 깔린 칠판의 불투명도(%)
+
+; 색 배열이 모두 준비된 지금 설정 파일의 값을 덮어씌운다 (위 LoadPalette 설명 참고)
+LoadPalette()
 boardGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x80020", "FocusDraw-Board")
 boardGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 WinSetTransparent(255, boardGui) ; 레이어드 창이지만 불투명하게 — 클릭 통과만 쓴다
 
-SetBoardColor(color) {
-    global boardColor, boardGui, drawGui, brushGui, widget, drawOn, brushMode, vx, vy, vw, vh
+; alpha는 불투명도(%)다. 칠판 창은 이미 레이어드 창이라, 창 전체의 투명도만 바꾸면 된다 —
+; 판서 층은 **이 창 위에** 따로 있으므로 칠판을 옅게 해도 그려둔 글씨는 그대로 진하게 남는다.
+SetBoardColor(color, alpha := 100) {
+    global boardColor, boardAlpha, boardGui, drawGui, brushGui, widget, drawOn, brushMode, vx, vy, vw, vh
     boardColor := color
+    boardAlpha := Max(5, Min(100, alpha))
     if (!drawOn || color < 0) {
         boardGui.Hide()
         return
     }
     boardGui.BackColor := HexColor(color)
+    WinSetTransparent(Round(boardAlpha * 255 / 100), boardGui)
     boardGui.Show("NA x" vx " y" vy " w" vw " h" vh)
     ; 판서 층 **바로 아래**에 끼워 넣는다. 그냥 띄우면 판서 층 위로 올라와 그림을 덮어버린다.
     ; (hWndInsertAfter에 판서 창을 주면 그 뒤에 놓인다 / 0x1 = 크기 유지, 0x2 = 위치 유지,
@@ -559,7 +636,9 @@ SetBoardColor(color) {
 }
 
 ; 숫자키 색과 같은 이유로(반복문 안에서 화살표 함수를 바로 쓰면 마지막 값 하나만 남는다) 가둬둔다.
-MakeBoardSetter(color) => (*) => SetBoardColor(color)
+; 색이 아니라 **몇 번째 칠판인지**를 가둬야 한다 — 색은 설정 창에서 바뀔 수 있으므로,
+; 누르는 그 순간의 값을 봐야 방금 바꾼 색이 바로 반영된다.
+MakeBoardSetter(index) => (*) => SetBoardColor(BOARD_COLORS[index], BOARD_ALPHAS[index])
 
 ; ================= +/- 로 크기를 바꿀 때 뜨는 단계 숫자 =================
 ; 커서 원만으로는 "몇 단계인지"를 알 수 없다 — 특히 굵기 7과 8처럼 두 픽셀 차이는 눈으로
@@ -773,7 +852,7 @@ RedrawBrushCursor() {
         }
     } else {
         brush := 0
-        DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF000000 | activeDrawColor, "ptr*", &brush)
+        DllCall("gdiplus\GdipCreateSolidFill", "uint", ActiveARGB(), "ptr*", &brush)
         if brush {
             DllCall("gdiplus\GdipFillEllipse", "ptr", brushCanvas.graphics, "ptr", brush
                 , "float", brushPad - d / 2, "float", brushPad - d / 2, "float", d, "float", d)
@@ -1105,13 +1184,14 @@ ClearAlpha(x1, y1, x2, y2, pad) {
 ; 굵기가 바뀔 때만 다시 만들고 그 외에는 만들어둔 것을 재사용한다.
 freehandPen := 0, freehandPenColor := -1, freehandPenWidth := -1
 GetFreehandPen() {
-    global freehandPen, freehandPenColor, freehandPenWidth, activeDrawColor, activeDrawThickness
-    if (freehandPen && freehandPenColor = activeDrawColor && freehandPenWidth = activeDrawThickness)
+    global freehandPen, freehandPenColor, freehandPenWidth, activeDrawThickness
+    ; 색과 투명도를 한 값(ActiveARGB)으로 같이 본다 — 투명도만 바뀌어도 펜을 새로 만들어야 한다
+    if (freehandPen && freehandPenColor = ActiveARGB() && freehandPenWidth = activeDrawThickness)
         return freehandPen
     if freehandPen
         DllCall("gdiplus\GdipDeletePen", "ptr", freehandPen)
     freehandPen := 0
-    DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", activeDrawThickness, "int", 2, "ptr*", &freehandPen)
+    DllCall("gdiplus\GdipCreatePen1", "uint", ActiveARGB(), "float", activeDrawThickness, "int", 2, "ptr*", &freehandPen)
     if freehandPen {
         ; 자유선은 10ms마다 짧은 선을 이어 붙여 만드는 것이라, 선 끝이 평평하면 이음매마다
         ; 모난 자국이 남아 획이 끊겨 보인다. 끝과 이음매를 둥글게 해야 한 획처럼 이어진다.
@@ -1120,13 +1200,13 @@ GetFreehandPen() {
         DllCall("gdiplus\GdipSetPenEndCap", "ptr", freehandPen, "int", 2)
         DllCall("gdiplus\GdipSetPenLineJoin", "ptr", freehandPen, "int", 2) ; LineJoinRound
     }
-    freehandPenColor := activeDrawColor
+    freehandPenColor := ActiveARGB()
     freehandPenWidth := activeDrawThickness
     return freehandPen
 }
 
 DrawSegment(x1, y1, x2, y2) {
-    global memDC, vx, vy, activeDrawThickness, activeDrawColor, pShapeGraphics
+    global memDC, vx, vy, activeDrawThickness, activeDrawColor, activeDrawAlpha, pShapeGraphics
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
     ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
     CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness, Max(ly1, ly2) + activeDrawThickness)
@@ -1134,9 +1214,29 @@ DrawSegment(x1, y1, x2, y2) {
         ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
         ; 테두리도 도형과 똑같이 매끄럽게 나온다.
         DllCall("gdi32\GdiFlush") ; 지우개는 아직 GDI를 쓰므로 밀린 작업을 먼저 반영시킨다
+        ; **반투명한 색일 때는 "덮어쓰기"(SourceCopy)로 그어야 한다.** 자유선은 10ms마다 짧은
+        ; 선을 이어 붙여 만드는데, 보통의 겹쳐 그리기(SourceOver)로는 이음매가 두 번 칠해지면서
+        ; 그 자리만 진해진다. 천천히 쓰거나 한자리에 머물면 같은 픽셀이 수십 번 칠해져 결국
+        ; 불투명해지므로, 투명도를 준 의미가 아예 사라진다. 덮어쓰기로 하면 몇 번을 지나가도
+        ; 정해둔 값 그대로다. (불투명한 색은 겹쳐 칠해도 달라질 것이 없어서 예전 방식 그대로 둔다 —
+        ;  덮어쓰기는 이미 그려둔 다른 획 위를 지날 때 그 획을 지워버리기 때문이다)
+        ; **가장자리 부드럽게도 함께 꺼야 한다.** 덮어쓰기만 하고 부드럽게를 켜두면, 새로 긋는
+        ; 토막의 흐릿한 가장자리가 앞 토막의 진한 속살을 덮어써서 **이음매마다 연한 초승달 자국**이
+        ; 남는다 — 천천히 그으면 동그라미를 줄줄이 꿴 것처럼 보인다(실제로 그렇게 나왔다).
+        ; 끄면 가장자리가 계단처럼 되지만 굵은 형광펜에서는 거의 티가 안 나고, 획은 고르게 나온다.
+        ; (지우개도 같은 이유로 부드럽게를 끄고 덮어쓴다 — EraseSegment 참고)
+        translucent := (activeDrawAlpha < 100)
+        if translucent {
+            DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 1) ; SourceCopy
+            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 3)   ; 끄기
+        }
         pPen := GetFreehandPen()
         if pPen
             DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+        if translucent {
+            DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 0) ; 다시 겹쳐 그리기
+            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4)   ; 다시 부드럽게
+        }
         box := PenDirtyBox(lx1, ly1, lx2, ly2)
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 (예전 방식: GDI로 긋고 투명도는 직접 채우기)
@@ -1171,7 +1271,7 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
         DllCall("gdi32\GdiFlush")
         pPen := 0
         ; GDI+ 색은 0xAARRGGBB — GDI처럼 BGR로 뒤집지 않는다
-        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | activeDrawColor, "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", ActiveARGB(), "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
         if mode = "line"
             DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
         else if mode = "rect"
@@ -1254,7 +1354,7 @@ DrawArrowGdip(pPen, x1, y1, x2, y2) {
     pts := Buffer(24) ; PointF 3개 (실수 x, y)
     NumPut("float", x2, "float", y2, "float", g.lx, "float", g.ly, "float", g.rx, "float", g.ry, pts)
     pBrush := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF000000 | activeDrawColor, "ptr*", &pBrush)
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", ActiveARGB(), "ptr*", &pBrush)
     if pBrush {
         DllCall("gdiplus\GdipFillPolygon", "ptr", pShapeGraphics, "ptr", pBrush, "ptr", pts, "int", 3, "int", 0)
         DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
@@ -1930,6 +2030,7 @@ ToggleDraw(*) {
     ; 숫자키와 +/-로 잠깐 바꿔둔 색·굵기·지우개 크기는 여기서 초기화한다. 드로잉을 켤 때마다
     ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
     activeDrawColor := drawColor
+    activeDrawAlpha := 100
     activeDrawStep := DrawStep
     activeEraserStep := EraserStep
     activeDrawThickness := PenPx(DrawStep)
@@ -1938,8 +2039,6 @@ ToggleDraw(*) {
     stepGui.Hide() ; 단계 숫자가 떠 있는 채로 모드가 바뀌면 화면에 남는다
     brushMode := "pen"
     erasing := false
-    ; 칠판도 임시값이라 켤 때마다 "없음"(화면이 그대로 비침)으로 시작한다
-    SetBoardColor(-1)
     if drawOn {
         drawGui.Show("NA")
         ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
@@ -1948,6 +2047,11 @@ ToggleDraw(*) {
         ; 있어서, 위젯 위에서도 이 원이 보여야 어디를 누르는지 알 수 있다. 클릭 통과 창이라
         ; 위에 있어도 위젯 클릭이나 판서 입력을 가로채지 않는다(MouseGetPos가 건너뛴다).
         brushGui.Show("NA")
+        ; **마지막에 쓰던 칠판을 그대로 다시 깐다.** 단축키로 끄면 그려둔 글씨가 남아 있는데,
+        ; 칠판만 걷혀 있으면 흰 칠판에 쓴 글씨가 바탕화면 위에 떠 있는 꼴이 되어 못 알아본다.
+        ; (Esc나 위젯 버튼으로 끄면 글씨와 함께 칠판도 걷힌다 — ExitDrawMode 참고)
+        ; 판서 층을 띄운 **뒤에** 깔아야 그 아래로 정확히 들어간다.
+        SetBoardColor(boardColor, boardAlpha)
         ; 오버레이는 그린 자국 말고는 거의 투명해서, 설정 창이 열려 있으면 눈에는 보이는데
         ; 클릭은 오버레이가 가로채는 이상한 상태가 된다. 아예 잠시 감춰서 헷갈리지 않게 한다.
         settingsHiddenByDraw := false
@@ -1962,6 +2066,8 @@ ToggleDraw(*) {
         SetDrawModeHotkeys("Off")
         brushGui.Hide()
         drawGui.Hide()
+        ; 칠판은 감추기만 하고 무슨 색이었는지는 기억해둔다 (다시 켤 때 그대로 깔린다)
+        SetBoardColor(boardColor, boardAlpha)
         ; 판서를 켜느라 감췄던 설정 창이라면 하던 작업을 이어갈 수 있게 다시 띄운다
         if settingsHiddenByDraw {
             settingsHiddenByDraw := false
@@ -1992,14 +2098,29 @@ ClearDrawing(*) {
     UpdateOverlay()
 }
 
-; 드로잉 중 숫자키 1~9로 선 색을 바로 바꾼다. 설정에 저장된 색(drawColor)은 건드리지 않아서,
+; 드로잉 중 숫자키로 선 색을 바로 바꾼다. 설정에 저장된 색(drawColor)은 건드리지 않아서,
 ; 드로잉을 껐다 켜면 원래 색으로 돌아온다. 커서 원도 바뀐 색으로 다시 그린다.
+; **0은 설정 창의 기본 색으로 되돌아오는 자리다** — 그 색은 투명도를 따로 갖지 않으므로 100%로 본다.
 SetDrawColor(index) {
-    global DRAW_COLORS, activeDrawColor
+    global DRAW_COLORS, DRAW_ALPHAS, activeDrawColor, activeDrawAlpha, drawColor
+    if (index = 0) {
+        activeDrawColor := drawColor
+        activeDrawAlpha := 100
+        RedrawBrushCursor()
+        return
+    }
     if (index >= 1 && index <= DRAW_COLORS.Length) {
         activeDrawColor := DRAW_COLORS[index]
+        activeDrawAlpha := DRAW_ALPHAS[index]
         RedrawBrushCursor()
     }
+}
+
+; 지금 긋는 선의 색을 GDI+가 받는 형식(알파가 앞에 붙은 32비트)으로 돌려준다.
+; 펜을 만드는 곳이 여러 군데라(자유선 / 도형 / 화살촉 / 커서 원) 한곳에 모아둔다.
+ActiveARGB() {
+    global activeDrawColor, activeDrawAlpha
+    return (Round(Max(5, Min(100, activeDrawAlpha)) * 255 / 100) << 24) | activeDrawColor
 }
 
 ; 드로잉 중 +(크게) / -(작게). 그냥 누르면 **펜 굵기**를, **오른쪽 버튼을 누른 채로** 누르면
@@ -2045,8 +2166,11 @@ SetShapeKeyHeld(key, down) {
 MakeShapeKeyTracker(key, down) => (*) => SetShapeKeyHeld(key, down)
 
 ; Esc: 판서 내용을 지우고 판서 모드까지 종료
+; **칠판도 함께 걷는다.** 이쪽은 "이제 다 썼으니 정리한다"는 뜻이라, 다음에 켤 때는 아무것도
+; 없는 상태에서 시작하는 게 맞다. (단축키로 끌 때는 글씨도 칠판도 그대로 둔다 — ToggleDraw 참고)
 ExitDrawMode(*) {
     ClearDrawing()
+    SetBoardColor(-1)
     ToggleDraw()
 }
 
@@ -2073,26 +2197,33 @@ GetColorOf(target) {
         : (target = "Widget") ? widgetBgColor : drawColor
 }
 
-; Windows 기본 색상 선택 대화상자(ChooseColor)를 띄워서 색을 자유롭게 고른다.
-; ownerHwnd를 지정하지 않으면 위젯을 소유 창으로 쓴다 — 설정 창 등 다른 창에서 호출할 때는
-; 그 창의 Hwnd를 넘겨줘야 대화상자가 그 창 뒤에 가려지지 않는다.
-PickColor(target := "Spot", ownerHwnd := 0, *) {
-    global spotColor, clickColor, rclickColor, drawColor, widgetBgColor, showWidget, activeDrawColor, widget
-    if !ownerHwnd
-        ownerHwnd := widget.Hwnd
+; Windows 기본 색상 선택 대화상자(ChooseColor)를 띄워 색 하나를 고르게 하고, 고른
+; 색(0xRRGGBB)을 돌려준다. 취소하면 -1.
+; 고른 색을 어디에 넣을지는 부르는 쪽이 정한다 — 쓰는 곳이 여럿이라 여기서 갈래를 치지 않는다.
+; ownerHwnd는 대화상자를 띄운 창의 Hwnd다. 안 주면 대화상자가 그 창 뒤로 가려질 수 있다.
+ChooseColorDialog(initial, ownerHwnd) {
     cc := Buffer(72, 0)
     custColors := Buffer(16 * 4, 0)
     NumPut("UInt", 72, cc, 0)          ; lStructSize
     NumPut("Ptr", ownerHwnd, cc, 8)    ; hwndOwner
-    NumPut("UInt", ToBGR(GetColorOf(target)), cc, 24) ; rgbResult (초기값)
+    NumPut("UInt", ToBGR(initial), cc, 24)  ; rgbResult (초기값)
     NumPut("Ptr", custColors.Ptr, cc, 32)   ; lpCustColors
     NumPut("UInt", 0x1 | 0x2, cc, 40)  ; CC_RGBINIT | CC_FULLOPEN
-    if DllCall("comdlg32\ChooseColorW", "ptr", cc, "int") {
-        bgr := NumGet(cc, 24, "UInt")
-        r := bgr & 0xFF
-        g := (bgr >> 8) & 0xFF
-        b := (bgr >> 16) & 0xFF
-        picked := (r << 16) | (g << 8) | b
+    if !DllCall("comdlg32\ChooseColorW", "ptr", cc, "int")
+        return -1
+    bgr := NumGet(cc, 24, "UInt")
+    r := bgr & 0xFF
+    g := (bgr >> 8) & 0xFF
+    b := (bgr >> 16) & 0xFF
+    return (r << 16) | (g << 8) | b
+}
+
+PickColor(target := "Spot", ownerHwnd := 0, *) {
+    global spotColor, clickColor, rclickColor, drawColor, widgetBgColor, showWidget, activeDrawColor, widget
+    if !ownerHwnd
+        ownerHwnd := widget.Hwnd
+    picked := ChooseColorDialog(GetColorOf(target), ownerHwnd)
+    if (picked >= 0) {
         if (target = "Spot") {
             spotColor := picked
             UpdateSpotlightColor()
@@ -2120,6 +2251,8 @@ PickColor(target := "Spot", ownerHwnd := 0, *) {
 ; (매 글자마다 적용해버리면 입력 도중 값이 강제로 재조정되면서 타이핑을 방해한다)
 sliderEditHandlers := Map()
 OnMessage(0x100, OnSliderEditKeyDown) ; WM_KEYDOWN
+OnMessage(0x115, OnPaletteScroll)     ; WM_VSCROLL — 색 목록의 스크롤 막대
+OnMessage(0x20A, OnPaletteWheel)      ; WM_MOUSEWHEEL — 색 목록 위에서 휠을 굴릴 때
 OnSliderEditKeyDown(wParam, lParam, msg, hwnd) {
     global sliderEditHandlers
     if wParam = 13 && sliderEditHandlers.Has(hwnd) { ; VK_RETURN
@@ -2168,10 +2301,243 @@ AddAll(basket, items) {
         basket.Push(it)
 }
 
+; ================= 드로잉 탭의 "색 목록" (스크롤되는 칸) =================
+; 숫자키 1~9와 칠판 W/E/R까지 열두 줄이라, 탭에 그냥 늘어놓으면 설정 창이 두 배로 길어진다.
+; 그래서 정해진 크기의 **창문(palettePanel)**을 하나 두고, 그 안에서 내용(paletteBody)을
+; 위아래로 밀어 보여준다. 창문이 자식 창이라 삐져나온 부분은 Windows가 알아서 잘라준다.
+;
+; 스크롤 막대는 설정 창 자신의 컨트롤로 둔다 — 그래야 탭을 옮길 때 AutoHotkey가 다른 탭의
+; 컨트롤처럼 알아서 감춰준다. 반면 창문은 별도의 창이라 탭이 바뀔 때 직접 감춰야 한다
+; (OpenSettingsWindow의 tabs.OnEvent("Change") 참고).
+PALETTE_X := 22
+PALETTE_Y := 250
+PALETTE_W := 418
+PALETTE_H := 286
+PALETTE_ROW_H := 34
+palettePanel := ""     ; 창문 (이 크기만큼만 보인다)
+paletteBody := ""      ; 내용 (위아래로 밀린다)
+paletteBar := ""       ; 오른쪽 스크롤 막대
+paletteRows := []      ; 기본값으로 되돌릴 때 화면을 다시 맞추려고 컨트롤을 모아둔다
+paletteScroll := 0     ; 지금 밀려 있는 양(px)
+paletteMax := 0        ; 밀 수 있는 최대치(px)
+paletteContentH := 0   ; 내용 전체 높이(px)
+palettePageX := 0      ; 창문의 자리 ("탭 안쪽 창" 기준 — BuildPalettePanel에서 환산한다)
+palettePageY := 0
+
+PaletteColor(kind, index) {
+    global DRAW_COLORS, BOARD_COLORS
+    return (kind = "board") ? BOARD_COLORS[index] : DRAW_COLORS[index]
+}
+
+PaletteAlpha(kind, index) {
+    global DRAW_ALPHAS, BOARD_ALPHAS
+    return (kind = "board") ? BOARD_ALPHAS[index] : DRAW_ALPHAS[index]
+}
+
+SetPaletteColor(kind, index, color) {
+    global DRAW_COLORS, BOARD_COLORS
+    if (kind = "board")
+        BOARD_COLORS[index] := color
+    else
+        DRAW_COLORS[index] := color
+}
+
+SetPaletteAlpha(kind, index, value) {
+    global DRAW_ALPHAS, BOARD_ALPHAS
+    if (kind = "board")
+        BOARD_ALPHAS[index] := value
+    else
+        DRAW_ALPHAS[index] := value
+}
+
+; 색 한 줄: [키] [견본] [색 고르기] [투명도 슬라이더] [숫자] %
+AddPaletteRow(gui, y, label, kind, index) {
+    global sliderEditHandlers, paletteRows
+    lbl := gui.AddText("x6 y" (y + 4) " w24 h22", label)
+    lbl.SetFont("s11 Bold")
+    ; 견본은 AddColorRow와 같은 방식 — 색이 확실히 반영되는 Progress 컨트롤을 꽉 채워 쓰고,
+    ; 한 겹 큰 회색 막대를 뒤에 깔아 테두리로 삼는다 (흰색 견본도 보이게 하려고)
+    gui.AddProgress("x32 y" (y - 2) " w48 h28 Range0-100 -Smooth c808080", 100)
+    swatch := gui.AddProgress("x34 y" y " w44 h24 Range0-100 -Smooth c" HexColor(PaletteColor(kind, index)), 100)
+    btn := gui.AddButton("x86 y" (y - 2) " w80 h28", "색 고르기")
+    btn.OnEvent("Click", (*) => (
+        picked := ChooseColorDialog(PaletteColor(kind, index), gui.Hwnd),
+        (picked >= 0) ? (SetPaletteColor(kind, index, picked), swatch.Opt("c" HexColor(picked))) : ""
+    ))
+    sl := gui.AddSlider("x174 y" (y + 2) " w142 Range5-100", PaletteAlpha(kind, index))
+    ed := gui.AddEdit("x322 y" y " w44 h24 Center Number", PaletteAlpha(kind, index))
+    RoundRegion(ed.Hwnd, 44, 24, 12)
+    gui.AddText("x370 y" (y + 4) " w24", "%")
+    apply := (v) => (v := Max(5, Min(100, Round(v))), sl.Value := v, ed.Text := v, SetPaletteAlpha(kind, index, v))
+    sl.OnEvent("Change", (ctrl, *) => apply(Round(ctrl.Value / 5) * 5))
+    ed.OnEvent("LoseFocus", (*) => apply(ed.Text = "" ? 5 : Integer(ed.Text)))
+    sliderEditHandlers[ed.Hwnd] := () => apply(ed.Text = "" ? 5 : Integer(ed.Text))
+    paletteRows.Push({kind: kind, index: index, swatch: swatch, slider: sl, edit: ed})
+}
+
+; 열두 줄을 만들고 창문에 끼운다. 설정 창을 만들 때 한 번만 부른다.
+; **창문은 설정 창이 아니라 "탭 안쪽 창"의 자식으로 만들어야 한다.** AutoHotkey는 탭에 놓인
+; 컨트롤들을 설정 창에 직접 붙이지 않고 별도의 대화상자 창(클래스 #32770) 하나를 만들어 그
+; 안에 담는다. 설정 창에 바로 붙이면 그 대화상자가 위를 덧칠해서, 창이 분명히 있고 보이기
+; 상태인데도 화면에는 아무것도 안 나온다(실제로 그랬다 — 자식 창들을 z순서대로 찍어보고서야
+; 알았다). 그 창의 핸들은 같은 탭에 만들어둔 스크롤 막대의 부모를 물어보면 얻을 수 있다.
+BuildPalettePanel(parentGui) {
+    global palettePanel, paletteBody, paletteRows, paletteContentH, paletteMax, paletteScroll
+    global PALETTE_X, PALETTE_Y, PALETTE_W, PALETTE_H, PALETTE_ROW_H
+    global DRAW_COLORS, BOARD_KEYS, BOARD_COLOR_DEFAULTS, paletteBar, palettePageX, palettePageY
+    paletteRows := []
+    pageHwnd := DllCall("GetParent", "ptr", paletteBar.Hwnd, "ptr")
+    ; 설정 창 기준으로 잡아둔 자리(PALETTE_X/Y)를 그 창 기준으로 옮긴다
+    pt := Buffer(8, 0)
+    NumPut("Int", PALETTE_X, pt, 0)
+    NumPut("Int", PALETTE_Y, pt, 4)
+    DllCall("ClientToScreen", "ptr", parentGui.Hwnd, "ptr", pt)
+    DllCall("ScreenToClient", "ptr", pageHwnd, "ptr", pt)
+    palettePageX := NumGet(pt, 0, "Int")
+    palettePageY := NumGet(pt, 4, "Int")
+    ; 0x4000000 = WS_CLIPSIBLINGS — 옆에 있는 컨트롤들과 서로의 자리를 침범하지 않게 한다
+    palettePanel := Gui("+Parent" pageHwnd " -Caption +0x4000000")
+    palettePanel.BackColor := "F2F2F2"
+    paletteBody := Gui("+Parent" palettePanel.Hwnd " -Caption")
+    paletteBody.BackColor := "F2F2F2"
+    paletteBody.SetFont("s10", "Malgun Gothic")
+
+    y := 6
+    head := paletteBody.AddText("x6 y" y " w400", "숫자키 — 선 색과 투명도")
+    head.SetFont("s9 c666666")
+    y += 24
+    loop DRAW_COLORS.Length {
+        AddPaletteRow(paletteBody, y, String(A_Index), "draw", A_Index)
+        y += PALETTE_ROW_H
+    }
+    y += 10
+    head2 := paletteBody.AddText("x6 y" y " w400", "칠판 — 바탕 색과 투명도 (낮추면 화면이 비쳐 보입니다)")
+    head2.SetFont("s9 c666666")
+    y += 24
+    for index, pair in BOARD_KEYS {
+        if (BOARD_COLOR_DEFAULTS[index] < 0) ; Q(투명)는 바꿀 것이 없다
+            continue
+        AddPaletteRow(paletteBody, y, StrUpper(pair[1]), "board", index)
+        y += PALETTE_ROW_H
+    }
+    paletteContentH := y + 6
+    paletteScroll := 0
+    paletteMax := Max(0, paletteContentH - PALETTE_H)
+    paletteBody.Show("NA x0 y0 w" PALETTE_W " h" paletteContentH)
+    palettePanel.Show("NA x" palettePageX " y" palettePageY " w" PALETTE_W " h" PALETTE_H)
+    palettePanel.Hide() ; 설정 창은 "일반" 탭에서 열리므로 일단 감춰둔다
+}
+
+; 탭을 옮길 때 창문을 같이 보이고 감춘다 (별도의 창이라 탭 컨트롤이 대신 해주지 않는다)
+ShowPalettePanel(on) {
+    global palettePanel, palettePageX, palettePageY, PALETTE_W, PALETTE_H
+    if !palettePanel
+        return
+    if on {
+        palettePanel.Show("NA x" palettePageX " y" palettePageY " w" PALETTE_W " h" PALETTE_H)
+        ; 옆에 있는 컨트롤들보다 위로 올린다 (0 = HWND_TOP / 0x1 = 크기 유지, 0x2 = 위치 유지, 0x10 = 활성화 안 함)
+        DllCall("SetWindowPos", "ptr", palettePanel.Hwnd, "ptr", 0
+            , "int", 0, "int", 0, "int", 0, "int", 0, "uint", 0x1 | 0x2 | 0x10)
+    } else
+        palettePanel.Hide()
+}
+
+; 스크롤 막대에 "전체 길이 / 한 화면 크기 / 지금 위치"를 알려준다. 이 셋을 줘야 막대 손잡이가
+; 내용 길이에 맞는 크기로 나오고, 다 보이는 경우엔 막대가 알아서 비활성으로 흐려진다.
+UpdatePaletteScrollBar() {
+    global paletteBar, paletteScroll, paletteContentH, PALETTE_H
+    if !paletteBar
+        return
+    si := Buffer(28, 0)
+    NumPut("UInt", 28, si, 0)              ; cbSize
+    NumPut("UInt", 0x1 | 0x2 | 0x4, si, 4) ; SIF_RANGE | SIF_PAGE | SIF_POS
+    NumPut("Int", 0, si, 8)                ; nMin
+    NumPut("Int", paletteContentH - 1, si, 12) ; nMax
+    NumPut("UInt", PALETTE_H, si, 16)      ; nPage (한 번에 보이는 높이)
+    NumPut("Int", paletteScroll, si, 20)   ; nPos
+    DllCall("SetScrollInfo", "ptr", paletteBar.Hwnd, "int", 2, "ptr", si, "int", true) ; SB_CTL
+}
+
+ScrollPaletteTo(pos) {
+    global paletteScroll, paletteMax, paletteBody
+    pos := Max(0, Min(paletteMax, Round(pos)))
+    if (pos = paletteScroll || !paletteBody)
+        return
+    paletteScroll := pos
+    paletteBody.Move(0, -pos) ; 내용을 위로 밀면 아래쪽 줄이 창문에 들어온다
+    UpdatePaletteScrollBar()
+}
+
+OnPaletteScroll(wParam, lParam, msg, hwnd) {
+    global paletteBar, paletteScroll, paletteMax, PALETTE_ROW_H, PALETTE_H
+    if (!paletteBar || lParam != paletteBar.Hwnd)
+        return
+    pos := paletteScroll
+    switch (wParam & 0xFFFF) {
+        case 0: pos -= PALETTE_ROW_H          ; SB_LINEUP
+        case 1: pos += PALETTE_ROW_H          ; SB_LINEDOWN
+        case 2: pos -= PALETTE_H              ; SB_PAGEUP
+        case 3: pos += PALETTE_H              ; SB_PAGEDOWN
+        case 4, 5:                            ; SB_THUMBPOSITION / SB_THUMBTRACK
+            ; 손잡이를 끄는 중에는 진행 위치를 따로 물어봐야 한다 (wParam에 실려오는 값은
+            ; 16비트라 내용이 길어지면 잘린다)
+            si := Buffer(28, 0)
+            NumPut("UInt", 28, si, 0)
+            NumPut("UInt", 0x10, si, 4)       ; SIF_TRACKPOS
+            DllCall("GetScrollInfo", "ptr", paletteBar.Hwnd, "int", 2, "ptr", si)
+            pos := NumGet(si, 24, "Int")
+        case 6: pos := 0                      ; SB_TOP
+        case 7: pos := paletteMax             ; SB_BOTTOM
+        default: return 0
+    }
+    ScrollPaletteTo(pos)
+    return 0
+}
+
+; 마우스 휠로도 굴러가게 한다. 휠 메시지는 "지금 입력 포커스를 가진 컨트롤"에게 가므로,
+; 슬라이더를 한 번 만진 뒤 휠을 굴리면 그 슬라이더 값이 바뀌어버린다. 커서가 이 칸 위에
+; 있으면 우리가 먼저 받아 스크롤로 쓰고 0을 돌려줘서, 아래로 내려가지 않게 막는다.
+OnPaletteWheel(wParam, lParam, msg, hwnd) {
+    global palettePanel, paletteScroll
+    if (!palettePanel || !DllCall("IsWindowVisible", "ptr", palettePanel.Hwnd))
+        return
+    pt := Buffer(8, 0)
+    DllCall("GetCursorPos", "ptr", pt)
+    mx := NumGet(pt, 0, "Int"), my := NumGet(pt, 4, "Int")
+    rc := Buffer(16, 0)
+    DllCall("GetWindowRect", "ptr", palettePanel.Hwnd, "ptr", rc)
+    if (mx < NumGet(rc, 0, "Int") || mx > NumGet(rc, 8, "Int")
+        || my < NumGet(rc, 4, "Int") || my > NumGet(rc, 12, "Int"))
+        return
+    delta := (wParam >> 16) & 0xFFFF
+    if (delta > 0x7FFF)
+        delta -= 0x10000 ; 위로 굴리면 음수로 와야 한다 (16비트 부호값)
+    ScrollPaletteTo(paletteScroll - Round(delta / 120) * 46)
+    return 0
+}
+
+; 열두 줄을 모두 처음 값으로 되돌린다. 화면의 견본과 슬라이더도 같이 맞춘다.
+ResetPalette() {
+    global DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, paletteRows
+    loop DRAW_COLORS.Length {
+        DRAW_COLORS[A_Index] := DRAW_COLOR_DEFAULTS[A_Index]
+        DRAW_ALPHAS[A_Index] := 100
+    }
+    loop BOARD_COLORS.Length {
+        BOARD_COLORS[A_Index] := BOARD_COLOR_DEFAULTS[A_Index]
+        BOARD_ALPHAS[A_Index] := 100
+    }
+    for row in paletteRows {
+        row.swatch.Opt("c" HexColor(PaletteColor(row.kind, row.index)))
+        row.slider.Value := PaletteAlpha(row.kind, row.index)
+        row.edit.Text := PaletteAlpha(row.kind, row.index)
+    }
+}
+
 ; 라벨 + 색상 견본 + "색상 선택..." 버튼을 한 줄로 만든다. 포인터·클릭효과·드로잉 세 탭이
 ; 같은 모양으로 쓰므로, 탭마다 따로 적지 않고 여기 한 번만 적어둔다.
-AddColorRow(gui, y, target) {
-    gui.AddText("x30 y" (y + 4) " w70", "색상")
+AddColorRow(gui, y, target, labelText := "색상") {
+    gui.AddText("x30 y" (y + 4) " w70", labelText)
     ; Text 컨트롤의 배경색 지정은 이 창(테마 적용된 일반 창)에서 반영되지 않는 문제가 있어서,
     ; 항상 확실하게 색이 반영되는 진행 막대(Progress) 컨트롤을 꽉 채운 색상 견본으로 쓴다.
     ; Progress 컨트롤은 안쪽 채움 영역이 테두리보다 살짝 안으로 들어가 있어서, 모서리를
@@ -2206,6 +2572,7 @@ AddHotkeyRow(gui, y, name) {
 
 OpenSettingsWindow(*) {
     global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl, widgetScale, widgetOpacity
+    global paletteBar, PALETTE_X, PALETTE_Y, PALETTE_W, PALETTE_H
 
     ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
     ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
@@ -2285,10 +2652,22 @@ OpenSettingsWindow(*) {
     ; 설정 창이 열려 있다는 것은 드로잉 모드가 꺼져 있다는 뜻이라(OpenSettingsWindow에서 끈다)
     ; 여기서 바꾼 값은 다음에 드로잉을 켤 때부터 쓰인다. 드로잉 중에 쓰는 값(activeDrawThickness)은
     ; 켤 때마다 이 값으로 초기화된다.
-    AddColorRow(settingsGui, 60, "Draw")
+    AddColorRow(settingsGui, 60, "Draw", "기본 색상")
+    lblZeroKey := settingsGui.AddText("x270 y64 w180", "드로잉 중 0 키로 이 색")
+    lblZeroKey.SetFont("s9 c999999")
     AddSliderRow(settingsGui, 100, "드로잉 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
     AddSliderRow(settingsGui, 140, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()), 5)
     AddSliderRow(settingsGui, 180, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
+
+    ; --- 숫자키 1~9와 칠판 W/E/R의 색 (스크롤되는 칸) ---
+    lblPalette := settingsGui.AddText("x30 y226 w120", "숫자키와 칠판의 색")
+    ; 칸이 잘려 보이는 것만으로는 넘길 수 있다는 걸 모르는 분이 있어서 한 줄 적어둔다
+    lblPaletteHint := settingsGui.AddText("x152 y228 w150", "마우스 휠로 넘기기")
+    lblPaletteHint.SetFont("s9 c999999")
+    btnPaletteReset := settingsGui.AddButton("x300 y220 w140 h28", "처음 색으로 되돌리기")
+    btnPaletteReset.OnEvent("Click", (*) => ResetPalette())
+    ; 위 "투명도"는 그려둔 것 전체에 곱해지는 값이라 헷갈리기 쉬워서, 여기서 한 번 갈라 적어둔다.
+    paletteBar := settingsGui.AddCustom("ClassScrollBar +0x1 x" (PALETTE_X + PALETTE_W + 2) " y" PALETTE_Y " w16 h" PALETTE_H)
 
     tabs.UseTab("위젯")
     chkWidget := settingsGui.AddCheckbox("x30 y52 w20 h20 " (showWidget ? "Checked" : ""), "")
@@ -2376,6 +2755,11 @@ OpenSettingsWindow(*) {
     btnCloseSettings.OnEvent("Click", (*) => settingsGui.Hide())
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
+    ; 색 목록은 탭 컨트롤 위에 얹는 별도의 창이라, 탭을 옮길 때 직접 감추고 보여야 한다.
+    BuildPalettePanel(settingsGui)
+    UpdatePaletteScrollBar()
+    tabs.OnEvent("Change", (ctrl, *) => ShowPalettePanel(ctrl.Text = "드로잉"))
+
     settingsGui.Show("w480 h628")
 }
 
@@ -2393,6 +2777,47 @@ OpenSettingsWindow(*) {
 ; 맞아서, 배율 125%/150%로 쓰는 화면에서도 그림이 부풀려지지 않고 또렷하게 나온다.
 shortcutGui := ""
 hShortcutBmp := 0
+; 그림 아래에 붙는 "지금 설정된 색" 띠의 높이
+GUIDE_STRIP_H := 104
+
+; 그림은 파일이라 설정 창에서 바꾼 색을 알 수 없다. 그래서 **색만은 창을 열 때마다 지금 값으로
+; 그려서** 그림 아래에 붙인다 — 그림을 새로 만들지 않아도 눈에 보이는 색은 항상 실제와 맞는다.
+; 0번(기본 색) / 1~9 / 칠판 W·E·R을 차례로 늘어놓고, 투명도를 낮춰둔 것은 아래에 %를 적는다.
+AddGuideColorStrip(gui, width, top, bgColor) {
+    global DRAW_COLORS, DRAW_ALPHAS, BOARD_KEYS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, drawColor
+    ; 그림 바탕이 어두우면 글자를 밝게 뒤집는다 (밝기는 사람 눈에 맞춘 가중치로 잰다)
+    lum := (((bgColor >> 16) & 0xFF) * 299 + ((bgColor >> 8) & 0xFF) * 587 + (bgColor & 0xFF) * 114) // 1000
+    fg := (lum < 128) ? "FFFFFF" : "1C1C1E"
+    dim := (lum < 128) ? "AAAAB2" : "8E8E93"
+
+    items := [{key: "0", color: drawColor, alpha: 100}]
+    loop DRAW_COLORS.Length
+        items.Push({key: String(A_Index), color: DRAW_COLORS[A_Index], alpha: DRAW_ALPHAS[A_Index]})
+    for index, pair in BOARD_KEYS {
+        if (BOARD_COLOR_DEFAULTS[index] < 0) ; Q(투명)는 보여줄 색이 없다
+            continue
+        items.Push({key: StrUpper(pair[1]), color: BOARD_COLORS[index], alpha: BOARD_ALPHAS[index]})
+    }
+
+    lbl := gui.AddText("x0 y" (top + 6) " w" width " Center", "지금 설정된 색 — 설정 창에서 바꾸면 여기에 그대로 나타납니다")
+    lbl.SetFont("s9 c" dim)
+
+    cell := Max(34, Min(64, (width - 40) // items.Length))
+    startX := (width - cell * items.Length) // 2
+    rowY := top + 30
+    for index, it in items {
+        x := startX + (index - 1) * cell
+        ; 견본은 설정 창과 같은 방식 — 색이 확실히 반영되는 Progress를 꽉 채우고 회색 테두리를 두른다
+        gui.AddProgress("x" (x + 4) " y" rowY " w" (cell - 8) " h24 Range0-100 -Smooth c808080", 100)
+        gui.AddProgress("x" (x + 5) " y" (rowY + 1) " w" (cell - 10) " h22 Range0-100 -Smooth c" HexColor(it.color), 100)
+        k := gui.AddText("x" x " y" (rowY + 28) " w" cell " Center", it.key)
+        k.SetFont("s10 Bold c" fg)
+        if (it.alpha < 100) {
+            p := gui.AddText("x" x " y" (rowY + 48) " w" cell " Center", it.alpha "%")
+            p.SetFont("s8 c" dim)
+        }
+    }
+}
 
 ; 원본 그림을 dstW×dstH 크기로 곱게 줄여 HBITMAP으로 돌려준다. 실패하면 0.
 ScaledHBitmapFromFile(path, dstW, dstH) {
@@ -2418,7 +2843,7 @@ ScaledHBitmapFromFile(path, dstW, dstH) {
 }
 
 ShowShortcutGuide(*) {
-    global shortcutGui, hShortcutBmp, SHORTCUT_IMAGE_PATH
+    global shortcutGui, hShortcutBmp, SHORTCUT_IMAGE_PATH, GUIDE_STRIP_H
 
     ; 이미 떠 있으면 앞으로 가져오기만 한다.
     if shortcutGui && WinExist("ahk_id " shortcutGui.Hwnd) {
@@ -2435,13 +2860,19 @@ ShowShortcutGuide(*) {
     imgW := 0, imgH := 0
     DllCall("gdiplus\GdipGetImageWidth", "ptr", pImg, "uint*", &imgW)
     DllCall("gdiplus\GdipGetImageHeight", "ptr", pImg, "uint*", &imgH)
+    ; 아래에 붙일 색 띠가 그림과 이어져 보이도록, 그림 왼쪽 아래 구석 색을 띠의 바탕으로 쓴다.
+    ; 어떤 그림을 넣든 알아서 어울린다 (검정 바탕 그림이면 띠도 검정이 된다).
+    stripBg := 0xFFFFFF
+    argb := 0
+    if !DllCall("gdiplus\GdipBitmapGetPixel", "ptr", pImg, "int", 2, "int", Max(0, imgH - 3), "uint*", &argb)
+        stripBg := argb & 0xFFFFFF
     DllCall("gdiplus\GdipDisposeImage", "ptr", pImg)
 
-    ; 작업표시줄을 뺀 화면 안에 창틀까지 들어가도록, 여백을 조금 두고 비율을 구한다.
+    ; 작업표시줄을 뺀 화면 안에 창틀과 색 띠까지 들어가도록, 여백을 조금 두고 비율을 구한다.
     ; (1보다 크면 1로 — 원본보다 키우지 않는다)
     MonitorGetWorkArea(, &waL, &waT, &waR, &waB)
     maxW := (waR - waL) - 60
-    maxH := (waB - waT) - 80
+    maxH := (waB - waT) - 80 - GUIDE_STRIP_H
     scale := Min(1.0, maxW / imgW, maxH / imgH)
     dstW := Max(1, Round(imgW * scale))
     dstH := Max(1, Round(imgH * scale))
@@ -2464,10 +2895,13 @@ ShowShortcutGuide(*) {
     shortcutGui := Gui("-DPIScale -MaximizeBox -MinimizeBox +AlwaysOnTop", "Focus & Draw - 단축키")
     shortcutGui.MarginX := 0
     shortcutGui.MarginY := 0
+    shortcutGui.BackColor := HexColor(stripBg)
+    shortcutGui.SetFont("s10", "Malgun Gothic")
     shortcutGui.AddPicture("x0 y0 w" dstW " h" dstH, "HBITMAP:" hShortcutBmp)
+    AddGuideColorStrip(shortcutGui, dstW, dstH, stripBg)
     shortcutGui.OnEvent("Close", (*) => CloseShortcutGuide())
     shortcutGui.OnEvent("Escape", (*) => CloseShortcutGuide())
-    shortcutGui.Show("w" dstW " h" dstH " Center")
+    shortcutGui.Show("w" dstW " h" (dstH + GUIDE_STRIP_H) " Center")
 }
 
 ; 창을 없애고 그림 자원도 함께 돌려준다. 다시 열 때는 처음부터 새로 만든다 — 자주 있는
@@ -3126,7 +3560,11 @@ Hotkey("Esc", ExitDrawMode, "Off")    ; 내용 지우고 드로잉 모드 종료
 Hotkey("Delete", ClearDrawing, "Off") ; 드로잉 모드 유지한 채 내용만 지움
 Hotkey("^z", UndoDrawing, "Off")      ; 직전 획/지우기/전체 지우기 한 단계 되돌리기
 loop DRAW_COLORS.Length
-    Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~9 = 빨주노초파남보 + 검정 + 흰색
+    Hotkey(String(A_Index), MakeColorSetter(A_Index), "Off") ; 1~9 = 설정 창에서 정한 아홉 가지 색
+; 0은 **설정 창 "드로잉" 탭의 기본 색**을 도로 집는 자리다. 숫자키로 잠깐 다른 색을 쓰다가
+; 원래 쓰던 색으로 돌아올 방법이 없어서(드로잉을 껐다 켜야 했다) 0에 붙여뒀다. 기본 색을
+; 바꾸면 0번도 따라 바뀐다 — 0은 색을 기억하는 게 아니라 그때의 기본 색을 보고 집는다.
+Hotkey("0", MakeColorSetter(0), "Off")
 
 ; 선 굵기 조절. "+"는 키보드에서 Shift를 함께 눌러야 나오는 글자라, 굵게 하려고 Shift 없이
 ; 그 키를 눌러도(=) 되도록 둘 다 잡는다. 숫자 키패드가 있는 키보드도 함께 챙긴다.
@@ -3136,8 +3574,8 @@ for pair in THICKNESS_KEYS
 
 ; 칠판 색 (Q/W/E/R). 도형 키(Z·X·C)와 마찬가지로 드로잉 모드일 때만 잡으므로, 모드를 끄면
 ; 평소대로 글자 키로 돌아간다.
-for pair in BOARD_KEYS
-    Hotkey(pair[1], MakeBoardSetter(pair[2]), "Off")
+for index, pair in BOARD_KEYS
+    Hotkey(pair[1], MakeBoardSetter(index), "Off")
 
 ; 도형 키(Z/X/C)는 "누르고 있는 동안"만 뜻이 있어서 눌렀을 때 할 일이 따로 없다. 그런데도
 ; 핫키로 잡아두는 이유는 두 가지다 — (1) 키를 삼켜서 뒤에 있는 프로그램에 글자가 입력되지
@@ -3159,6 +3597,7 @@ SetDrawModeHotkeys(state) {
     Hotkey("^z", state)
     loop DRAW_COLORS.Length
         Hotkey(String(A_Index), state)
+    Hotkey("0", state)
     for pair in THICKNESS_KEYS
         Hotkey(pair[1], state)
     for pair in BOARD_KEYS
