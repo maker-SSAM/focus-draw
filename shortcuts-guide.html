@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Focus &amp; Draw 단축키 안내</title>
+<!--
+  설정 창의 "단축키 보기" 버튼이 띄우는 그림(shortcuts.png)의 원본이다.
+  키나 문구가 바뀌면 이 파일을 고친 뒤 아래 명령으로 PNG를 다시 뽑는다 (Edge가 그려준다).
+  PowerShell에서:
+
+    & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu `
+      --hide-scrollbars --virtual-time-budget=4000 --force-device-scale-factor=1 `
+      --default-background-color=FFFFFFFF --screenshot="shortcuts.png" --window-size=1200,800 `
+      "file:///<이 파일의 전체 경로>"
+
+  키 칸 너비는 "유닛"으로 잡는다. 1유닛 = --u, 키 사이 간격 = --gap.
+  n유닛짜리 키의 폭 = n*u + (n-1)*gap 이라야 유닛 수가 같은 줄의 전체 폭이 정확히 맞는다.
+  (그냥 n*u로 하면 키 개수가 다른 줄끼리 오른쪽 끝이 어긋난다)
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1200px; height:800px; }
+  body {
+    font-family:"Malgun Gothic","맑은 고딕",sans-serif;
+    background:#ffffff; color:#1c1c1e;
+    -webkit-font-smoothing:antialiased;
+  }
+  .sheet { width:1200px; height:800px; padding:24px 30px 18px; display:flex; flex-direction:column; }
+
+  header { display:flex; align-items:baseline; gap:14px; }
+  header h1 { font-size:26px; font-weight:700; letter-spacing:-.5px; }
+  header .sub { font-size:14px; color:#6b6b70; }
+
+  .legend { display:flex; gap:8px; margin:13px 0 14px; }
+  .chip { font-size:12.5px; padding:4px 12px; border-radius:20px; border:1px solid; font-weight:700; }
+  .chip small { font-weight:400; opacity:.75; margin-left:5px; }
+  .c-color { color:#0a63c2; border-color:#b8d7f5; background:#eaf3fd; }
+  .c-board { color:#1d7a4d; border-color:#bae3cd; background:#eaf7f0; }
+  .c-shape { color:#7a3fbf; border-color:#d9c6f0; background:#f4edfc; }
+  .c-size  { color:#a86612; border-color:#f0dcb8; background:#fdf5e8; }
+  .c-clear { color:#c0392b; border-color:#f2c4be; background:#fdeeec; }
+
+  /* ---------- 키보드 ---------- */
+  .kb {
+    --u:61px; --gap:6px;
+    background:#f4f4f6; border:1px solid #e2e2e6; border-radius:16px; padding:14px;
+  }
+  .row { display:flex; gap:var(--gap); margin-bottom:var(--gap); }
+  .row:last-child { margin-bottom:0; }
+  .key {
+    height:74px; border-radius:9px; background:#fff; border:1px solid #d7d7dc;
+    border-bottom-width:2px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:3px; overflow:hidden; position:relative;
+  }
+  .key .cap { font-size:17px; font-weight:700; line-height:1; }
+  .key .note { font-size:11px; line-height:1.1; color:#43434a; letter-spacing:-.3px; white-space:nowrap; }
+  .key.dim { background:#ededf0; border-color:#e0e0e4; }
+  .key.dim .cap { color:#b0b0b8; font-weight:500; font-size:14px; }
+  .bar { position:absolute; top:0; left:0; right:0; height:8px; border-bottom:1px solid rgba(0,0,0,.12); }
+
+  .k1   { width:calc(1    * var(--u)); }
+  .k125 { width:calc(1.25 * var(--u) + .25 * var(--gap)); }
+  .k15  { width:calc(1.5  * var(--u) + .5  * var(--gap)); }
+  .k175 { width:calc(1.75 * var(--u) + .75 * var(--gap)); }
+  .k225 { width:calc(2.25 * var(--u) + 1.25 * var(--gap)); }
+  .k275 { width:calc(2.75 * var(--u) + 1.75 * var(--gap)); }
+  .k625 { width:calc(6.25 * var(--u) + 5.25 * var(--gap)); }
+
+  /* 오른쪽에 떨어져 있는 Delete 자리(실제 키보드에서도 Backspace 오른쪽 한 칸 건너에 있다) */
+  .nav { margin-left:14px; }
+
+  .on.g-color { border-color:#7fb4e8; box-shadow:0 0 0 1px #7fb4e8 inset; }
+  .on.g-board { border-color:#66bf93; box-shadow:0 0 0 1px #66bf93 inset; }
+  .on.g-shape { border-color:#b18ae0; box-shadow:0 0 0 1px #b18ae0 inset; }
+  .on.g-size  { border-color:#e0ac5e; box-shadow:0 0 0 1px #e0ac5e inset; }
+  .on.g-clear { border-color:#e08a7e; box-shadow:0 0 0 1px #e08a7e inset; }
+  .on.bar-top .cap { margin-top:6px; }
+  .glyph { display:block; margin-top:1px; }
+  .hold { font-size:10px; color:#7a3fbf; font-weight:700; letter-spacing:-.3px; }
+
+  /* ---------- 아래 설명 카드 ---------- */
+  .cards { display:flex; gap:14px; margin-top:14px; }
+  .card { flex:1; border:1px solid #e2e2e6; border-radius:14px; padding:12px 16px 13px; }
+  .card h2 { font-size:14.5px; font-weight:700; margin-bottom:9px; display:flex; align-items:center; gap:7px; }
+  .card h2 .dot { width:8px; height:8px; border-radius:50%; }
+  .line { display:flex; align-items:center; gap:10px; margin-bottom:7px; font-size:13px; }
+  .line:last-child { margin-bottom:0; }
+  .line .what { color:#43434a; }
+  .line .arrow { color:#b3b3ba; }
+  .line b { font-weight:700; color:#1c1c1e; }
+  .act { width:150px; flex-shrink:0; }
+  .kbd {
+    display:inline-block; min-width:20px; text-align:center; font-size:11.5px; font-weight:700;
+    padding:2px 6px; border:1px solid #d0d0d6; border-bottom-width:2px; border-radius:5px;
+    background:#fafafb; line-height:1.2;
+  }
+  .tip { color:#8e8e93; font-size:12px; margin-top:9px; }
+
+  footer { margin-top:auto; padding-top:12px; font-size:12px; color:#8e8e93; text-align:center; }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <header>
+    <h1>드로잉 모드 단축키</h1>
+    <span class="sub">드로잉을 켠 동안에만 동작합니다. 드로잉을 끄면 모든 키가 평소대로 돌아갑니다.</span>
+  </header>
+
+  <div class="legend">
+    <span class="chip c-color">색 바꾸기<small>1 ~ 9</small></span>
+    <span class="chip c-board">칠판<small>Q W E R</small></span>
+    <span class="chip c-shape">도형<small>Z X C — 누른 채로 드래그</small></span>
+    <span class="chip c-size">선 굵기<small>&minus; &#43;</small></span>
+    <span class="chip c-clear">지우기<small>Delete · Esc</small></span>
+  </div>
+
+  <div class="kb">
+
+    <div class="row">
+      <div class="key k15 on g-clear bar-top"><span class="bar" style="background:#e08a7e"></span><span class="cap" style="font-size:14px">Esc</span><span class="note">지우고 끄기</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#FF0000"></span><span class="cap">1</span><span class="note">빨강</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#FF7F00"></span><span class="cap">2</span><span class="note">주황</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#FFFF00"></span><span class="cap">3</span><span class="note">노랑</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#00FF00"></span><span class="cap">4</span><span class="note">초록</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#0000FF"></span><span class="cap">5</span><span class="note">파랑</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#4B0082"></span><span class="cap">6</span><span class="note">남색</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#9400D3"></span><span class="cap">7</span><span class="note">보라</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#000000"></span><span class="cap">8</span><span class="note">검정</span></div>
+      <div class="key k1 on g-color bar-top"><span class="bar" style="background:#FFFFFF"></span><span class="cap">9</span><span class="note">흰색</span></div>
+      <div class="key k1 dim"><span class="cap">0</span></div>
+      <div class="key k1 on g-size bar-top"><span class="bar" style="background:#e0ac5e"></span><span class="cap">&minus;</span><span class="note">가늘게</span></div>
+      <div class="key k1 on g-size bar-top"><span class="bar" style="background:#e0ac5e"></span><span class="cap">&#43;</span><span class="note">굵게</span></div>
+      <div class="key k15 dim"><span class="cap">&larr;</span></div>
+      <div class="key k15 on g-clear bar-top nav"><span class="bar" style="background:#e08a7e"></span><span class="cap" style="font-size:14px">Delete</span><span class="note">전부 지우기</span></div>
+    </div>
+
+    <div class="row">
+      <div class="key k15 dim"><span class="cap">Tab</span></div>
+      <div class="key k1 on g-board bar-top"><span class="bar" style="background:repeating-linear-gradient(45deg,#cfcfd4 0 4px,#fff 4px 8px)"></span><span class="cap">Q</span><span class="note">투명</span></div>
+      <div class="key k1 on g-board bar-top"><span class="bar" style="background:#FFFFFF"></span><span class="cap">W</span><span class="note">흰 칠판</span></div>
+      <div class="key k1 on g-board bar-top"><span class="bar" style="background:#14472F"></span><span class="cap">E</span><span class="note">초록 칠판</span></div>
+      <div class="key k1 on g-board bar-top"><span class="bar" style="background:#000000"></span><span class="cap">R</span><span class="note">검정 칠판</span></div>
+      <div class="key k1 dim"><span class="cap">T</span></div>
+      <div class="key k1 dim"><span class="cap">Y</span></div>
+      <div class="key k1 dim"><span class="cap">U</span></div>
+      <div class="key k1 dim"><span class="cap">I</span></div>
+      <div class="key k1 dim"><span class="cap">O</span></div>
+      <div class="key k1 dim"><span class="cap">P</span></div>
+      <div class="key k1 dim"><span class="cap">[</span></div>
+      <div class="key k1 dim"><span class="cap">]</span></div>
+      <div class="key k15 dim"><span class="cap">\</span></div>
+    </div>
+
+    <div class="row">
+      <div class="key k175 dim"><span class="cap">Caps</span></div>
+      <div class="key k1 dim"><span class="cap">A</span></div>
+      <div class="key k1 dim"><span class="cap">S</span></div>
+      <div class="key k1 dim"><span class="cap">D</span></div>
+      <div class="key k1 dim"><span class="cap">F</span></div>
+      <div class="key k1 dim"><span class="cap">G</span></div>
+      <div class="key k1 dim"><span class="cap">H</span></div>
+      <div class="key k1 dim"><span class="cap">J</span></div>
+      <div class="key k1 dim"><span class="cap">K</span></div>
+      <div class="key k1 dim"><span class="cap">L</span></div>
+      <div class="key k1 dim"><span class="cap">;</span></div>
+      <div class="key k1 dim"><span class="cap">&#39;</span></div>
+      <div class="key k225 dim"><span class="cap">Enter</span></div>
+    </div>
+
+    <div class="row">
+      <div class="key k225 on g-shape"><span class="cap" style="font-size:15px">Shift</span><span class="note" style="color:#7a3fbf">+ 드래그 &rarr; 사각형</span></div>
+      <div class="key k1 on g-shape bar-top"><span class="bar" style="background:#b18ae0"></span><span class="cap">Z</span>
+        <svg class="glyph" width="34" height="13" viewBox="0 0 34 13"><line x1="3" y1="10" x2="31" y2="3" stroke="#7a3fbf" stroke-width="2.4" stroke-linecap="round"/></svg>
+        <span class="hold">직선</span></div>
+      <div class="key k1 on g-shape bar-top"><span class="bar" style="background:#b18ae0"></span><span class="cap">X</span>
+        <svg class="glyph" width="34" height="13" viewBox="0 0 34 13"><path d="M3 8 q3.5 -6 7 0 t7 0 t7 0 t7 0" fill="none" stroke="#7a3fbf" stroke-width="2.4" stroke-linecap="round"/></svg>
+        <span class="hold">물결</span></div>
+      <div class="key k1 on g-shape bar-top"><span class="bar" style="background:#b18ae0"></span><span class="cap">C</span>
+        <svg class="glyph" width="34" height="13" viewBox="0 0 34 13"><line x1="3" y1="10" x2="27" y2="4" stroke="#7a3fbf" stroke-width="2.4" stroke-linecap="round"/><path d="M19 1.5 L30 3.2 L23.5 10" fill="none" stroke="#7a3fbf" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="hold">화살표</span></div>
+      <div class="key k1 dim"><span class="cap">V</span></div>
+      <div class="key k1 dim"><span class="cap">B</span></div>
+      <div class="key k1 dim"><span class="cap">N</span></div>
+      <div class="key k1 dim"><span class="cap">M</span></div>
+      <div class="key k1 dim"><span class="cap">,</span></div>
+      <div class="key k1 dim"><span class="cap">.</span></div>
+      <div class="key k275 dim"><span class="cap">Shift</span></div>
+    </div>
+
+    <div class="row">
+      <div class="key k125 on g-shape"><span class="cap" style="font-size:14px">Ctrl</span><span class="note" style="color:#7a3fbf">원(타원)</span></div>
+      <div class="key k125 dim"><span class="cap">Win</span></div>
+      <div class="key k125 dim"><span class="cap">Alt</span></div>
+      <div class="key k125 dim"><span class="cap">한자</span></div>
+      <div class="key k625 dim"><span class="cap">Space</span></div>
+      <div class="key k125 dim"><span class="cap">한/영</span></div>
+      <div class="key k125 dim"><span class="cap">Alt</span></div>
+      <div class="key k125 dim"><span class="cap">Ctrl</span></div>
+    </div>
+
+  </div>
+
+  <div class="cards">
+
+    <div class="card">
+      <h2><span class="dot" style="background:#0a84ff"></span>마우스로 그리기</h2>
+      <div class="line"><span class="act"><b>드래그</b></span><span class="arrow">&rarr;</span><span class="what"><b>자유선</b> 그리기</span></div>
+      <div class="line"><span class="act"><span class="kbd">Shift</span> · <span class="kbd">Ctrl</span> + 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>사각형 · 원</b></span></div>
+      <div class="line"><span class="act"><span class="kbd">Z</span><span class="kbd">X</span><span class="kbd">C</span> + 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>직선 · 물결 · 화살표</b></span></div>
+      <div class="line"><span class="act">오른쪽 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>지우개</b></span></div>
+      <div class="line"><span class="act">오른쪽 버튼 + <span class="kbd">&minus;</span><span class="kbd">&#43;</span></span><span class="arrow">&rarr;</span><span class="what">지우개 <b>크기</b></span></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" style="background:#34a853"></span>전자칠판에서 (터치)</h2>
+      <div class="line"><span class="act">손가락 · 터치펜</span><span class="arrow">&rarr;</span><span class="what"><b>글씨 쓰기</b></span></div>
+      <div class="line"><span class="act"><b>손날</b>로 문지르기</span><span class="arrow">&rarr;</span><span class="what"><b>지우개</b> (넓게)</span></div>
+      <div class="line"><span class="act"><b>두 손가락</b>으로 톡</span><span class="arrow">&rarr;</span><span class="what"><b>실행 취소</b></span></div>
+      <div class="tip">칠판 앞에서 키보드까지 가지 않아도 됩니다.</div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" style="background:#ff453a"></span>되돌리기 · 지우기</h2>
+      <div class="line"><span class="act"><span class="kbd">Ctrl</span> + <span class="kbd">Z</span></span><span class="arrow">&rarr;</span><span class="what"><b>실행 취소</b> (여러 번)</span></div>
+      <div class="line"><span class="act"><span class="kbd">Delete</span></span><span class="arrow">&rarr;</span><span class="what">그린 것 <b>전부 지우기</b></span></div>
+      <div class="line"><span class="act"><span class="kbd">Esc</span></span><span class="arrow">&rarr;</span><span class="what">지우고 <b>드로잉 끄기</b></span></div>
+      <div class="tip">Delete는 드로잉을 켜 둔 채로 지웁니다.</div>
+    </div>
+
+  </div>
+
+  <footer>Focus &amp; Draw &nbsp;·&nbsp; 강조와 드로잉을 켜고 끄는 키는 설정 창의 &ldquo;단축키&rdquo; 탭에서 바꿀 수 있습니다.</footer>
+</div>
+</body>
+</html>

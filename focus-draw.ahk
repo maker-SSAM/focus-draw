@@ -44,11 +44,15 @@ FileInstall("icon_draw.png", A_Temp "\tt_icon_draw.png", true)
 FileInstall("icon_spotlight_dark.png", A_Temp "\tt_icon_spotlight_dark.png", true)
 FileInstall("icon_draw_dark.png", A_Temp "\tt_icon_draw_dark.png", true)
 FileInstall("Settings.png", A_Temp "\tt_icon_settings.png", true)
+; 설정 창의 "단축키 보기" 버튼이 띄우는 안내 그림. 아이콘과 달리 화면에 그대로 보여주기만
+; 하므로 색을 입히거나 하지 않는다. (그림을 바꾸려면 shortcuts.png만 갈아끼우면 된다)
+FileInstall("shortcuts.png", A_Temp "\tt_shortcuts.png", true)
 ICON_SPOT_PATH := A_Temp "\tt_icon_spotlight.png"
 ICON_DRAW_PATH := A_Temp "\tt_icon_draw.png"
 ICON_SPOT_DARK_PATH := A_Temp "\tt_icon_spotlight_dark.png"
 ICON_DRAW_DARK_PATH := A_Temp "\tt_icon_draw_dark.png"
 ICON_SETTINGS_PATH := A_Temp "\tt_icon_settings.png"
+SHORTCUT_IMAGE_PATH := A_Temp "\tt_shortcuts.png"
 
 ; ================= GDI+ 초기화 (PNG 아이콘 불러오기/색 입히기용) =================
 gdipStartupInput := Buffer(24, 0)
@@ -2341,7 +2345,12 @@ OpenSettingsWindow(*) {
     ; 드로잉 중에만 쓰는 키들은 바꿀 수 없지만, 모르면 못 쓰는 기능이라 여기에 같이 적어둔다.
     ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
     ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
-    settingsGui.AddText("x30 y164 w420", "드로잉 모드에서 쓰는 키 (변경 불가)")
+    settingsGui.AddText("x30 y166 w250", "드로잉 모드에서 쓰는 키 (변경 불가)")
+    ; 아래 글 목록은 "이미 아는 키를 확인하는" 데는 충분하지만, 처음 보는 사람이 키보드에서
+    ; 어디를 눌러야 하는지 찾기엔 불친절하다. 키보드 그림 위에 표시된 것을 한 번 보는 편이
+    ; 훨씬 빠르므로, 목록은 그대로 두고 그림을 여는 버튼을 옆에 둔다.
+    btnShortcutGuide := settingsGui.AddButton("x310 y160 w126 h28", "단축키 보기")
+    btnShortcutGuide.OnEvent("Click", ShowShortcutGuide)
     keyNames := settingsGui.AddText("x38 y186 w130 h232",
         "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 9`nQ / W / E / R`n+ / -`n오른쪽 버튼 + / -`nDelete`nEsc")
     ; (도형 순서: 자유선 / 사각형 / 원 / 직선 / 물결 / 화살표 — 위 키 목록과 줄이 맞아야 한다)
@@ -2368,6 +2377,111 @@ OpenSettingsWindow(*) {
     settingsGui.OnEvent("Close", (*) => settingsGui.Hide())
 
     settingsGui.Show("w480 h628")
+}
+
+; ================= 단축키 안내 그림 =================
+; 설정 창 "단축키" 탭의 "단축키 보기" 버튼이 띄우는 창. 키보드 그림 한 장(shortcuts.png)을
+; 그대로 보여주기만 한다.
+;
+; 그림은 **줄이기만 하고 키우지는 않는다.** 화면보다 큰 그림은 화면에 맞게 줄여야 하지만,
+; 작은 그림을 억지로 키우면 흐려지기만 하고 얻는 게 없다.
+;
+; 줄일 때는 GDI+로 **미리 줄인 그림을 만들어** 넣는다. Picture 컨트롤에 큰 그림을 그대로
+; 넣고 w/h만 작게 주면 Windows가 픽셀을 솎아내는 식으로 거칠게 줄여서 글자가 뭉개진다.
+;
+; 창은 `-DPIScale`로 만든다. 그래야 여기서 계산한 픽셀 수가 화면의 실제 픽셀과 1:1로
+; 맞아서, 배율 125%/150%로 쓰는 화면에서도 그림이 부풀려지지 않고 또렷하게 나온다.
+shortcutGui := ""
+hShortcutBmp := 0
+
+; 원본 그림을 dstW×dstH 크기로 곱게 줄여 HBITMAP으로 돌려준다. 실패하면 0.
+ScaledHBitmapFromFile(path, dstW, dstH) {
+    pSrc := 0
+    DllCall("gdiplus\GdipLoadImageFromFile", "wstr", path, "ptr*", &pSrc)
+    if !pSrc
+        return 0
+
+    pDst := 0
+    DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", dstW, "int", dstH, "int", 0, "int", 0x26200A, "ptr", 0, "ptr*", &pDst) ; 32bppARGB
+    pGraphics := 0
+    DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pDst, "ptr*", &pGraphics)
+    DllCall("gdiplus\GdipSetInterpolationMode", "ptr", pGraphics, "int", 7) ; HighQualityBicubic — 글자가 뭉개지지 않는다
+    DllCall("gdiplus\GdipSetPixelOffsetMode", "ptr", pGraphics, "int", 2)   ; HighQuality — 가장자리 한 줄이 잘리는 것을 막는다
+    DllCall("gdiplus\GdipDrawImageRectI", "ptr", pGraphics, "ptr", pSrc, "int", 0, "int", 0, "int", dstW, "int", dstH)
+    DllCall("gdiplus\GdipDeleteGraphics", "ptr", pGraphics)
+
+    hBmp := 0
+    DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", pDst, "ptr*", &hBmp, "uint", 0xFFFFFFFF) ; 배경 흰색(알파 있는 그림용)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pDst)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pSrc)
+    return hBmp
+}
+
+ShowShortcutGuide(*) {
+    global shortcutGui, hShortcutBmp, SHORTCUT_IMAGE_PATH
+
+    ; 이미 떠 있으면 앞으로 가져오기만 한다.
+    if shortcutGui && WinExist("ahk_id " shortcutGui.Hwnd) {
+        shortcutGui.Show()
+        return
+    }
+
+    pImg := 0
+    DllCall("gdiplus\GdipLoadImageFromFile", "wstr", SHORTCUT_IMAGE_PATH, "ptr*", &pImg)
+    if !pImg {
+        MsgBox("단축키 안내 그림을 열지 못했습니다.`n`n" SHORTCUT_IMAGE_PATH, "Focus & Draw - 단축키", "Icon!")
+        return
+    }
+    imgW := 0, imgH := 0
+    DllCall("gdiplus\GdipGetImageWidth", "ptr", pImg, "uint*", &imgW)
+    DllCall("gdiplus\GdipGetImageHeight", "ptr", pImg, "uint*", &imgH)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pImg)
+
+    ; 작업표시줄을 뺀 화면 안에 창틀까지 들어가도록, 여백을 조금 두고 비율을 구한다.
+    ; (1보다 크면 1로 — 원본보다 키우지 않는다)
+    MonitorGetWorkArea(, &waL, &waT, &waR, &waB)
+    maxW := (waR - waL) - 60
+    maxH := (waB - waT) - 80
+    scale := Min(1.0, maxW / imgW, maxH / imgH)
+    dstW := Max(1, Round(imgW * scale))
+    dstH := Max(1, Round(imgH * scale))
+
+    if (scale = 1.0) {
+        ; 화면에 그대로 들어가면 다시 그릴 이유가 없다 — 원본을 그대로 쓴다.
+        imgType := 0
+        hShortcutBmp := LoadPicture(SHORTCUT_IMAGE_PATH, "GDI+", &imgType)
+    } else {
+        hShortcutBmp := ScaledHBitmapFromFile(SHORTCUT_IMAGE_PATH, dstW, dstH)
+    }
+    if !hShortcutBmp {
+        MsgBox("단축키 안내 그림을 불러오지 못했습니다.`n`n" SHORTCUT_IMAGE_PATH, "Focus & Draw - 단축키", "Icon!")
+        return
+    }
+
+    ; 설정 창 뒤로 숨지 않도록 항상 위에 둔다. 읽기만 하는 창이라 다른 작업을 가릴 일이 없고,
+    ; Esc나 창 닫기로 바로 닫힌다. (설정 창과 달리 화면을 보면서 맞출 값이 없으므로
+    ;  AlwaysOnTop이 걸림돌이 되지 않는다)
+    shortcutGui := Gui("-DPIScale -MaximizeBox -MinimizeBox +AlwaysOnTop", "Focus & Draw - 단축키")
+    shortcutGui.MarginX := 0
+    shortcutGui.MarginY := 0
+    shortcutGui.AddPicture("x0 y0 w" dstW " h" dstH, "HBITMAP:" hShortcutBmp)
+    shortcutGui.OnEvent("Close", (*) => CloseShortcutGuide())
+    shortcutGui.OnEvent("Escape", (*) => CloseShortcutGuide())
+    shortcutGui.Show("w" dstW " h" dstH " Center")
+}
+
+; 창을 없애고 그림 자원도 함께 돌려준다. 다시 열 때는 처음부터 새로 만든다 — 자주 있는
+; 일이 아니고, 그 사이에 화면 크기가 바뀌었더라도 알아서 새 크기에 맞춰진다.
+CloseShortcutGuide() {
+    global shortcutGui, hShortcutBmp
+    if shortcutGui {
+        shortcutGui.Destroy()
+        shortcutGui := ""
+    }
+    if hShortcutBmp {
+        DllCall("DeleteObject", "ptr", hShortcutBmp)
+        hShortcutBmp := 0
+    }
 }
 
 ; ================= 컨트롤 위젯(화면 구석 미니 툴바) =================
