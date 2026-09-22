@@ -689,10 +689,17 @@ RoundedRectPath(x, y, w, h, r) {
     return path
 }
 
-DrawStepBadge(text) {
-    global stepCanvas, stepFont, stepFormat, STEP_BADGE_W, STEP_BADGE_H
+; 글자가 들어갈 만큼의 배지 너비. 단계는 한두 글자지만 투명도는 "100%"까지 가므로,
+; 늘 같은 폭으로 두면 글자가 테두리에 닿는다.
+StepBadgeWidth(text) {
+    global STEP_BADGE_W
+    return Max(STEP_BADGE_W, 12 + StrLen(String(text)) * 9)
+}
+
+DrawStepBadge(text, w) {
+    global stepCanvas, stepFont, stepFormat, STEP_BADGE_H
     InitStepBadgeFont()
-    w := STEP_BADGE_W, h := STEP_BADGE_H
+    h := STEP_BADGE_H
     DestroyAlphaCanvas(stepCanvas)
     stepCanvas := CreateAlphaCanvas(w, h)
     if !stepCanvas.graphics
@@ -733,17 +740,18 @@ DrawStepBadge(text) {
 }
 
 ShowStepNumber(step) {
-    global stepGui, stepCanvas, drawOn, STEP_BADGE_W, STEP_BADGE_H, STEP_BADGE_GAP, STEP_BADGE_MS
+    global stepGui, stepCanvas, drawOn, STEP_BADGE_H, STEP_BADGE_GAP, STEP_BADGE_MS
     if !drawOn
         return
-    if !DrawStepBadge(step)
+    badgeW := StepBadgeWidth(step)
+    if !DrawStepBadge(step, badgeW)
         return
     MouseGetPos(&mx, &my)
     ; **커서 중심에서 늘 같은 거리**에 둔다. 예전에는 커서 원 가장자리에 붙여서, 굵기를 바꿀
     ; 때마다 숫자가 조금씩 움직여 눈이 따라가야 했다.
     x := mx + STEP_BADGE_GAP, y := my + STEP_BADGE_GAP
-    if (x + STEP_BADGE_W > A_ScreenWidth)
-        x := mx - STEP_BADGE_GAP - STEP_BADGE_W
+    if (x + badgeW > A_ScreenWidth)
+        x := mx - STEP_BADGE_GAP - badgeW
     if (y + STEP_BADGE_H > A_ScreenHeight)
         y := my - STEP_BADGE_GAP - STEP_BADGE_H
     stepGui.Show("NA")
@@ -2055,7 +2063,7 @@ ToggleDraw(*) {
         ; 오버레이는 그린 자국 말고는 거의 투명해서, 설정 창이 열려 있으면 눈에는 보이는데
         ; 클릭은 오버레이가 가로채는 이상한 상태가 된다. 아예 잠시 감춰서 헷갈리지 않게 한다.
         settingsHiddenByDraw := false
-        if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
+        if SettingsWindowExists() {
             settingsGui.Hide()
             settingsHiddenByDraw := true
         }
@@ -2149,6 +2157,23 @@ AdjustDrawThickness(delta) {
 
 ; 숫자키와 같은 이유로(반복문 안에서 화살표 함수를 바로 쓰면 마지막 값 하나만 남는다) 가둬둔다.
 MakeThicknessSetter(delta) => (*) => AdjustDrawThickness(delta)
+
+; 드로잉 중 **마우스 휠**로 지금 긋는 색의 투명도를 바꾼다. 위로 굴리면 진하게, 아래로
+; 굴리면 연하게. 굵기를 +/-로 바꿀 때처럼 바뀐 값을 커서 옆에 잠깐 띄운다.
+; 휠을 고른 이유는 손이 이미 마우스에 있기 때문이다 — 칠판 앞에서 키보드까지 가지 않아도 된다.
+; 색·굵기와 마찬가지로 **설정값(DRAW_ALPHAS)은 건드리지 않는다.** 드로잉을 껐다 켜거나 다른
+; 숫자키를 누르면 그 색에 정해둔 투명도로 돌아온다.
+ALPHA_WHEEL_STEP := 5 ; 한 틱에 바뀌는 양(%)
+AdjustDrawAlpha(delta) {
+    global activeDrawAlpha, ALPHA_WHEEL_STEP
+    ; 0%까지 내려가면 "안 그려지는 펜"이 되어 고장으로 보인다. 설정 창과 같이 5%를 바닥으로 둔다.
+    newAlpha := Max(5, Min(100, activeDrawAlpha + delta * ALPHA_WHEEL_STEP))
+    activeDrawAlpha := newAlpha
+    RedrawBrushCursor() ; 커서 원도 바뀐 진하기로 보여준다
+    ShowStepNumber(newAlpha "%") ; 끝에 닿아 값이 안 바뀌어도 보여준다 — 끝이라는 신호가 된다
+}
+
+MakeAlphaSetter(delta) => (*) => AdjustDrawAlpha(delta)
 
 ; 숫자키마다 서로 다른 색을 기억한 함수를 만들어준다. 반복문 안에서 화살표 함수를 바로 쓰면
 ; 모두 같은 변수를 붙들어 마지막 색 하나만 적용되므로, 이렇게 매개변수로 가둬야 한다.
@@ -2317,7 +2342,6 @@ PALETTE_ROW_H := 34
 palettePanel := ""     ; 창문 (이 크기만큼만 보인다)
 paletteBody := ""      ; 내용 (위아래로 밀린다)
 paletteBar := ""       ; 오른쪽 스크롤 막대
-paletteRows := []      ; 기본값으로 되돌릴 때 화면을 다시 맞추려고 컨트롤을 모아둔다
 paletteScroll := 0     ; 지금 밀려 있는 양(px)
 paletteMax := 0        ; 밀 수 있는 최대치(px)
 paletteContentH := 0   ; 내용 전체 높이(px)
@@ -2352,7 +2376,7 @@ SetPaletteAlpha(kind, index, value) {
 
 ; 색 한 줄: [키] [견본] [색 고르기] [투명도 슬라이더] [숫자] %
 AddPaletteRow(gui, y, label, kind, index) {
-    global sliderEditHandlers, paletteRows
+    global sliderEditHandlers
     lbl := gui.AddText("x6 y" (y + 4) " w24 h22", label)
     lbl.SetFont("s11 Bold")
     ; 견본은 AddColorRow와 같은 방식 — 색이 확실히 반영되는 Progress 컨트롤을 꽉 채워 쓰고,
@@ -2372,7 +2396,6 @@ AddPaletteRow(gui, y, label, kind, index) {
     sl.OnEvent("Change", (ctrl, *) => apply(Round(ctrl.Value / 5) * 5))
     ed.OnEvent("LoseFocus", (*) => apply(ed.Text = "" ? 5 : Integer(ed.Text)))
     sliderEditHandlers[ed.Hwnd] := () => apply(ed.Text = "" ? 5 : Integer(ed.Text))
-    paletteRows.Push({kind: kind, index: index, swatch: swatch, slider: sl, edit: ed})
 }
 
 ; 열두 줄을 만들고 창문에 끼운다. 설정 창을 만들 때 한 번만 부른다.
@@ -2382,10 +2405,9 @@ AddPaletteRow(gui, y, label, kind, index) {
 ; 상태인데도 화면에는 아무것도 안 나온다(실제로 그랬다 — 자식 창들을 z순서대로 찍어보고서야
 ; 알았다). 그 창의 핸들은 같은 탭에 만들어둔 스크롤 막대의 부모를 물어보면 얻을 수 있다.
 BuildPalettePanel(parentGui) {
-    global palettePanel, paletteBody, paletteRows, paletteContentH, paletteMax, paletteScroll
+    global palettePanel, paletteBody, paletteContentH, paletteMax, paletteScroll
     global PALETTE_X, PALETTE_Y, PALETTE_W, PALETTE_H, PALETTE_ROW_H
     global DRAW_COLORS, BOARD_KEYS, BOARD_COLOR_DEFAULTS, paletteBar, palettePageX, palettePageY
-    paletteRows := []
     pageHwnd := DllCall("GetParent", "ptr", paletteBar.Hwnd, "ptr")
     ; 설정 창 기준으로 잡아둔 자리(PALETTE_X/Y)를 그 창 기준으로 옮긴다
     pt := Buffer(8, 0)
@@ -2516,22 +2538,79 @@ OnPaletteWheel(wParam, lParam, msg, hwnd) {
     return 0
 }
 
-; 열두 줄을 모두 처음 값으로 되돌린다. 화면의 견본과 슬라이더도 같이 맞춘다.
-ResetPalette() {
-    global DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, paletteRows
-    loop DRAW_COLORS.Length {
-        DRAW_COLORS[A_Index] := DRAW_COLOR_DEFAULTS[A_Index]
-        DRAW_ALPHAS[A_Index] := 100
+; 설정 창이 지금 살아 있는지. **"모든 설정값 초기화"는 창을 통째로 없애고 다시 만들기 때문에**,
+; 변수에는 이미 없어진 창이 담겨 있을 수 있다 — 그 상태에서 `.Hwnd`를 읽으면 "Gui has no window"
+; 오류가 난다(실제로 그렇게 멈췄다). 그래서 확인을 이 한 곳에 모아두고 오류까지 받아낸다.
+SettingsWindowExists() {
+    global settingsGui
+    if !IsSet(settingsGui) || !settingsGui
+        return false
+    try return WinExist("ahk_id " settingsGui.Hwnd) ? true : false
+    return false
+}
+
+; ================= 모든 설정값 초기화 =================
+; settings.ini를 지우고 처음 값으로 다시 읽어들인 뒤, 지금 화면에 보이는 것들을 전부 새 값으로
+; 맞춘다. **되돌릴 수 없는 일이라 먼저 물어본다.**
+;
+; 값을 하나하나 기본값으로 되돌리는 대신 **파일을 지우고 다시 읽는 방식**을 쓴다. 그래야
+; 나중에 설정 항목을 늘려도 여기를 같이 고치는 것을 잊어 한두 개가 안 돌아가는 일이 없다.
+;
+; "Windows 시작 시 자동 실행"은 건드리지 않는다 — 그건 settings.ini가 아니라 레지스트리에 있는
+; Windows 쪽 설정이고, 설정을 되돌리려다 시작프로그램에서 빠지면 놀랄 일이다. 체크 한 번으로
+; 끌 수 있으므로 안내문에 그렇게 적어둔다.
+ResetAllSettings() {
+    global SETTINGS_PATH, settingsGui, palettePanel, paletteBody, chkWidgetCtrl
+    global showWidget, showTrayIcons, hotkeyCombos, sliderEditHandlers, drawColor, activeDrawColor, activeDrawAlpha
+
+    answer := MsgBox("모든 설정값을 처음 상태로 되돌립니다.`n`n"
+        . "색과 굵기, 숫자키·칠판 색, 위젯 자리와 크기, 단축키까지 전부 처음 값으로 돌아가며 "
+        . "되돌릴 수 없습니다.`n`n"
+        . "(Windows 시작 시 자동 실행은 그대로 둡니다)"
+        , "Focus & Draw - 모든 설정값 초기화", "YesNo Icon? Default2")
+    if (answer != "Yes")
+        return
+
+    ; 파일이 없으면 FileDelete가 오류를 내지만, 그건 이미 원하는 상태다
+    try FileDelete(SETTINGS_PATH)
+    if FileExist(SETTINGS_PATH) {
+        MsgBox("설정 파일을 지우지 못했습니다.`n`n" SETTINGS_PATH "`n`n"
+            . "쓰기가 막힌 폴더에 두었을 때 생깁니다. 압축을 풀어 바탕화면이나 문서 폴더로 "
+            . "옮긴 뒤 다시 시도해 주세요."
+            , "Focus & Draw - 모든 설정값 초기화", "Icon!")
+        return
     }
-    loop BOARD_COLORS.Length {
-        BOARD_COLORS[A_Index] := BOARD_COLOR_DEFAULTS[A_Index]
-        BOARD_ALPHAS[A_Index] := 100
-    }
-    for row in paletteRows {
-        row.swatch.Opt("c" HexColor(PaletteColor(row.kind, row.index)))
-        row.slider.Value := PaletteAlpha(row.kind, row.index)
-        row.edit.Text := PaletteAlpha(row.kind, row.index)
-    }
+
+    LoadSettings()
+    LoadPalette()
+
+    ; 지금 화면에 떠 있는 것들을 새 값으로 다시 맞춘다
+    for name, combo in hotkeyCombos
+        RegisterHotkey(name, combo) ; 옛 조합은 RegisterHotkey가 알아서 해제한다
+    ApplySpotlightAppearance()
+    UpdateSpotlightColor()
+    RedrawSpotlight()
+    UpdateDrawOpacity()
+    UpdateCursorHiddenState()
+    activeDrawColor := drawColor
+    activeDrawAlpha := 100
+    BuildWidget() ; 크기·배경색이 그림에 합성되어 있어 다시 만들어야 한다
+    SetWidgetVisible(showWidget)
+    MoveWidgetToDefaultPos()
+    SetTrayIconsVisible(showTrayIcons)
+
+    ; 설정 창은 값을 열 때 한 번만 읽어 컨트롤에 넣으므로, 통째로 다시 만들어야 새 값이 보인다.
+    ; 색 목록은 설정 창에 딸린 별도의 창이라 먼저 없앤다(안쪽부터).
+    if paletteBody
+        try paletteBody.Destroy()
+    if palettePanel
+        try palettePanel.Destroy()
+    palettePanel := "", paletteBody := ""
+    chkWidgetCtrl := ""
+    sliderEditHandlers := Map() ; 없어진 컨트롤의 핸들이 남지 않게 비운다
+    try settingsGui.Destroy()
+    settingsGui := "" ; 없어진 창을 가리킨 채로 두면 다음에 .Hwnd를 읽다가 멈춘다
+    OpenSettingsWindow()
 }
 
 ; 라벨 + 색상 견본 + "색상 선택..." 버튼을 한 줄로 만든다. 포인터·클릭효과·드로잉 세 탭이
@@ -2583,7 +2662,7 @@ OpenSettingsWindow(*) {
     if drawOn
         ToggleDraw()
 
-    if IsSet(settingsGui) && WinExist("ahk_id " settingsGui.Hwnd) {
+    if SettingsWindowExists() {
         settingsGui.Show()
         return
     }
@@ -2600,9 +2679,8 @@ OpenSettingsWindow(*) {
     ; 탭은 번호가 아니라 이름으로 고른다 — 나중에 순서를 바꿔도 아래 코드를 손볼 필요가 없다.
     ; (여섯 개까지는 이 너비에서 한 줄에 들어가는 것을 확인했다. 더 늘리면 두 줄로 접히면서
     ;  안쪽 내용이 아래로 밀리므로, 탭을 추가할 때는 창 너비도 같이 넓혀야 한다)
-    ; 높이는 가장 내용이 많은 "단축키" 탭(드로잉 키 안내까지 들어간다)에 맞춰져 있다.
-    ; 키 목록이 12줄이라 그만큼 자리를 준다 — 줄이 하나 늘 때마다 여기와 아래 버튼 위치,
-    ; 창 높이를 같이 키워야 마지막 줄이 잘리지 않는다.
+    ; 높이는 가장 내용이 많은 "드로잉" 탭에 맞춰져 있다. 색 목록(스크롤되는 칸)이 아래쪽
+    ; y536까지 내려오므로, 그보다 줄이면 잘린다 — 여기와 아래 버튼 위치, 창 높이를 같이 봐야 한다.
     ; "포인터"와 "클릭효과"를 **"포커스" 한 탭으로 합쳤다.** 셋 다 마우스 자리를 짚어주는
     ; 같은 목적의 기능이라 나눠 둘 이유가 없었고, 나뉘어 있으면 클릭효과의 색이 하이라이트와
     ; 다른 색이라는 것도 눈에 안 들어온다. 대신 탭 안에서 테두리 상자로 셋을 갈라둔다.
@@ -2662,11 +2740,8 @@ OpenSettingsWindow(*) {
     ; --- 숫자키 1~9와 칠판 W/E/R의 색 (스크롤되는 칸) ---
     lblPalette := settingsGui.AddText("x30 y226 w120", "숫자키와 칠판의 색")
     ; 칸이 잘려 보이는 것만으로는 넘길 수 있다는 걸 모르는 분이 있어서 한 줄 적어둔다
-    lblPaletteHint := settingsGui.AddText("x152 y228 w150", "마우스 휠로 넘기기")
+    lblPaletteHint := settingsGui.AddText("x152 y228 w300", "마우스 휠로 넘기기  ·  되돌리려면 [일반] 탭의 초기화")
     lblPaletteHint.SetFont("s9 c999999")
-    btnPaletteReset := settingsGui.AddButton("x300 y220 w140 h28", "처음 색으로 되돌리기")
-    btnPaletteReset.OnEvent("Click", (*) => ResetPalette())
-    ; 위 "투명도"는 그려둔 것 전체에 곱해지는 값이라 헷갈리기 쉬워서, 여기서 한 번 갈라 적어둔다.
     paletteBar := settingsGui.AddCustom("ClassScrollBar +0x1 x" (PALETTE_X + PALETTE_W + 2) " y" PALETTE_Y " w16 h" PALETTE_H)
 
     tabs.UseTab("위젯")
@@ -2697,13 +2772,21 @@ OpenSettingsWindow(*) {
     lblResetPos.SetFont("s9 c999999")
 
     tabs.UseTab("일반")
-    ; 항목이 하나뿐인 탭이라 왼쪽 위에 붙여두면 허전하고 잘못 만든 것처럼 보인다.
-    ; 탭 한가운데에 놓아 "여기는 이것 하나"라는 것이 분명해지게 한다.
-    ; 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는 항상
-    ; IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
-    chkStartup := settingsGui.AddCheckbox("x133 y280 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
-    settingsGui.AddText("x157 y281 w220", "Windows 시작 시 자동 실행")
+    ; 항목이 적은 탭이라 왼쪽 위에 붙여두면 허전하고 잘못 만든 것처럼 보인다.
+    ; 탭 한가운데에 모아 둔다.
+    ; "자동 실행"은 저장/불러오기 없이 그 자리에서 바로 레지스트리에 반영되므로, 체크 표시는
+    ; 항상 IsRunAtStartup()으로 실제 상태를 다시 읽어서 보여준다.
+    chkStartup := settingsGui.AddCheckbox("x133 y240 w20 h20 " (IsRunAtStartup() ? "Checked" : ""), "")
+    settingsGui.AddText("x157 y241 w220", "Windows 시작 시 자동 실행")
     chkStartup.OnEvent("Click", (ctrl, *) => SetRunAtStartup(ctrl.Value))
+
+    ; 자주 누를 버튼이 아니고 되돌릴 수도 없어서, 다른 항목과 떨어뜨려 놓고 글자색만 연하게 한다
+    ; (배경색은 테마 버튼이라 바꿀 수 없다 — "프로그램 종료" 버튼과 같은 처지다).
+    btnResetAll := settingsGui.AddButton("x140 y312 w200 h32", "모든 설정값 초기화")
+    btnResetAll.SetFont("c999999")
+    btnResetAll.OnEvent("Click", (*) => ResetAllSettings())
+    lblResetAll := settingsGui.AddText("x22 y352 w436 Center", "색·굵기·위젯·단축키를 모두 처음 상태로 되돌립니다.")
+    lblResetAll.SetFont("s9 c999999")
 
     ; 문제를 알려줄 때 어느 버전인지 바로 말할 수 있도록, 눈에 띄지 않는 연한 글씨로 적어둔다.
     ; 제작자 표시도 같이 둔다 — 수업 화면을 가리지 않으면서 찾으려는 사람은 확실히 볼 수 있는
@@ -2721,24 +2804,15 @@ OpenSettingsWindow(*) {
     lblHotkeyHelp := settingsGui.AddText("x30 y126 w420 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
     lblHotkeyHelp.SetFont("s9 c999999")
 
-    ; 드로잉 중에만 쓰는 키들은 바꿀 수 없지만, 모르면 못 쓰는 기능이라 여기에 같이 적어둔다.
-    ; ("단축키" 탭을 연 사람은 쓸 수 있는 키 전체를 보고 싶은 것이지, 바꿀 수 있는 것만
-    ;  보고 싶은 게 아니다) 두 개의 여러 줄 Text를 나란히 놓아 좌우 칸을 맞춘다.
-    settingsGui.AddText("x30 y166 w250", "드로잉 모드에서 쓰는 키 (변경 불가)")
-    ; 아래 글 목록은 "이미 아는 키를 확인하는" 데는 충분하지만, 처음 보는 사람이 키보드에서
-    ; 어디를 눌러야 하는지 찾기엔 불친절하다. 키보드 그림 위에 표시된 것을 한 번 보는 편이
-    ; 훨씬 빠르므로, 목록은 그대로 두고 그림을 여는 버튼을 옆에 둔다.
-    btnShortcutGuide := settingsGui.AddButton("x310 y160 w126 h28", "단축키 보기")
+    ; 드로잉 중에만 쓰는 키(도형·색·굵기·지우기)는 여기 글로 늘어놓지 않는다. **키보드 그림
+    ; 한 장이 그 일을 더 잘한다** — 어느 키를 눌러야 하는지 자리로 바로 보이고, 지금 설정된
+    ; 색까지 그림 아래에 함께 뜬다. 예전에는 열네 줄짜리 목록이 이 자리에 있었는데, 같은 내용을
+    ; 두 군데 적어두면 한쪽만 고쳐져 어긋나기 마련이라 그림 쪽으로 몰았다.
+    settingsGui.AddText("x30 y178 w410", "드로잉 모드에서 쓰는 키는 그림으로 볼 수 있습니다.")
+    lblGuideHint := settingsGui.AddText("x30 y204 w410", "도형 그리기, 색과 굵기 바꾸기, 지우기, 전자칠판에서 손으로 하는 조작까지 한 장에 담겨 있습니다.")
+    lblGuideHint.SetFont("s9 c999999")
+    btnShortcutGuide := settingsGui.AddButton("x30 y246 w160 h36", "단축키 보기")
     btnShortcutGuide.OnEvent("Click", ShowShortcutGuide)
-    keyNames := settingsGui.AddText("x38 y186 w130 h232",
-        "드래그`nShift + 드래그`nCtrl + 드래그`nZ + 드래그`nX + 드래그`nC + 드래그`n오른쪽 드래그`nCtrl + Z`n1 ~ 9`nQ / W / E / R`n+ / -`n오른쪽 버튼 + / -`nDelete`nEsc")
-    ; (도형 순서: 자유선 / 사각형 / 원 / 직선 / 물결 / 화살표 — 위 키 목록과 줄이 맞아야 한다)
-    keyNames.SetFont("s9")
-    ; 오른쪽 칸 글자가 한 줄을 넘기면 그 아래 줄들이 왼쪽 칸과 어긋나 보인다. 색 설명은
-    ; "1 ~ 9"와 나란히 읽히므로 순서만 짧게 적어도 뜻이 통한다.
-    keyMeans := settingsGui.AddText("x176 y186 w260 h232",
-        "자유선 그리기`n사각형`n원(타원)`n직선`n물결`n화살표`n지우개`n실행 취소`n색: 빨주노초파남보검흰`n칠판: 투명·흰색·초록·검정`n선 굵게 / 가늘게`n지우개 크게 / 작게`n전부 지우기`n지우고 드로잉 끄기")
-    keyMeans.SetFont("s9 c666666")
 
     tabs.UseTab()
 
@@ -3572,6 +3646,11 @@ THICKNESS_KEYS := [["=", 1], ["+=", 1], ["NumpadAdd", 1], ["-", -1], ["NumpadSub
 for pair in THICKNESS_KEYS
     Hotkey(pair[1], MakeThicknessSetter(pair[2]), "Off")
 
+; 마우스 휠 = 지금 긋는 색의 투명도. 드로잉 중에만 잡으므로 평소 스크롤은 그대로다.
+ALPHA_WHEEL_KEYS := [["WheelUp", 1], ["WheelDown", -1]]
+for pair in ALPHA_WHEEL_KEYS
+    Hotkey(pair[1], MakeAlphaSetter(pair[2]), "Off")
+
 ; 칠판 색 (Q/W/E/R). 도형 키(Z·X·C)와 마찬가지로 드로잉 모드일 때만 잡으므로, 모드를 끄면
 ; 평소대로 글자 키로 돌아간다.
 for index, pair in BOARD_KEYS
@@ -3591,7 +3670,7 @@ for pair in SHAPE_HOLD_KEYS {
 ; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
 ; 그대로 쓸 수 있다.
 SetDrawModeHotkeys(state) {
-    global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld, THICKNESS_KEYS, BOARD_KEYS
+    global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld, THICKNESS_KEYS, BOARD_KEYS, ALPHA_WHEEL_KEYS
     Hotkey("Esc", state)
     Hotkey("Delete", state)
     Hotkey("^z", state)
@@ -3599,6 +3678,8 @@ SetDrawModeHotkeys(state) {
         Hotkey(String(A_Index), state)
     Hotkey("0", state)
     for pair in THICKNESS_KEYS
+        Hotkey(pair[1], state)
+    for pair in ALPHA_WHEEL_KEYS
         Hotkey(pair[1], state)
     for pair in BOARD_KEYS
         Hotkey(pair[1], state)
