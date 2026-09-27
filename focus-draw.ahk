@@ -614,17 +614,24 @@ drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080000", "FocusDraw-Draw"
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
 ; ================= 사라지는 펜 (A를 누른 채로 긋기) =================
-; 설명하면서 잠깐 가리키는 선. 손을 떼고 LASER_HOLD_MS 동안 그대로 있다가 LASER_FADE_MS에 걸쳐
-; 옅어지며 사라진다. 판서 그림과는 **다른 창**에 그린다 — 같은 그림에 그으면 사라질 때 그 아래
-; 있던 글씨를 되살려야 하고, 실행 취소 기록도 엉킨다. 이 창은 판서 층 바로 위에 뜨고, 클릭은
-; 그대로 통과시킨다(E0x20). 색과 굵기는 지금 쓰는 펜을 따르되, 투명도는 두지 않는다.
-LASER_HOLD_MS := 1500
-LASER_FADE_MS := 500
+; 파워포인트의 "레이저 포인터"처럼 보이게 한다 — 설명하면서 잠깐 가리키는 선이다.
+;   - 선은 **밝은 심지 + 둘레의 빛 번짐** 세 겹으로 그려 빛나 보이게 한다
+;   - **점마다 따로 나이를 먹는다.** 그어진 지 LASER_HOLD_MS가 지나면 LASER_FADE_MS에 걸쳐
+;     가늘어지며 사라진다. 그래서 움직이는 동안에는 혜성처럼 꼬리가 뒤따라오고,
+;     멈추면 꼬리가 커서 쪽으로 줄어들며 없어진다
+;   - A를 누르고 있는 동안에는 커서 자리에 **빛나는 점**이 뜬다 (레이저 점)
+; 판서 그림과는 **다른 창**에 그린다 — 같은 그림에 그으면 사라질 때 그 아래 있던 글씨를
+; 되살려야 하고, 실행 취소 기록도 엉킨다. 이 창은 판서 층 바로 위에 뜨고, 클릭은 그대로
+; 통과시킨다(E0x20). 색은 지금 쓰는 펜을 따른다(기본 빨강이 파워포인트와 같다).
+LASER_HOLD_MS := 500     ; 그어진 뒤 그대로 있는 시간
+LASER_FADE_MS := 500     ; 그 뒤 사라지는 데 걸리는 시간
+LASER_MIN_WIDTH := 8     ; 펜을 가늘게 해둬도 레이저는 이만큼은 굵게 (너무 가늘면 빛나 보이지 않는다)
 laserGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080020", "FocusDraw-Laser")
 laserGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 laserCanvas := CreateAlphaCanvas(vw, vh)
-laserStrokes := [] ; 화면에 남아 있는 획들 {pts, color, width, box, endTick(0 = 아직 긋는 중)}
+laserStrokes := [] ; 화면에 남아 있는 획들 {pts: [[x, y, 그은 시각]...], color, width, ended}
 laserCur := 0      ; 지금 긋고 있는 획
+laserLastBox := 0  ; 직전 프레임이 그린 범위 (다음 프레임에 이 자리를 비운다)
 
 ; 캔버스의 box 범위(로컬 좌표)를 창에 반영한다. 생략하면 전체.
 LaserPush(box := 0) {
@@ -666,100 +673,180 @@ LaserClearBox(box) {
     DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
 }
 
-; 획 하나를 fade(0~1)만큼의 진하기로 그린다. 점이 하나뿐이면(클릭만 한 경우) 그리지 않는다.
-LaserDrawStroke(st, fade := 1.0, fromIndex := 1) {
-    global laserCanvas
-    n := st.pts.Length - fromIndex + 1
-    if (n < 2)
+; 빛나는 선의 네 겹: [굵기 배율, 진하기 배율, 흰색을 섞는 비율]. 바깥 번짐 → 안쪽 번짐 → 심지 →
+; 가운데 빛줄기 순으로 겹친다. 심지는 펜 색 그대로 진하게 두어야 흰 바탕에서도 선이 또렷하고,
+; 그 한가운데 흰색을 섞은 가는 줄이 있어야 어두운 바탕에서 빛나 보인다.
+LASER_LAYERS := [[3.0, 0.16, 0], [1.7, 0.40, 0], [0.75, 1.0, 0], [0.3, 0.9, 0.6]]
+pLaserAttr := 0
+DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &pLaserAttr)
+
+; rgb에 흰색을 mix(0~1)만큼 섞는다
+LaserTint(rgb, mix) {
+    r := (rgb >> 16) & 0xFF, g := (rgb >> 8) & 0xFF, b := rgb & 0xFF
+    return (Round(r + (255 - r) * mix) << 16) | (Round(g + (255 - g) * mix) << 8) | Round(b + (255 - b) * mix)
+}
+
+; 점이 얼마나 남아 있는지 (1 = 그대로, 0 = 다 사라짐)
+LaserLife(t, now) {
+    global LASER_HOLD_MS, LASER_FADE_MS
+    age := now - t
+    return (age <= LASER_HOLD_MS) ? 1.0 : Max(0, 1 - (age - LASER_HOLD_MS) / LASER_FADE_MS)
+}
+
+; box 범위에 남은 꼬리들과 레이저 점을 그린다.
+; 반투명한 겹을 토막마다 따로 그으면 이음매마다 두 번 칠해져 구슬을 꿴 것처럼 얼룩진다. 그래서
+; 겹마다 **임시 판에 불투명하게** 그린 뒤(불투명끼리는 겹쳐도 달라지지 않는다) 그 판을 그 겹의
+; 진하기로 한 번에 얹는다 — 반투명 획 전용 판(inkLayerBuf)과 같은 생각이다. 덕분에 토막마다
+; 굵기를 따로 줄 수 있어서, 사라져 가는 쪽이 매끄럽게 가늘어지는 혜성 꼬리가 된다.
+; 임시 판은 box 크기로 그때그때 만든다(화면 크기로 들고 있기에는 메모리가 아깝다).
+LaserRender(box, now, dotX, dotY, dotColor, dotW) {
+    global laserCanvas, laserStrokes, pLaserAttr, LASER_LAYERS, LASER_MIN_WIDTH, vw, vh
+    x0 := Max(0, box[1]), y0 := Max(0, box[2]), x1 := Min(vw, box[3]), y1 := Min(vh, box[4])
+    bw := x1 - x0, bh := y1 - y0
+    if (bw <= 0 || bh <= 0)
         return
-    pPen := 0
-    DllCall("gdiplus\GdipCreatePen1", "uint", (Round(255 * fade) << 24) | st.color, "float", st.width, "int", 2, "ptr*", &pPen)
-    if !pPen
+    pTmp := 0, gTmp := 0
+    DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", bw, "int", bh, "int", 0, "int", 0xE200B, "ptr", 0, "ptr*", &pTmp)
+    if !pTmp
         return
-    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; 둥근 끝 — 자유선과 같은 이유
-    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
-    DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
-    buf := Buffer(n * 8)
-    loop n {
-        p := st.pts[fromIndex + A_Index - 1]
-        NumPut("float", p[1], "float", p[2], buf, (A_Index - 1) * 8)
+    DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pTmp, "ptr*", &gTmp)
+    DllCall("gdiplus\GdipSetSmoothingMode", "ptr", gTmp, "int", 4)
+    DllCall("gdiplus\GdipTranslateWorldTransform", "ptr", gTmp, "float", -x0, "float", -y0, "int", 0)
+    m := Buffer(100, 0) ; 5x5 색 행렬 — "그대로"에서 투명도 칸만 겹의 진하기로 바꾼다
+    loop 5
+        NumPut("float", 1.0, m, ((A_Index - 1) * 5 + (A_Index - 1)) * 4)
+    for layer in LASER_LAYERS {
+        DllCall("gdiplus\GdipGraphicsClear", "ptr", gTmp, "uint", 0)
+        for st in laserStrokes {
+            n := st.pts.Length
+            if (n < 2)
+                continue
+            w := Max(st.width, LASER_MIN_WIDTH) * layer[1]
+            pPen := 0
+            DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | LaserTint(st.color, layer[3]), "float", w, "int", 2, "ptr*", &pPen)
+            if !pPen
+                continue
+            DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; 둥근 끝 — 토막끼리 빈틈 없이 이어진다
+            DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+            prevLife := LaserLife(st.pts[1][3], now)
+            loop n - 1 {
+                p := st.pts[A_Index], q := st.pts[A_Index + 1]
+                life := LaserLife(q[3], now)
+                ; 사라져 갈수록 가늘어진다 — 끝까지 가면 거의 점이 되어 꼬리가 뾰족해진다
+                DllCall("gdiplus\GdipSetPenWidth", "ptr", pPen, "float", w * (0.08 + 0.92 * (prevLife + life) / 2))
+                DllCall("gdiplus\GdipDrawLine", "ptr", gTmp, "ptr", pPen, "float", p[1], "float", p[2], "float", q[1], "float", q[2])
+                prevLife := life
+            }
+            DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+        }
+        if dotW {
+            r := dotW * layer[1] * 0.6
+            pBrush := 0
+            DllCall("gdiplus\GdipCreateSolidFill", "uint", 0xFF000000 | LaserTint(dotColor, layer[3]), "ptr*", &pBrush)
+            if pBrush {
+                DllCall("gdiplus\GdipFillEllipse", "ptr", gTmp, "ptr", pBrush, "float", dotX - r, "float", dotY - r, "float", r * 2, "float", r * 2)
+                DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
+            }
+        }
+        NumPut("float", layer[2], m, (3 * 5 + 3) * 4)
+        DllCall("gdiplus\GdipSetImageAttributesColorMatrix", "ptr", pLaserAttr, "int", 0, "int", 1, "ptr", m, "ptr", 0, "int", 0)
+        DllCall("gdiplus\GdipDrawImageRectRectI", "ptr", laserCanvas.graphics, "ptr", pTmp
+            , "int", x0, "int", y0, "int", bw, "int", bh, "int", 0, "int", 0, "int", bw, "int", bh
+            , "int", 2, "ptr", pLaserAttr, "ptr", 0, "ptr", 0) ; 2 = UnitPixel
     }
-    DllCall("gdiplus\GdipDrawLines", "ptr", laserCanvas.graphics, "ptr", pPen, "ptr", buf, "int", n)
-    DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+    DllCall("gdiplus\GdipDeleteGraphics", "ptr", gTmp)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pTmp)
 }
 
 LaserBegin(x, y) {
     global laserCur, laserStrokes, vx, vy, activeDrawColor, activeDrawThickness
-    lx := x - vx, ly := y - vy
-    laserCur := {pts: [[lx, ly]], color: activeDrawColor, width: activeDrawThickness
-        , box: [lx, ly, lx + 1, ly + 1], endTick: 0}
+    laserCur := {pts: [[x - vx, y - vy, A_TickCount]], color: activeDrawColor, width: activeDrawThickness, ended: false}
     laserStrokes.Push(laserCur)
-    SetTimer(LaserTick, 30)
+    SetTimer(LaserTick, 16)
 }
 
+; 점만 더해두면 다음 프레임(LaserTick)이 그린다
 LaserAdd(x, y) {
     global laserCur, vx, vy
-    if !laserCur
-        return
-    lx := x - vx, ly := y - vy
-    laserCur.pts.Push([lx, ly])
-    ; 방금 늘어난 한 토막만 그린다 — 불투명하게 그으므로 이음매가 겹쳐도 진해지지 않는다
-    LaserDrawStroke(laserCur, 1.0, laserCur.pts.Length - 1)
-    prev := laserCur.pts[laserCur.pts.Length - 1]
-    seg := PenDirtyBox(prev[1], prev[2], lx, ly, laserCur.width)
-    b := laserCur.box
-    b[1] := Min(b[1], seg[1]), b[2] := Min(b[2], seg[2]), b[3] := Max(b[3], seg[3]), b[4] := Max(b[4], seg[4])
-    LaserPush(seg)
+    if laserCur
+        laserCur.pts.Push([x - vx, y - vy, A_TickCount])
 }
 
-; 손을 뗐다 — 이 순간부터 시간을 잰다
+; 손을 뗐다 — 남은 꼬리는 제 시간에 맞춰 사라진다
 LaserEnd() {
     global laserCur
     if laserCur {
-        laserCur.endTick := A_TickCount
+        laserCur.ended := true
         laserCur := 0
     }
 }
 
-; 사라질 때가 된 획이 있으면 획들이 차지한 자리를 비우고, 남은 획을 각자의 진하기로 다시 그린다.
+; A를 누르면 레이저 점을 띄우기 시작한다 (SetShapeKeyHeld에서 부른다)
+LaserKeyDown() {
+    global drawOn
+    if drawOn
+        SetTimer(LaserTick, 16)
+}
+
+; 한 프레임: 다 사라진 점을 버리고, 직전 프레임 자리를 비운 뒤 남은 꼬리와 레이저 점을 다시 그린다.
+; 그릴 것이 하나도 없으면 멈춘다(마지막으로 비운 자리까지 창에 반영한 다음에).
 LaserTick() {
-    global laserStrokes, LASER_HOLD_MS, LASER_FADE_MS
+    global laserStrokes, laserLastBox, shapeKeyHeld, drawOn, vx, vy, activeDrawColor, activeDrawThickness
+    global LASER_HOLD_MS, LASER_FADE_MS, LASER_MIN_WIDTH, LASER_LAYERS
     now := A_TickCount
-    changing := false
-    for st in laserStrokes
-        if (st.endTick && now - st.endTick > LASER_HOLD_MS)
-            changing := true
-    if !changing {
-        if (laserStrokes.Length = 0)
-            SetTimer(LaserTick, 0)
-        return
-    }
-    union := 0
-    for st in laserStrokes
-        union := union ? [Min(union[1], st.box[1]), Min(union[2], st.box[2]), Max(union[3], st.box[3]), Max(union[4], st.box[4])] : st.box.Clone()
-    LaserClearBox(union)
+    life := LASER_HOLD_MS + LASER_FADE_MS
     i := laserStrokes.Length
     while (i >= 1) {
         st := laserStrokes[i]
-        if (st.endTick && now - st.endTick >= LASER_HOLD_MS + LASER_FADE_MS)
+        while (st.pts.Length && now - st.pts[1][3] >= life)
+            st.pts.RemoveAt(1)
+        if (st.ended && st.pts.Length = 0)
             laserStrokes.RemoveAt(i)
         i -= 1
     }
+    dotOn := drawOn && shapeKeyHeld.Has("a") && shapeKeyHeld["a"]
+
+    ; 이번 프레임에 그릴 범위 (가장 바깥 번짐의 반지름만큼 여유를 둔다)
+    box := 0
     for st in laserStrokes {
-        age := st.endTick ? now - st.endTick - LASER_HOLD_MS : 0
-        LaserDrawStroke(st, age > 0 ? Max(0, 1 - age / LASER_FADE_MS) : 1.0)
+        pad := Max(st.width, LASER_MIN_WIDTH) * LASER_LAYERS[1][1] / 2 + 3
+        for p in st.pts
+            box := LaserBoxAdd(box, p[1], p[2], pad)
     }
-    LaserPush(union)
-    if (laserStrokes.Length = 0)
+    mx := 0, my := 0, dotW := 0
+    if dotOn {
+        MouseGetPos(&mx, &my)
+        dotW := Max(activeDrawThickness, LASER_MIN_WIDTH)
+        box := LaserBoxAdd(box, mx - vx, my - vy, dotW * LASER_LAYERS[1][1] * 0.6 + 3)
+    }
+
+    if IsObject(laserLastBox)
+        LaserClearBox(laserLastBox)
+    if IsObject(box)
+        LaserRender(box, now, mx - vx, my - vy, activeDrawColor, dotOn ? dotW : 0)
+
+    dirty := laserLastBox
+    if IsObject(box)
+        dirty := IsObject(dirty) ? [Min(dirty[1], box[1]), Min(dirty[2], box[2]), Max(dirty[3], box[3]), Max(dirty[4], box[4])] : box
+    if IsObject(dirty)
+        LaserPush(dirty)
+    laserLastBox := box
+    if !IsObject(box)
         SetTimer(LaserTick, 0)
 }
 
-; 드로잉을 끌 때 — 남은 획을 모두 걷는다
+LaserBoxAdd(box, x, y, pad) {
+    x1 := Floor(x - pad), y1 := Floor(y - pad), x2 := Ceil(x + pad), y2 := Ceil(y + pad)
+    return IsObject(box) ? [Min(box[1], x1), Min(box[2], y1), Max(box[3], x2), Max(box[4], y2)] : [x1, y1, x2, y2]
+}
+
+; 드로잉을 끌 때 — 남은 것을 모두 걷는다
 LaserClearAll() {
-    global laserStrokes, laserCur, vw, vh
+    global laserStrokes, laserCur, laserLastBox, vw, vh
     SetTimer(LaserTick, 0)
     laserStrokes := []
     laserCur := 0
+    laserLastBox := 0
     LaserClearBox([0, 0, vw, vh])
     LaserPush()
 }
@@ -2529,6 +2616,8 @@ MakeColorSetter(index) => (*) => SetDrawColor(index)
 SetShapeKeyHeld(key, down) {
     global shapeKeyHeld
     shapeKeyHeld[key] := down
+    if (key = "a" && down)
+        LaserKeyDown() ; 사라지는 펜 키를 누르면 커서 자리에 레이저 점을 띄운다
 }
 
 ; 색 설정과 같은 이유로 함수를 만들어 쓴다 — 반복문 안에서 화살표 함수를 바로 쓰면 모두 같은
