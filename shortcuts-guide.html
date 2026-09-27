@@ -10,7 +10,7 @@
 
     & "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu `
       --hide-scrollbars --virtual-time-budget=4000 --force-device-scale-factor=1 `
-      --default-background-color=FFFFFFFF --screenshot="shortcuts.png" --window-size=1200,800 `
+      --default-background-color=FFFFFFFF --screenshot="shortcuts.png" --window-size=1200,860 `
       "file:///<이 파일의 전체 경로>"
 
   키 칸 너비는 "유닛"으로 잡는다. 1유닛 = --u, 키 사이 간격 = --gap.
@@ -19,13 +19,13 @@
 -->
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
-  html,body { width:1200px; height:800px; }
+  html,body { width:1200px; height:860px; }
   body {
     font-family:"Malgun Gothic","맑은 고딕",sans-serif;
     background:#ffffff; color:#1c1c1e;
     -webkit-font-smoothing:antialiased;
   }
-  .sheet { width:1200px; height:800px; padding:24px 30px 18px; display:flex; flex-direction:column; }
+  .sheet { width:1200px; height:860px; padding:24px 30px 18px; display:flex; flex-direction:column; }
 
   header { display:flex; align-items:baseline; gap:14px; }
   header h1 { font-size:26px; font-weight:700; letter-spacing:-.5px; }
@@ -40,6 +40,7 @@
   .c-size  { color:#a86612; border-color:#f0dcb8; background:#fdf5e8; }
   .c-clear { color:#c0392b; border-color:#f2c4be; background:#fdeeec; }
   .c-alpha { color:#0e7c86; border-color:#b5e0e3; background:#e9f7f8; }
+  .c-pen   { color:#b0306e; border-color:#f0c2d8; background:#fcedf4; }
 
   /* ---------- 키보드 ---------- */
   .kb {
@@ -75,6 +76,7 @@
   .on.g-shape { border-color:#b18ae0; box-shadow:0 0 0 1px #b18ae0 inset; }
   .on.g-size  { border-color:#e0ac5e; box-shadow:0 0 0 1px #e0ac5e inset; }
   .on.g-clear { border-color:#e08a7e; box-shadow:0 0 0 1px #e08a7e inset; }
+  .on.g-pen   { border-color:#e08fb6; box-shadow:0 0 0 1px #e08fb6 inset; }
   .on.bar-top .cap { margin-top:6px; }
   .glyph { display:block; margin-top:1px; }
   .hold { font-size:10px; color:#7a3fbf; font-weight:700; letter-spacing:-.3px; }
@@ -115,6 +117,7 @@
     <span class="chip c-size">선 굵기<small>&minus; &#43;</small></span>
     <span class="chip c-clear">지우기<small>Delete · Esc</small></span>
     <span class="chip c-alpha">투명도<small>마우스 휠 — 5%씩</small></span>
+    <span class="chip c-pen">특수 펜<small>A S — 누른 채로 드래그</small></span>
   </div>
 
   <div class="kb">
@@ -156,8 +159,8 @@
 
     <div class="row">
       <div class="key k175 dim"><span class="cap">Caps</span></div>
-      <div class="key k1 dim"><span class="cap">A</span></div>
-      <div class="key k1 dim"><span class="cap">S</span></div>
+      <div class="key k1 on g-pen bar-top"><span class="bar" style="background:linear-gradient(90deg,#e08fb6,rgba(224,143,182,0))"></span><span class="cap">A</span><span class="note">사라지는 펜</span></div>
+      <div class="key k1 on g-pen bar-top"><span class="bar" style="background:linear-gradient(90deg,#f00,#f80,#ff0,#0f0,#00f,#80f)"></span><span class="cap">S</span><span class="note">무지개 펜</span></div>
       <div class="key k1 dim"><span class="cap">D</span></div>
       <div class="key k1 dim"><span class="cap">F</span></div>
       <div class="key k1 dim"><span class="cap">G</span></div>
@@ -210,6 +213,8 @@
       <div class="line"><span class="act"><b>드래그</b></span><span class="arrow">&rarr;</span><span class="what"><b>자유선</b> 그리기</span></div>
       <div class="line"><span class="act"><span class="kbd">Shift</span> · <span class="kbd">Ctrl</span> + 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>사각형 · 원</b></span></div>
       <div class="line"><span class="act"><span class="kbd">Z</span><span class="kbd">X</span><span class="kbd">C</span> + 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>직선 · 물결 · 화살표</b></span></div>
+      <div class="line"><span class="act">&nbsp;&nbsp;&nbsp;여기에 <span class="kbd">Shift</span> 더하기</span><span class="arrow">&rarr;</span><span class="what"><b>0° · 45° · 90°</b>로 맞춤</span></div>
+      <div class="line"><span class="act"><span class="kbd">A</span><span class="kbd">S</span> + 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>사라지는 펜 · 무지개 펜</b></span></div>
       <div class="line"><span class="act">오른쪽 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>지우개</b></span></div>
       <div class="line"><span class="act">오른쪽 버튼 + <span class="kbd">&minus;</span><span class="kbd">&#43;</span></span><span class="arrow">&rarr;</span><span class="what">지우개 <b>크기</b></span></div>
       <div class="line"><span class="act"><b>휠</b> 위로 / 아래로</span><span class="arrow">&rarr;</span><span class="what"><b>투명도</b> 조절 (5%씩)</span></div>

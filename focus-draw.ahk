@@ -372,6 +372,7 @@ lastY := 0
 dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
+dragPenKind := "" ; 도형이 아닌 특수 펜: "laser"(사라지는 펜) | "rainbow"(무지개 펜) | ""(보통 펜)
 dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
 erasing := false ; 오른쪽 버튼으로 지우는 중인지
 lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리만 되돌리고 다시 합성하면 된다)
@@ -398,7 +399,14 @@ DRAW_ALPHAS := [100, 100, 100, 100, 100, 100, 100, 100, 100]
 ; 글자키도 다른 용도가 없으므로 그냥 쓸 수 있다. 다만 판서 오버레이는 포커스를 가져가지
 ; 않아서(drawGui.Show("NA")) 그냥 두면 누른 글자가 뒤에 있는 프로그램에 그대로 입력된다 —
 ; 그래서 드로잉 모드일 때만 이 키들을 핫키로 잡아 삼킨다(SetDrawModeHotkeys).
-SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"]]
+; A·S는 도형이 아니라 **펜의 종류**를 바꾸지만 "누른 채로 끈다"는 쓰는 법이 같아서 같은 목록에 둔다
+; (DrawPoll이 드래그를 시작할 때 둘을 갈라낸다).
+SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"], ["a", "laser"], ["s", "rainbow"]]
+; 도형 키를 누른 채로 Shift를 더하면(직선 각도 맞추기) 그 조합도 잡아야 한다. 수식키 없는 핫키는
+; Shift가 함께 눌리면 발동하지 않아서, Shift를 먼저 누르면 글자가 뒤의 프로그램으로 새고 뗀 것도
+; 못 봐 "계속 눌림"으로 남는다. 그래서 두 가지(맨 키 / Shift+키)를 모두 등록한다.
+; (별표 * 로 한 번에 잡는 방법도 있지만, 그러면 Ctrl+Z까지 가로챌 수 있어 피했다)
+HOLD_KEY_PREFIXES := ["", "+"]
 ; 지금 눌려 있는 도형 키. 핫키에 삼켜진 키는 GetKeyState(..., "P")로 읽히리라 기대할 수 없어서
 ; (흉내낸 입력으로 확인해보면 0으로 나온다) 누를 때와 뗄 때를 직접 받아 여기에 기록한다.
 shapeKeyHeld := Map()
@@ -462,6 +470,31 @@ if pShapeBitmap {
     DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pShapeBitmap, "ptr*", &pShapeGraphics)
     if pShapeGraphics
         DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4) ; 계단 없이 매끄럽게
+}
+
+; ================= 반투명 획 전용 판 =================
+; 반투명한 색으로 그을 때는 판서 그림에 바로 긋지 않고, 이 판에 **불투명하게** 그린 다음
+; 그 판을 획을 긋기 전 모습(스냅샷) 위에 정해둔 투명도로 **겹쳐 얹는다.** 그림판·포토샵과 같은 방식이다.
+; 예전에는 판서 그림에 "덮어쓰기"(SourceCopy)로 바로 그었다. 자유선은 10ms마다 짧은 토막을 이어
+; 붙이는 것이라 보통으로 겹쳐 그리면 이음매가 두 번 칠해져 진해지기 때문이었는데, 대신 **먼저
+; 그어둔 다른 선 위를 지나가면 그 선까지 반투명한 색으로 바꿔버렸다** — 불투명한 빨간 선 위로
+; 50% 파란 선을 그으면 겹친 자리가 보라가 아니라 옅은 파랑이 됐다. 이 판에서는 한 획 안의 이음매가
+; 아무리 겹쳐도 불투명한 색 그대로라 진해지지 않고, 겹쳐 얹을 때 아래 그림이 비쳐 보인다.
+; 가장자리 부드럽게도 다시 켤 수 있게 됐다(덮어쓰기에서는 이음매마다 초승달 자국이 남아 꺼뒀었다).
+; 도형도 같은 판을 쓴다 — 화살표는 몸통과 머리를 따로 그려서 만나는 자리가 두 번 칠해졌다.
+inkLayerBuf := Buffer(vw * vh * 4, 0)
+pInkLayer := 0, pInkGraphics := 0, pInkAttr := 0
+inkAttrAlpha := -1 ; pInkAttr에 지금 걸려 있는 투명도(%) — 바뀔 때만 다시 건다
+inkDirty := []     ; 판에서 아직 비우지 않은 범위 (다음 획을 시작할 때 이 자리만 비운다)
+inkStrokeAlpha := 0 ; 지금 긋는 획이 이 판을 거치면 그 투명도(%), 판서 그림에 바로 그으면 0
+if pShapeGraphics {
+    DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", vw, "int", vh, "int", vw * 4, "int", 0xE200B, "ptr", inkLayerBuf.Ptr, "ptr*", &pInkLayer)
+    if pInkLayer {
+        DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pInkLayer, "ptr*", &pInkGraphics)
+        if pInkGraphics
+            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pInkGraphics, "int", 4)
+    }
+    DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &pInkAttr)
 }
 
 ; 도형(직선/사각형/원) 미리보기를 그리기 전에 현재 그림을 스냅샷으로 저장해뒀다가,
@@ -579,6 +612,169 @@ ClearBackBuffer()
 ; 없으므로(단축키는 전역이고 그리기는 마우스 상태를 직접 읽는다) 활성화를 막아도 손해가 없다.
 drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080000", "FocusDraw-Draw")
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
+
+; ================= 사라지는 펜 (A를 누른 채로 긋기) =================
+; 설명하면서 잠깐 가리키는 선. 손을 떼고 LASER_HOLD_MS 동안 그대로 있다가 LASER_FADE_MS에 걸쳐
+; 옅어지며 사라진다. 판서 그림과는 **다른 창**에 그린다 — 같은 그림에 그으면 사라질 때 그 아래
+; 있던 글씨를 되살려야 하고, 실행 취소 기록도 엉킨다. 이 창은 판서 층 바로 위에 뜨고, 클릭은
+; 그대로 통과시킨다(E0x20). 색과 굵기는 지금 쓰는 펜을 따르되, 투명도는 두지 않는다.
+LASER_HOLD_MS := 1500
+LASER_FADE_MS := 500
+laserGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080020", "FocusDraw-Laser")
+laserGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
+laserCanvas := CreateAlphaCanvas(vw, vh)
+laserStrokes := [] ; 화면에 남아 있는 획들 {pts, color, width, box, endTick(0 = 아직 긋는 중)}
+laserCur := 0      ; 지금 긋고 있는 획
+
+; 캔버스의 box 범위(로컬 좌표)를 창에 반영한다. 생략하면 전체.
+LaserPush(box := 0) {
+    global laserGui, laserCanvas, vx, vy, vw, vh
+    static info := 0, ptDst := 0, size := 0, ptSrc := 0, blend := 0, dirty := 0
+    if !info {
+        ptDst := Buffer(8), NumPut("Int", vx, "Int", vy, ptDst)
+        size := Buffer(8), NumPut("Int", vw, "Int", vh, size)
+        ptSrc := Buffer(8, 0)
+        blend := Buffer(4), NumPut("UChar", 0, "UChar", 0, "UChar", 255, "UChar", 1, blend) ; AC_SRC_OVER, 픽셀 알파
+        dirty := Buffer(16, 0)
+        info := Buffer(80, 0) ; UPDATELAYEREDWINDOWINFO (x64)
+        NumPut("UInt", 80, info, 0)
+        NumPut("Ptr", ptDst.Ptr, info, 16)
+        NumPut("Ptr", size.Ptr, info, 24)
+        NumPut("Ptr", laserCanvas.dc, info, 32)
+        NumPut("Ptr", ptSrc.Ptr, info, 40)
+        NumPut("Ptr", blend.Ptr, info, 56)
+        NumPut("UInt", 2, info, 64) ; ULW_ALPHA
+    }
+    if IsObject(box) {
+        NumPut("Int", Max(0, box[1]), "Int", Max(0, box[2]), "Int", Min(vw, box[3]), "Int", Min(vh, box[4]), dirty)
+        NumPut("Ptr", dirty.Ptr, info, 72)
+    } else {
+        NumPut("Ptr", 0, info, 72)
+    }
+    DllCall("UpdateLayeredWindowIndirect", "ptr", laserGui.Hwnd, "ptr", info)
+}
+
+; 캔버스의 box 범위를 완전히 투명하게 비운다
+LaserClearBox(box) {
+    global laserCanvas
+    g := laserCanvas.graphics
+    pBrush := 0
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", 0, "ptr*", &pBrush)
+    DllCall("gdiplus\GdipSetCompositingMode", "ptr", g, "int", 1) ; SourceCopy — 투명한 색으로 덮어써야 지워진다
+    DllCall("gdiplus\GdipFillRectangleI", "ptr", g, "ptr", pBrush, "int", box[1], "int", box[2], "int", box[3] - box[1], "int", box[4] - box[2])
+    DllCall("gdiplus\GdipSetCompositingMode", "ptr", g, "int", 0)
+    DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
+}
+
+; 획 하나를 fade(0~1)만큼의 진하기로 그린다. 점이 하나뿐이면(클릭만 한 경우) 그리지 않는다.
+LaserDrawStroke(st, fade := 1.0, fromIndex := 1) {
+    global laserCanvas
+    n := st.pts.Length - fromIndex + 1
+    if (n < 2)
+        return
+    pPen := 0
+    DllCall("gdiplus\GdipCreatePen1", "uint", (Round(255 * fade) << 24) | st.color, "float", st.width, "int", 2, "ptr*", &pPen)
+    if !pPen
+        return
+    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; 둥근 끝 — 자유선과 같은 이유
+    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
+    buf := Buffer(n * 8)
+    loop n {
+        p := st.pts[fromIndex + A_Index - 1]
+        NumPut("float", p[1], "float", p[2], buf, (A_Index - 1) * 8)
+    }
+    DllCall("gdiplus\GdipDrawLines", "ptr", laserCanvas.graphics, "ptr", pPen, "ptr", buf, "int", n)
+    DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
+}
+
+LaserBegin(x, y) {
+    global laserCur, laserStrokes, vx, vy, activeDrawColor, activeDrawThickness
+    lx := x - vx, ly := y - vy
+    laserCur := {pts: [[lx, ly]], color: activeDrawColor, width: activeDrawThickness
+        , box: [lx, ly, lx + 1, ly + 1], endTick: 0}
+    laserStrokes.Push(laserCur)
+    SetTimer(LaserTick, 30)
+}
+
+LaserAdd(x, y) {
+    global laserCur, vx, vy
+    if !laserCur
+        return
+    lx := x - vx, ly := y - vy
+    laserCur.pts.Push([lx, ly])
+    ; 방금 늘어난 한 토막만 그린다 — 불투명하게 그으므로 이음매가 겹쳐도 진해지지 않는다
+    LaserDrawStroke(laserCur, 1.0, laserCur.pts.Length - 1)
+    prev := laserCur.pts[laserCur.pts.Length - 1]
+    seg := PenDirtyBox(prev[1], prev[2], lx, ly, laserCur.width)
+    b := laserCur.box
+    b[1] := Min(b[1], seg[1]), b[2] := Min(b[2], seg[2]), b[3] := Max(b[3], seg[3]), b[4] := Max(b[4], seg[4])
+    LaserPush(seg)
+}
+
+; 손을 뗐다 — 이 순간부터 시간을 잰다
+LaserEnd() {
+    global laserCur
+    if laserCur {
+        laserCur.endTick := A_TickCount
+        laserCur := 0
+    }
+}
+
+; 사라질 때가 된 획이 있으면 획들이 차지한 자리를 비우고, 남은 획을 각자의 진하기로 다시 그린다.
+LaserTick() {
+    global laserStrokes, LASER_HOLD_MS, LASER_FADE_MS
+    now := A_TickCount
+    changing := false
+    for st in laserStrokes
+        if (st.endTick && now - st.endTick > LASER_HOLD_MS)
+            changing := true
+    if !changing {
+        if (laserStrokes.Length = 0)
+            SetTimer(LaserTick, 0)
+        return
+    }
+    union := 0
+    for st in laserStrokes
+        union := union ? [Min(union[1], st.box[1]), Min(union[2], st.box[2]), Max(union[3], st.box[3]), Max(union[4], st.box[4])] : st.box.Clone()
+    LaserClearBox(union)
+    i := laserStrokes.Length
+    while (i >= 1) {
+        st := laserStrokes[i]
+        if (st.endTick && now - st.endTick >= LASER_HOLD_MS + LASER_FADE_MS)
+            laserStrokes.RemoveAt(i)
+        i -= 1
+    }
+    for st in laserStrokes {
+        age := st.endTick ? now - st.endTick - LASER_HOLD_MS : 0
+        LaserDrawStroke(st, age > 0 ? Max(0, 1 - age / LASER_FADE_MS) : 1.0)
+    }
+    LaserPush(union)
+    if (laserStrokes.Length = 0)
+        SetTimer(LaserTick, 0)
+}
+
+; 드로잉을 끌 때 — 남은 획을 모두 걷는다
+LaserClearAll() {
+    global laserStrokes, laserCur, vw, vh
+    SetTimer(LaserTick, 0)
+    laserStrokes := []
+    laserCur := 0
+    LaserClearBox([0, 0, vw, vh])
+    LaserPush()
+}
+LaserPush() ; 처음 한 번은 창 전체를 채워둔다 (그 뒤로는 바뀐 범위만 보낸다)
+
+; 시작점에서 끝점 쪽으로 가는 방향을 가장 가까운 0°·45°·90°(와 그 반대쪽)로 맞춘 끝점. 길이는 그대로 둔다.
+SnapTo45(x1, y1, x2, y2) {
+    dx := x2 - x1, dy := y2 - y1
+    len := Sqrt(dx * dx + dy * dy)
+    if (len < 1)
+        return [x2, y2]
+    step := 0.7853981633974483 ; 45도
+    a := Round(DllCall("msvcrt\atan2", "double", dy, "double", dx, "double") / step) * step
+    return [x1 + Round(len * Cos(a)), y1 + Round(len * Sin(a))]
+}
 
 ; ================= 칠판 (판서 층 아래에 까는 단색 판) =================
 ; 화면을 가리고 칠판처럼 쓰고 싶을 때를 위한 층이다. **판서 오버레이 아래에** 깔기 때문에
@@ -1104,6 +1300,76 @@ RestoreSnapshotBox(box) {
     }
 }
 
+; ---- 반투명 획 전용 판 (위 inkLayerBuf 설명 참고) ----
+; 판을 쓸 수 있으면 true. GDI+ 준비에 실패했으면 예전 방식(덮어쓰기)으로 그린다.
+InkLayerReady() {
+    global pInkGraphics, pInkAttr
+    return pInkGraphics && pInkAttr
+}
+
+; 판의 box 범위를 완전히 투명하게 비운다.
+InkClearBox(box) {
+    global inkLayerBuf, vw, vh
+    minX := Max(0, box[1]), minY := Max(0, box[2])
+    maxX := Min(vw, box[3]), maxY := Min(vh, box[4])
+    if (maxX <= minX || maxY <= minY)
+        return
+    stride := vw * 4
+    rowBytes := (maxX - minX) * 4
+    loop (maxY - minY)
+        DllCall("RtlZeroMemory", "ptr", inkLayerBuf.Ptr + (minY + A_Index - 1) * stride + minX * 4, "uptr", rowBytes)
+}
+
+; 새 획이나 도형을 시작할 때 부른다. 지난번에 쓴 자리를 비우고, 겹쳐 얹을 바탕으로 지금 그림을 떠둔다.
+; alpha가 100이면 판을 거칠 필요가 없어서 아무것도 하지 않는다.
+BeginInkStroke(alpha) {
+    global inkDirty, inkStrokeAlpha
+    inkStrokeAlpha := 0
+    if (alpha >= 100 || !InkLayerReady())
+        return
+    if (inkDirty.Length = 4)
+        InkClearBox(inkDirty)
+    inkDirty := []
+    SaveSnapshot()
+    inkStrokeAlpha := alpha
+}
+
+; 판에 그린 범위를 기록해둔다 (다음 획을 시작할 때 이 자리만 비우면 된다)
+InkMarkDirty(box) {
+    global inkDirty
+    if (inkDirty.Length != 4) {
+        inkDirty := box.Clone()
+        return
+    }
+    inkDirty[1] := Min(inkDirty[1], box[1]), inkDirty[2] := Min(inkDirty[2], box[2])
+    inkDirty[3] := Max(inkDirty[3], box[3]), inkDirty[4] := Max(inkDirty[4], box[4])
+}
+
+; box 범위를 "획을 긋기 전 모습 + 판을 inkStrokeAlpha로 겹쳐 얹은 것"으로 다시 만든다.
+; 판에는 이 획 전체가 들어 있으므로, 범위 안이 몇 번 다시 만들어져도 결과는 늘 같다.
+InkCompose(box) {
+    global pShapeGraphics, pInkLayer, pInkAttr, inkAttrAlpha, inkStrokeAlpha, vw, vh
+    minX := Max(0, box[1]), minY := Max(0, box[2])
+    maxX := Min(vw, box[3]), maxY := Min(vh, box[4])
+    if (maxX <= minX || maxY <= minY)
+        return
+    RestoreSnapshotBox([minX, minY, maxX, maxY])
+    if (inkAttrAlpha != inkStrokeAlpha) {
+        ; 5x5 색 행렬 — 대각선이 1인 "그대로" 행렬에서 투명도 칸만 원하는 값으로 둔다
+        m := Buffer(100, 0)
+        loop 5
+            NumPut("float", 1.0, m, ((A_Index - 1) * 5 + (A_Index - 1)) * 4)
+        NumPut("float", inkStrokeAlpha / 100, m, (3 * 5 + 3) * 4)
+        DllCall("gdiplus\GdipSetImageAttributesColorMatrix", "ptr", pInkAttr, "int", 0, "int", 1, "ptr", m, "ptr", 0, "int", 0)
+        inkAttrAlpha := inkStrokeAlpha
+    }
+    w := maxX - minX, h := maxY - minY
+    DllCall("gdiplus\GdipDrawImageRectRectI", "ptr", pShapeGraphics, "ptr", pInkLayer
+        , "int", minX, "int", minY, "int", w, "int", h
+        , "int", minX, "int", minY, "int", w, "int", h
+        , "int", 2, "ptr", pInkAttr, "ptr", 0, "ptr", 0) ; 2 = UnitPixel
+}
+
 ; ================= 지우개 (오른쪽 버튼 드래그 / 전자칠판 손날) =================
 ; 굵기는 펜보다 넉넉하게 — 지우개는 대충 문질러도 지워져야 쓸 만하다.
 ;
@@ -1191,15 +1457,15 @@ ClearAlpha(x1, y1, x2, y2, pad) {
 ; 10ms마다 짧은 선을 긋는 작업이라 매번 새로 만들면 낭비여서, 색이나
 ; 굵기가 바뀔 때만 다시 만들고 그 외에는 만들어둔 것을 재사용한다.
 freehandPen := 0, freehandPenColor := -1, freehandPenWidth := -1
-GetFreehandPen() {
+GetFreehandPen(argb) {
     global freehandPen, freehandPenColor, freehandPenWidth, activeDrawThickness
-    ; 색과 투명도를 한 값(ActiveARGB)으로 같이 본다 — 투명도만 바뀌어도 펜을 새로 만들어야 한다
-    if (freehandPen && freehandPenColor = ActiveARGB() && freehandPenWidth = activeDrawThickness)
+    ; 색과 투명도를 한 값(argb)으로 같이 본다 — 투명도만 바뀌어도 펜을 새로 만들어야 한다
+    if (freehandPen && freehandPenColor = argb && freehandPenWidth = activeDrawThickness)
         return freehandPen
     if freehandPen
         DllCall("gdiplus\GdipDeletePen", "ptr", freehandPen)
     freehandPen := 0
-    DllCall("gdiplus\GdipCreatePen1", "uint", ActiveARGB(), "float", activeDrawThickness, "int", 2, "ptr*", &freehandPen)
+    DllCall("gdiplus\GdipCreatePen1", "uint", argb, "float", activeDrawThickness, "int", 2, "ptr*", &freehandPen)
     if freehandPen {
         ; 자유선은 10ms마다 짧은 선을 이어 붙여 만드는 것이라, 선 끝이 평평하면 이음매마다
         ; 모난 자국이 남아 획이 끊겨 보인다. 끝과 이음매를 둥글게 해야 한 획처럼 이어진다.
@@ -1208,47 +1474,75 @@ GetFreehandPen() {
         DllCall("gdiplus\GdipSetPenEndCap", "ptr", freehandPen, "int", 2)
         DllCall("gdiplus\GdipSetPenLineJoin", "ptr", freehandPen, "int", 2) ; LineJoinRound
     }
-    freehandPenColor := ActiveARGB()
+    freehandPenColor := argb
     freehandPenWidth := activeDrawThickness
     return freehandPen
 }
 
+; ---- 무지개 펜 (S를 누른 채로 긋기) ----
+; 긋는 동안 지나간 거리만큼 색상환을 돌아 색이 저절로 바뀐다. RAINBOW_CYCLE_PX만큼 그으면 한 바퀴.
+; 획이 끝나도 색상을 이어 가서, 다음 획은 앞 획이 끝난 색에서 시작한다.
+RAINBOW_CYCLE_PX := 700
+rainbowHue := 0
+
+NextRainbowColor(dist) {
+    global rainbowHue, RAINBOW_CYCLE_PX
+    rainbowHue := Mod(rainbowHue + dist * 360 / RAINBOW_CYCLE_PX, 360)
+    return HueToRGB(rainbowHue)
+}
+
+; 채도·명도가 가장 높은 색 (색상환의 가장자리)
+HueToRGB(h) {
+    x := 1 - Abs(Mod(h / 60, 2) - 1)
+    rgb := (h < 60) ? [1, x, 0] : (h < 120) ? [x, 1, 0] : (h < 180) ? [0, 1, x]
+        : (h < 240) ? [0, x, 1] : (h < 300) ? [x, 0, 1] : [1, 0, x]
+    return (Round(rgb[1] * 255) << 16) | (Round(rgb[2] * 255) << 8) | Round(rgb[3] * 255)
+}
+
+; 지금 긋는 자유선이 무지개 펜인가. 드래그를 시작할 때 정해져 획이 끝날 때까지 유지된다.
+strokeRainbow := false
+
 DrawSegment(x1, y1, x2, y2) {
     global memDC, vx, vy, activeDrawThickness, activeDrawColor, activeDrawAlpha, pShapeGraphics
+    global pInkGraphics, inkStrokeAlpha, strokeRainbow
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
-    ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
-    CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness, Max(ly1, ly2) + activeDrawThickness)
+    rgb := activeDrawColor
+    if strokeRainbow
+        rgb := NextRainbowColor(Sqrt((lx2 - lx1) ** 2 + (ly2 - ly1) ** 2))
     if pShapeGraphics {
         ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
         ; 테두리도 도형과 똑같이 매끄럽게 나온다.
         DllCall("gdi32\GdiFlush") ; 지우개는 아직 GDI를 쓰므로 밀린 작업을 먼저 반영시킨다
-        ; **반투명한 색일 때는 "덮어쓰기"(SourceCopy)로 그어야 한다.** 자유선은 10ms마다 짧은
-        ; 선을 이어 붙여 만드는데, 보통의 겹쳐 그리기(SourceOver)로는 이음매가 두 번 칠해지면서
-        ; 그 자리만 진해진다. 천천히 쓰거나 한자리에 머물면 같은 픽셀이 수십 번 칠해져 결국
-        ; 불투명해지므로, 투명도를 준 의미가 아예 사라진다. 덮어쓰기로 하면 몇 번을 지나가도
-        ; 정해둔 값 그대로다. (불투명한 색은 겹쳐 칠해도 달라질 것이 없어서 예전 방식 그대로 둔다 —
-        ;  덮어쓰기는 이미 그려둔 다른 획 위를 지날 때 그 획을 지워버리기 때문이다)
-        ; **가장자리 부드럽게도 함께 꺼야 한다.** 덮어쓰기만 하고 부드럽게를 켜두면, 새로 긋는
-        ; 토막의 흐릿한 가장자리가 앞 토막의 진한 속살을 덮어써서 **이음매마다 연한 초승달 자국**이
-        ; 남는다 — 천천히 그으면 동그라미를 줄줄이 꿴 것처럼 보인다(실제로 그렇게 나왔다).
-        ; 끄면 가장자리가 계단처럼 되지만 굵은 형광펜에서는 거의 티가 안 나고, 획은 고르게 나온다.
-        ; (지우개도 같은 이유로 부드럽게를 끄고 덮어쓴다 — EraseSegment 참고)
-        translucent := (activeDrawAlpha < 100)
-        if translucent {
-            DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 1) ; SourceCopy
-            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 3)   ; 끄기
-        }
-        pPen := GetFreehandPen()
-        if pPen
-            DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
-        if translucent {
-            DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 0) ; 다시 겹쳐 그리기
-            DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4)   ; 다시 부드럽게
-        }
         box := PenDirtyBox(lx1, ly1, lx2, ly2)
+        ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
+        CaptureUndoBands(box[2], box[4])
+        if inkStrokeAlpha {
+            ; 반투명한 획은 전용 판에 불투명하게 긋고 겹쳐 얹는다 (inkLayerBuf 설명 참고)
+            pPen := GetFreehandPen(0xFF000000 | rgb)
+            if pPen
+                DllCall("gdiplus\GdipDrawLine", "ptr", pInkGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+            InkMarkDirty(box)
+            InkCompose(box)
+        } else {
+            ; 판을 쓸 수 없는데 반투명하면 예전처럼 덮어쓰기로 긋는다. 이음매가 진해지지는 않지만
+            ; 먼저 그은 선 위를 지나가면 그 선을 덮는다. (불투명한 색은 겹쳐 칠해도 달라질 것이 없다)
+            translucent := (activeDrawAlpha < 100)
+            if translucent {
+                DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 1) ; SourceCopy
+                DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 3)   ; 끄기
+            }
+            pPen := GetFreehandPen((ActiveARGB() & 0xFF000000) | rgb)
+            if pPen
+                DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+            if translucent {
+                DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 0) ; 다시 겹쳐 그리기
+                DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pShapeGraphics, "int", 4)   ; 다시 부드럽게
+            }
+        }
     } else {
+        CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness, Max(ly1, ly2) + activeDrawThickness)
         ; GDI+ 준비에 실패한 경우를 위한 대비책 (예전 방식: GDI로 긋고 투명도는 직접 채우기)
-        pen := DllCall("CreatePen", "int", 0, "int", Round(activeDrawThickness), "uint", ToBGR(activeDrawColor), "ptr") ; GDI 펜은 정수만 받는다
+        pen := DllCall("CreatePen", "int", 0, "int", Round(activeDrawThickness), "uint", ToBGR(rgb), "ptr") ; GDI 펜은 정수만 받는다
         old := DllCall("SelectObject", "ptr", memDC, "ptr", pen, "ptr")
         DllCall("MoveToEx", "ptr", memDC, "int", lx1, "int", ly1, "ptr", 0)
         DllCall("LineTo", "ptr", memDC, "int", lx2, "int", ly2)
@@ -1263,37 +1557,51 @@ DrawSegment(x1, y1, x2, y2) {
 ; (매번 스냅샷으로 되돌린 뒤 새로 그려서, 드래그 중인 미리보기가 쌓이지 않고 하나만 보이게 함)
 DrawShapePreview(mode, x1, y1, x2, y2) {
     global memDC, vx, vy, activeDrawThickness, activeDrawColor, lastShapeBox, pShapeGraphics
+    global pInkGraphics, inkStrokeAlpha
     ; 직전 프레임이 그린 자리만 되돌리면 된다. 첫 프레임은 되돌릴 것이 없다(스냅샷을 방금 떴다).
-    if (lastShapeBox.Length = 4)
+    if (lastShapeBox.Length = 4) {
         RestoreSnapshotBox(lastShapeBox)
+        if inkStrokeAlpha
+            InkClearBox(lastShapeBox) ; 반투명 도형은 전용 판에도 직전 프레임이 남아 있다
+    }
     lx1 := x1 - vx, ly1 := y1 - vy, lx2 := x2 - vx, ly2 := y2 - vy
     bx := Min(lx1, lx2), by := Min(ly1, ly2)
     bw := Abs(lx2 - lx1), bh := Abs(ly2 - ly1)
     overhang := ShapeOverhang(mode, lx1, ly1, lx2, ly2)
     ; 그리기 전 모습을 담아둔다. 미리보기는 매 프레임 스냅샷으로 되돌렸다 다시 그리는데,
     ; 그 되돌리기는 드래그 시작 시점(= 이 단계의 기준 모습)으로 돌리는 것이라 따로 담을 필요가 없다.
-    CaptureUndoBands(Min(ly1, ly2) - activeDrawThickness - overhang, Max(ly1, ly2) + activeDrawThickness + overhang)
+    ; 다시 합성할 범위(아래 box)보다 좁게 담으면, 그 가장자리가 되돌린 뒤에 남을 수 있어서 같은 범위로 담는다.
+    capBox := PenDirtyBox(lx1, ly1, lx2, ly2, activeDrawThickness + 2 * overhang)
+    CaptureUndoBands(Min(capBox[2], Min(ly1, ly2) - activeDrawThickness - overhang)
+        , Max(capBox[4], Max(ly1, ly2) + activeDrawThickness + overhang))
 
     if pShapeGraphics {
         ; GDI가 아직 버퍼에 반영하지 않은 작업이 남아 있을 수 있으므로 먼저 밀어 넣는다
         DllCall("gdi32\GdiFlush")
+        ; 반투명하면 전용 판에 불투명하게 그려서 겹쳐 얹는다 (inkLayerBuf 설명 참고)
+        gr := inkStrokeAlpha ? pInkGraphics : pShapeGraphics
+        argb := inkStrokeAlpha ? (0xFF000000 | activeDrawColor) : ActiveARGB()
         pPen := 0
         ; GDI+ 색은 0xAARRGGBB — GDI처럼 BGR로 뒤집지 않는다
-        DllCall("gdiplus\GdipCreatePen1", "uint", ActiveARGB(), "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", argb, "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
         if mode = "line"
-            DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
+            DllCall("gdiplus\GdipDrawLine", "ptr", gr, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
         else if mode = "rect"
-            DllCall("gdiplus\GdipDrawRectangle", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
+            DllCall("gdiplus\GdipDrawRectangle", "ptr", gr, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
         else if mode = "ellipse"
-            DllCall("gdiplus\GdipDrawEllipse", "ptr", pShapeGraphics, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
+            DllCall("gdiplus\GdipDrawEllipse", "ptr", gr, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
         else if mode = "arrow"
-            DrawArrowGdip(pPen, lx1, ly1, lx2, ly2)
+            DrawArrowGdip(gr, pPen, argb, lx1, ly1, lx2, ly2)
         else if mode = "wave"
-            DrawWaveGdip(pPen, lx1, ly1, lx2, ly2)
+            DrawWaveGdip(gr, pPen, lx1, ly1, lx2, ly2)
         DllCall("gdiplus\GdipDeletePen", "ptr", pPen)
         ; 화살표 머리와 물결의 굽이는 두 끝점을 잇는 선 바깥으로 나가므로, 그만큼 여유를 더 준다.
         ; (여유가 모자라면 되돌릴 때 지워지지 않은 자국이 화면에 남는다)
         box := PenDirtyBox(lx1, ly1, lx2, ly2, activeDrawThickness + 2 * overhang)
+        if inkStrokeAlpha {
+            InkMarkDirty(box)
+            InkCompose(box)
+        }
     } else {
         ; GDI+ 준비에 실패한 경우를 위한 대비책 — 예전 방식(GDI로 그리고 알파는 직접 채우기).
         ; 테두리를 따라가며 훑어서, 도형을 감싸는 네모 전체를 훑던 때보다는 훨씬 가볍다.
@@ -1347,8 +1655,8 @@ ShapeOverhang(mode, x1, y1, x2, y2) {
 }
 
 ; 화살표: 몸통 선 + 끝에 채운 삼각형 머리.
-DrawArrowGdip(pPen, x1, y1, x2, y2) {
-    global pShapeGraphics, activeDrawColor
+; gr은 그릴 곳(판서 그림 또는 반투명 전용 판), argb는 머리를 채울 색이다.
+DrawArrowGdip(gr, pPen, argb, x1, y1, x2, y2) {
     g := ArrowGeometry(x1, y1, x2, y2)
     if !g
         return
@@ -1356,22 +1664,21 @@ DrawArrowGdip(pPen, x1, y1, x2, y2) {
     ; 끝을 둥글게 해야 삼각형과 만나는 자리가 매끄럽게 이어진다.
     DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; LineCapRound
     DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
-    DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", x1, "float", y1, "float", g.bx, "float", g.by)
+    DllCall("gdiplus\GdipDrawLine", "ptr", gr, "ptr", pPen, "float", x1, "float", y1, "float", g.bx, "float", g.by)
 
     ; 머리는 테두리가 아니라 채워야 화살표처럼 보인다 — 펜이 아니라 브러시로 삼각형을 채운다.
     pts := Buffer(24) ; PointF 3개 (실수 x, y)
     NumPut("float", x2, "float", y2, "float", g.lx, "float", g.ly, "float", g.rx, "float", g.ry, pts)
     pBrush := 0
-    DllCall("gdiplus\GdipCreateSolidFill", "uint", ActiveARGB(), "ptr*", &pBrush)
+    DllCall("gdiplus\GdipCreateSolidFill", "uint", argb, "ptr*", &pBrush)
     if pBrush {
-        DllCall("gdiplus\GdipFillPolygon", "ptr", pShapeGraphics, "ptr", pBrush, "ptr", pts, "int", 3, "int", 0)
+        DllCall("gdiplus\GdipFillPolygon", "ptr", gr, "ptr", pBrush, "ptr", pts, "int", 3, "int", 0)
         DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
     }
 }
 
 ; 물결: 사인파 위의 점들을 이어 그린다.
-DrawWaveGdip(pPen, x1, y1, x2, y2) {
-    global pShapeGraphics
+DrawWaveGdip(gr, pPen, x1, y1, x2, y2) {
     pts := WavePoints(x1, y1, x2, y2)
     buf := Buffer(pts.Length * 8)
     for i, p in pts
@@ -1381,7 +1688,7 @@ DrawWaveGdip(pPen, x1, y1, x2, y2) {
     DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2)
     DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
     DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
-    DllCall("gdiplus\GdipDrawLines", "ptr", pShapeGraphics, "ptr", pPen, "ptr", buf, "int", pts.Length)
+    DllCall("gdiplus\GdipDrawLines", "ptr", gr, "ptr", pPen, "ptr", buf, "int", pts.Length)
 }
 
 ; 지금 눌려 있는 키로 그릴 도형을 정한다. 도형 키(글자)를 먼저 보기 때문에, 글자키를 쥔 채로
@@ -1539,6 +1846,7 @@ IsPenOrTouch(wp) {
 OnPointerDown(wp, lp, msg, hwnd) {
     global drawOn, drawGui, penStroke, penErasing, penEraserWide, penLastX, penLastY, penIgnoreMouse
     global drawing, erasing, dragOnOtherWindow, dragShapeMode, penContacts, penGesture
+    global strokeRainbow, activeDrawAlpha
     if (!drawOn || hwnd != drawGui.Hwnd || !IsPenOrTouch(wp))
         return
     id := wp & 0xFFFF
@@ -1579,6 +1887,8 @@ OnPointerDown(wp, lp, msg, hwnd) {
     dragOnOtherWindow := false
     dragShapeMode := ""
     PushUndo() ; 이 획 하나만 Ctrl+Z로 되돌릴 수 있도록
+    strokeRainbow := false
+    BeginInkStroke(penErasing ? 100 : activeDrawAlpha) ; 반투명이면 전용 판을 거쳐 긋는다
     penLastX := pt[1]
     penLastY := pt[2]
     ; 뒤쪽으로 대면 커서도 지우개 테두리 원으로 바뀌어, 어디까지 지워지는지 보인다
@@ -1629,6 +1939,7 @@ OnMessage(0x0247, OnPointerUp)     ; WM_POINTERUP
 DrawPoll() {
     global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
     global dragOnOtherWindow, lastShapeBox, VK_LBUTTON, VK_RBUTTON, penStroke, penIgnoreMouse
+    global dragPenKind, strokeRainbow, activeDrawAlpha, inkStrokeAlpha
     if !drawOn
         return
     MouseGetPos(&mx, &my, &winUnder)
@@ -1655,6 +1966,7 @@ DrawPoll() {
             penIgnoreMouse := false
         drawing := false
         erasing := false
+        LaserEnd()
         return
     }
     ; 오른쪽 버튼을 누르고 있는 동안에는 커서가 지우개 범위를 보여주는 원으로 바뀐다
@@ -1662,6 +1974,7 @@ DrawPoll() {
     if (!leftDown && !rightDown) {
         drawing := false
         erasing := false
+        LaserEnd() ; 사라지는 펜으로 긋던 중이면 이제부터 사라지기 시작한다
         return
     }
 
@@ -1699,19 +2012,47 @@ DrawPoll() {
             ; 세어 건너뛰었는데, 캡처 도구가 툴바 클릭을 요구하는지가 Windows 버전마다 달라
             ; 첫 판서 한 획을 삼키거나 캡처 드래그가 그려지는 일이 있었다.)
         dragOnOtherWindow := winUnder != drawGui.Hwnd
-        ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
-        if !dragOnOtherWindow
-            PushUndo()
-        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다
+        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다. A·S는 도형이 아니라 펜의 종류라서
+        ; 따로 떼어 둔다 — 그리는 방식은 보통 자유선과 같다.
         dragShapeMode := CurrentShapeMode()
-        if (dragShapeMode != "" && !dragOnOtherWindow) {
-            SaveSnapshot()
-            lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
+        dragPenKind := ""
+        if (dragShapeMode = "laser" || dragShapeMode = "rainbow") {
+            dragPenKind := dragShapeMode
+            dragShapeMode := ""
+        }
+        strokeRainbow := (dragPenKind = "rainbow")
+        if dragOnOtherWindow {
+            ; 다른 창 위에서 시작된 드래그 — 아래에서 아무것도 그리지 않는다
+        } else if (dragPenKind = "laser") {
+            ; 사라지는 펜은 판서 그림을 건드리지 않으므로 실행 취소에 남기지 않는다
+            LaserBegin(mx, my)
+        } else {
+            ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
+            PushUndo()
+            BeginInkStroke(activeDrawAlpha)
+            if (dragShapeMode != "") {
+                if !inkStrokeAlpha ; 반투명이면 BeginInkStroke가 이미 떠뒀다
+                    SaveSnapshot()
+                lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
+            }
         }
     } else if dragOnOtherWindow {
         ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
+    } else if (dragPenKind = "laser") {
+        if (mx != lastX || my != lastY) {
+            LaserAdd(mx, my)
+            lastX := mx
+            lastY := my
+        }
     } else if dragShapeMode != "" {
-        DrawShapePreview(dragShapeMode, dragStartX, dragStartY, mx, my)
+        ex := mx, ey := my
+        ; 선 종류(직선·화살표·물결)는 Shift를 함께 누르면 0°·45°·90° 방향으로 맞춘다.
+        ; 드래그 도중에 눌러도 바로 따라온다.
+        if (GetKeyState("Shift", "P") && (dragShapeMode = "line" || dragShapeMode = "arrow" || dragShapeMode = "wave")) {
+            snapped := SnapTo45(dragStartX, dragStartY, mx, my)
+            ex := snapped[1], ey := snapped[2]
+        }
+        DrawShapePreview(dragShapeMode, dragStartX, dragStartY, ex, ey)
     } else {
         DrawSegment(lastX, lastY, mx, my)
         lastX := mx
@@ -2033,7 +2374,7 @@ ToggleDraw(*) {
     global drawOn, drawGui, brushGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, drawColor
     global activeDrawThickness, activeDrawStep, DrawStep, activeEraserSize, activeEraserStep, EraserStep
     global PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
-    global erasing, brushMode, boardGui, stepGui
+    global erasing, brushMode, boardGui, stepGui, laserGui
     drawOn := !drawOn
     ; 숫자키와 +/-로 잠깐 바꿔둔 색·굵기·지우개 크기는 여기서 초기화한다. 드로잉을 켤 때마다
     ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
@@ -2049,6 +2390,8 @@ ToggleDraw(*) {
     erasing := false
     if drawOn {
         drawGui.Show("NA")
+        ; 사라지는 펜의 창은 판서 층 **바로 위**에 둔다 (그래서 판서 층 다음에 띄운다)
+        laserGui.Show("NA")
         ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
         WinSetAlwaysOnTop(true, widget)
         ; 커서 노릇을 할 원은 위젯보다도 위에 띄운다 — 판서 중에는 진짜 커서가 완전히 감춰져
@@ -2073,6 +2416,8 @@ ToggleDraw(*) {
         SetTimer(DrawPoll, 0)
         SetDrawModeHotkeys("Off")
         brushGui.Hide()
+        LaserClearAll()
+        laserGui.Hide()
         drawGui.Hide()
         ; 칠판은 감추기만 하고 무슨 색이었는지는 기억해둔다 (다시 켤 때 그대로 깔린다)
         SetBoardColor(boardColor, boardAlpha)
@@ -3656,8 +4001,10 @@ for index, pair in BOARD_KEYS
 ; 발동하지 않고, 더 구체적인 ^z 쪽이 잡는다. (실제로 눌러 확인함)
 for pair in SHAPE_HOLD_KEYS {
     shapeKeyHeld[pair[1]] := false
-    Hotkey(pair[1], MakeShapeKeyTracker(pair[1], true), "Off")
-    Hotkey(pair[1] " up", MakeShapeKeyTracker(pair[1], false), "Off")
+    for prefix in HOLD_KEY_PREFIXES {
+        Hotkey(prefix pair[1], MakeShapeKeyTracker(pair[1], true), "Off")
+        Hotkey(prefix pair[1] " up", MakeShapeKeyTracker(pair[1], false), "Off")
+    }
 }
 
 ; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
@@ -3677,8 +4024,10 @@ SetDrawModeHotkeys(state) {
     for pair in BOARD_KEYS
         Hotkey(pair[1], state)
     for pair in SHAPE_HOLD_KEYS {
-        Hotkey(pair[1], state)
-        Hotkey(pair[1] " up", state)
+        for prefix in HOLD_KEY_PREFIXES {
+            Hotkey(prefix pair[1], state)
+            Hotkey(prefix pair[1] " up", state)
+        }
         ; 도형 키를 누른 채로 드로잉이 꺼지면(Esc 등) 뗀 것을 못 보고 지나가 "계속 눌림"으로
         ; 남는다. 켜고 끌 때마다 초기화해서 그런 유령 상태가 생기지 않게 한다.
         shapeKeyHeld[pair[1]] := false
