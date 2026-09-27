@@ -2303,9 +2303,22 @@ ClickAnimStepFor(side) {
         t := a.frame / CLICK_ANIM_FRAMES
         eased := 1 - (1 - t) ** 3
         radius := (SpotSize / 2 - st.thickness / 2 - 1) * (1 - eased)
+        ; 감속 곡선이라 마지막 4분의 1가량은 반지름이 몇 픽셀밖에 안 된다. 그때도 테두리를 설정한
+        ; 굵기 그대로 그리면 테두리가 반지름보다 두꺼워져서, 원이 마름모·삼각형처럼 찌그러진
+        ; 덩어리로 보였다(그림으로 뽑아 확인). 그래서 **테두리는 반지름을 넘지 않게 가늘어져 끝까지
+        ; 속이 빈 고리로 남고**, 반지름이 굵기의 1.5배보다 작아지면 그만큼 옅어지며 사라진다.
+        ; 1픽셀보다 작아지면 더 보여줄 것이 없으므로 거기서 끝낸다.
+        if (radius < 1) {
+            a.frame := CLICK_ANIM_FRAMES
+            SetTimer(side = "R" ? RClickAnimStep : ClickAnimStep, 0)
+            a.gui.Hide()
+            return
+        }
+        width := Min(st.thickness, radius)
+        fade := Min(1, radius / (st.thickness * 1.5))
         cx := SpotSize / 2, cy := SpotSize / 2
         pen := 0
-        DllCall("gdiplus\GdipCreatePen1", "uint", 0xFF000000 | st.color, "float", st.thickness, "int", 2, "ptr*", &pen)
+        DllCall("gdiplus\GdipCreatePen1", "uint", (Round(255 * fade) << 24) | st.color, "float", width, "int", 2, "ptr*", &pen)
         if pen {
             DllCall("gdiplus\GdipDrawEllipse", "ptr", a.canvas.graphics, "ptr", pen
                 , "float", cx - radius, "float", cy - radius, "float", radius * 2, "float", radius * 2)
