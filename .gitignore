@@ -1,5 +1,5 @@
 # 사용자별 설정값 (자동 생성됨, 배포/저장소에는 불필요)
-settings.ini
+settings*.ini
 
 # Ahk2Exe로 컴파일한 결과물
 *.exe
