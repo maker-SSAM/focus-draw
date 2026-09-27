@@ -44,7 +44,7 @@ FileInstall("icon_draw.png", A_Temp "\tt_icon_draw.png", true)
 FileInstall("icon_spotlight_dark.png", A_Temp "\tt_icon_spotlight_dark.png", true)
 FileInstall("icon_draw_dark.png", A_Temp "\tt_icon_draw_dark.png", true)
 FileInstall("Settings.png", A_Temp "\tt_icon_settings.png", true)
-; 설정 창의 "단축키 보기" 버튼이 띄우는 안내 그림. 아이콘과 달리 화면에 그대로 보여주기만
+; 설정 창의 "드로잉 모드 단축키 보기" 버튼이 띄우는 안내 그림. 아이콘과 달리 화면에 그대로 보여주기만
 ; 하므로 색을 입히거나 하지 않는다. (그림을 바꾸려면 shortcuts.png만 갈아끼우면 된다)
 FileInstall("shortcuts.png", A_Temp "\tt_shortcuts.png", true)
 ICON_SPOT_PATH := A_Temp "\tt_icon_spotlight.png"
@@ -2298,7 +2298,6 @@ AddSliderRow(gui, y, labelText, rangeMin, rangeMax, initial, suffixText, onChang
     sl := gui.AddSlider("x126 y" (y + 2) " w204 Range" rangeMin "-" rangeMax, initial)
     btnPlus := gui.AddButton("x332 y" y " w24 h24", "+")
     ed := gui.AddEdit("x360 y" y " w44 h24 Center Number", initial)
-    RoundRegion(ed.Hwnd, 44, 24, 12) ; 숫자칸 모서리를 둥글게
     if suffixText != ""
         gui.AddText("x410 y" (y + 4) " w40", suffixText)
 
@@ -2390,7 +2389,6 @@ AddPaletteRow(gui, y, label, kind, index) {
     ))
     sl := gui.AddSlider("x174 y" (y + 2) " w142 Range5-100", PaletteAlpha(kind, index))
     ed := gui.AddEdit("x322 y" y " w44 h24 Center Number", PaletteAlpha(kind, index))
-    RoundRegion(ed.Hwnd, 44, 24, 12)
     gui.AddText("x370 y" (y + 4) " w24", "%")
     apply := (v) => (v := Max(5, Min(100, Round(v))), sl.Value := v, ed.Text := v, SetPaletteAlpha(kind, index, v))
     sl.OnEvent("Change", (ctrl, *) => apply(Round(ctrl.Value / 5) * 5))
@@ -2425,7 +2423,7 @@ BuildPalettePanel(parentGui) {
     paletteBody.SetFont("s10", "Malgun Gothic")
 
     y := 6
-    head := paletteBody.AddText("x6 y" y " w400", "숫자키 — 선 색과 투명도")
+    head := paletteBody.AddText("x6 y" y " w400", "단축키(드로잉)")
     head.SetFont("s9 c666666")
     y += 24
     loop DRAW_COLORS.Length {
@@ -2433,7 +2431,7 @@ BuildPalettePanel(parentGui) {
         y += PALETTE_ROW_H
     }
     y += 10
-    head2 := paletteBody.AddText("x6 y" y " w400", "칠판 — 바탕 색과 투명도 (낮추면 화면이 비쳐 보입니다)")
+    head2 := paletteBody.AddText("x6 y" y " w400", "단축키(칠판)")
     head2.SetFont("s9 c666666")
     y += 24
     for index, pair in BOARD_KEYS {
@@ -2731,17 +2729,14 @@ OpenSettingsWindow(*) {
     ; 여기서 바꾼 값은 다음에 드로잉을 켤 때부터 쓰인다. 드로잉 중에 쓰는 값(activeDrawThickness)은
     ; 켤 때마다 이 값으로 초기화된다.
     AddColorRow(settingsGui, 60, "Draw", "기본 색상")
-    lblZeroKey := settingsGui.AddText("x270 y64 w180", "드로잉 중 0 키로 이 색")
-    lblZeroKey.SetFont("s9 c999999")
     AddSliderRow(settingsGui, 100, "드로잉 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
     AddSliderRow(settingsGui, 140, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()), 5)
     AddSliderRow(settingsGui, 180, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
 
     ; --- 숫자키 1~9와 칠판 W/E/R의 색 (스크롤되는 칸) ---
-    lblPalette := settingsGui.AddText("x30 y226 w120", "숫자키와 칠판의 색")
-    ; 칸이 잘려 보이는 것만으로는 넘길 수 있다는 걸 모르는 분이 있어서 한 줄 적어둔다
-    lblPaletteHint := settingsGui.AddText("x152 y228 w300", "마우스 휠로 넘기기  ·  되돌리려면 [일반] 탭의 초기화")
-    lblPaletteHint.SetFont("s9 c999999")
+    ; 위의 기본값들과 아래 키별 목록을 가르는 선 (0x10 = SS_ETCHEDHORZ, 가로로 파인 선)
+    settingsGui.AddText("x30 y214 w420 h2 0x10")
+    settingsGui.AddText("x30 y226 w200", "단축키별 설정")
     paletteBar := settingsGui.AddCustom("ClassScrollBar +0x1 x" (PALETTE_X + PALETTE_W + 2) " y" PALETTE_Y " w16 h" PALETTE_H)
 
     tabs.UseTab("위젯")
@@ -2801,17 +2796,14 @@ OpenSettingsWindow(*) {
     tabs.UseTab("단축키")
     AddHotkeyRow(settingsGui, 50, "Spotlight")
     AddHotkeyRow(settingsGui, 90, "Draw")
-    lblHotkeyHelp := settingsGui.AddText("x30 y126 w420 h32", "칸을 누른 뒤 원하는 키를 그대로 누르면 됩니다. Ctrl이나 Alt를 함께 눌러야 합니다.")
+    lblHotkeyHelp := settingsGui.AddText("x30 y126 w420 h32", "단축키를 직접 눌러 지정할 수 있습니다.  Ctrl이나 Alt키가 포함되어야 합니다.")
     lblHotkeyHelp.SetFont("s9 c999999")
 
     ; 드로잉 중에만 쓰는 키(도형·색·굵기·지우기)는 여기 글로 늘어놓지 않는다. **키보드 그림
     ; 한 장이 그 일을 더 잘한다** — 어느 키를 눌러야 하는지 자리로 바로 보이고, 지금 설정된
     ; 색까지 그림 아래에 함께 뜬다. 예전에는 열네 줄짜리 목록이 이 자리에 있었는데, 같은 내용을
     ; 두 군데 적어두면 한쪽만 고쳐져 어긋나기 마련이라 그림 쪽으로 몰았다.
-    settingsGui.AddText("x30 y178 w410", "드로잉 모드에서 쓰는 키는 그림으로 볼 수 있습니다.")
-    lblGuideHint := settingsGui.AddText("x30 y204 w410", "도형 그리기, 색과 굵기 바꾸기, 지우기, 전자칠판에서 손으로 하는 조작까지 한 장에 담겨 있습니다.")
-    lblGuideHint.SetFont("s9 c999999")
-    btnShortcutGuide := settingsGui.AddButton("x30 y246 w160 h36", "단축키 보기")
+    btnShortcutGuide := settingsGui.AddButton("x130 y178 w220 h36", "드로잉 모드 단축키 보기")
     btnShortcutGuide.OnEvent("Click", ShowShortcutGuide)
 
     tabs.UseTab()
@@ -2838,7 +2830,7 @@ OpenSettingsWindow(*) {
 }
 
 ; ================= 단축키 안내 그림 =================
-; 설정 창 "단축키" 탭의 "단축키 보기" 버튼이 띄우는 창. 키보드 그림 한 장(shortcuts.png)을
+; 설정 창 "단축키" 탭의 "드로잉 모드 단축키 보기" 버튼이 띄우는 창. 키보드 그림 한 장(shortcuts.png)을
 ; 그대로 보여주기만 한다.
 ;
 ; 그림은 **줄이기만 하고 키우지는 않는다.** 화면보다 큰 그림은 화면에 맞게 줄여야 하지만,
@@ -2856,7 +2848,7 @@ GUIDE_STRIP_H := 104
 
 ; 그림은 파일이라 설정 창에서 바꾼 색을 알 수 없다. 그래서 **색만은 창을 열 때마다 지금 값으로
 ; 그려서** 그림 아래에 붙인다 — 그림을 새로 만들지 않아도 눈에 보이는 색은 항상 실제와 맞는다.
-; 0번(기본 색) / 1~9 / 칠판 W·E·R을 차례로 늘어놓고, 투명도를 낮춰둔 것은 아래에 %를 적는다.
+; 키보드에 놓인 순서대로 1~9 / 0번(기본 색) / 칠판 W·E·R을 늘어놓고, 투명도를 낮춰둔 것은 아래에 %를 적는다.
 AddGuideColorStrip(gui, width, top, bgColor) {
     global DRAW_COLORS, DRAW_ALPHAS, BOARD_KEYS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, drawColor
     ; 그림 바탕이 어두우면 글자를 밝게 뒤집는다 (밝기는 사람 눈에 맞춘 가중치로 잰다)
@@ -2864,9 +2856,10 @@ AddGuideColorStrip(gui, width, top, bgColor) {
     fg := (lum < 128) ? "FFFFFF" : "1C1C1E"
     dim := (lum < 128) ? "AAAAB2" : "8E8E93"
 
-    items := [{key: "0", color: drawColor, alpha: 100}]
+    items := []
     loop DRAW_COLORS.Length
         items.Push({key: String(A_Index), color: DRAW_COLORS[A_Index], alpha: DRAW_ALPHAS[A_Index]})
+    items.Push({key: "0", color: drawColor, alpha: 100})
     for index, pair in BOARD_KEYS {
         if (BOARD_COLOR_DEFAULTS[index] < 0) ; Q(투명)는 보여줄 색이 없다
             continue
