@@ -601,6 +601,20 @@ CaptureUndoBands(y1, y2) {
     TrimUndo()
 }
 
+; 드로잉을 끈 채로 UNDO_KEEP_MS가 지나면 실행 취소 기록을 비운다(사용자 결정 — 30초).
+; 기록은 최대 30단계·80MB까지 쌓이는데, 끈 뒤에도 그대로 들고 있으면 가만히 있는 동안에도
+; 메모리를 붙들고 있게 된다(재보니 한 번 쓰고 끈 뒤 전용 메모리가 14MB가 아니라 62MB였다).
+; "실수로 Esc를 눌렀다 → 다시 켜고 Ctrl+Z"는 대개 곧바로 하는 일이라 30초면 충분하다고 봤다.
+; 드로잉을 다시 켜면 타이머를 취소하므로, 30초 안에 켜기만 하면 기록은 그대로 남는다.
+UNDO_KEEP_MS := 30000
+DiscardUndoHistory() {
+    global undoStack, undoBytes, drawOn
+    if drawOn
+        return
+    undoStack := []
+    undoBytes := 0
+}
+
 UndoDrawing(*) {
     global ppvBits, undoStack, undoBytes, vw, UNDO_BAND
     ; 누르기만 하고 끝난 드래그는 아무것도 안 담긴 빈 단계로 남는다. 그런 단계에서 멈추면
@@ -2602,10 +2616,12 @@ ToggleDraw(*) {
             settingsGui.Hide()
             settingsHiddenByDraw := true
         }
+        SetTimer(DiscardUndoHistory, 0) ; 30초 안에 다시 켰으면 실행 취소 기록을 그대로 둔다
         SetTimer(DrawPoll, 10)
         SetDrawModeHotkeys("On")
     } else {
         SetTimer(DrawPoll, 0)
+        SetTimer(DiscardUndoHistory, -UNDO_KEEP_MS) ; 끈 채로 30초 지나면 실행 취소 기록을 비운다
         SetDrawModeHotkeys("Off")
         brushGui.Hide()
         LaserClearAll()   ; 레이저 그림판도 함께 돌려준다
@@ -2744,7 +2760,7 @@ ExitDrawMode(*) {
 ; 단축키로 끌 때는 일부러 그대로 남긴다. 그쪽은 "잠시 다른 걸 만졌다가 이어서 쓴다"는 흐름이고,
 ; 버튼은 "이제 다 썼으니 정리한다"는 흐름이기 때문이다. Esc를 쓰기 어려워하는 분들에게는
 ; 이 버튼이 사실상 유일한 "지우고 나가기" 수단이 된다.
-; (실수로 지웠더라도 실행 취소 기록은 남아 있다 — 판서를 다시 켜고 Ctrl+Z를 누르면 돌아온다)
+; (실수로 지웠더라도 30초 안에 판서를 다시 켜고 Ctrl+Z를 누르면 돌아온다 — DiscardUndoHistory 참고)
 ToggleDrawFromWidget(*) {
     global drawOn
     if drawOn
