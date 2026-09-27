@@ -482,12 +482,28 @@ if pShapeBitmap {
 ; 아무리 겹쳐도 불투명한 색 그대로라 진해지지 않고, 겹쳐 얹을 때 아래 그림이 비쳐 보인다.
 ; 가장자리 부드럽게도 다시 켤 수 있게 됐다(덮어쓰기에서는 이음매마다 초승달 자국이 남아 꺼뒀었다).
 ; 도형도 같은 판을 쓴다 — 화살표는 몸통과 머리를 따로 그려서 만나는 자리가 두 번 칠해졌다.
-inkLayerBuf := Buffer(vw * vh * 4, 0)
+;
+; **판은 반투명한 색을 처음 쓸 때 만들고, 드로잉을 끄면 돌려준다**(EnsureInkLayer / FreeInkLayer).
+; 화면 크기만 한 판이라(1920x1080에서 7.9MB) 늘 들고 있으면 반투명 색을 한 번도 안 쓰는 날에도
+; 그만큼 메모리를 차지한다 — 가만히 있을 때 메모리를 재보니 전용 메모리 38MB 중 32MB가 이런
+; 화면 크기의 판들이었다. 드로잉을 켤 때마다 한 번 만드는 비용은 눈에 띄지 않는다.
+inkLayerBuf := 0
 pInkLayer := 0, pInkGraphics := 0, pInkAttr := 0
 inkAttrAlpha := -1 ; pInkAttr에 지금 걸려 있는 투명도(%) — 바뀔 때만 다시 건다
 inkDirty := []     ; 판에서 아직 비우지 않은 범위 (다음 획을 시작할 때 이 자리만 비운다)
 inkStrokeAlpha := 0 ; 지금 긋는 획이 이 판을 거치면 그 투명도(%), 판서 그림에 바로 그으면 0
-if pShapeGraphics {
+
+; 판이 없으면 만든다. 만들 수 있으면(또는 이미 있으면) true.
+EnsureInkLayer() {
+    global inkLayerBuf, pInkLayer, pInkGraphics, pInkAttr, inkAttrAlpha, inkDirty, pShapeGraphics, vw, vh
+    if (pInkGraphics && pInkAttr)
+        return true
+    if !pShapeGraphics
+        return false
+    FreeInkLayer() ; 반쯤 만들어진 것이 남아 있으면 치우고 처음부터
+    try inkLayerBuf := Buffer(vw * vh * 4, 0)
+    catch
+        return false ; 메모리가 모자라면 예전 방식(덮어쓰기)으로 그린다
     DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", vw, "int", vh, "int", vw * 4, "int", 0xE200B, "ptr", inkLayerBuf.Ptr, "ptr*", &pInkLayer)
     if pInkLayer {
         DllCall("gdiplus\GdipGetImageGraphicsContext", "ptr", pInkLayer, "ptr*", &pInkGraphics)
@@ -495,6 +511,25 @@ if pShapeGraphics {
             DllCall("gdiplus\GdipSetSmoothingMode", "ptr", pInkGraphics, "int", 4)
     }
     DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &pInkAttr)
+    inkAttrAlpha := -1
+    inkDirty := []
+    return (pInkGraphics && pInkAttr) ? true : false
+}
+
+; 판을 돌려준다. 드로잉을 끌 때 부른다.
+FreeInkLayer() {
+    global inkLayerBuf, pInkLayer, pInkGraphics, pInkAttr, inkAttrAlpha, inkDirty, inkStrokeAlpha
+    if pInkGraphics
+        DllCall("gdiplus\GdipDeleteGraphics", "ptr", pInkGraphics)
+    if pInkLayer
+        DllCall("gdiplus\GdipDisposeImage", "ptr", pInkLayer) ; 비트맵이 버퍼를 가리키므로 버퍼보다 먼저 치운다
+    if pInkAttr
+        DllCall("gdiplus\GdipDisposeImageAttributes", "ptr", pInkAttr)
+    pInkGraphics := 0, pInkLayer := 0, pInkAttr := 0
+    inkLayerBuf := 0
+    inkAttrAlpha := -1
+    inkDirty := []
+    inkStrokeAlpha := 0
 }
 
 ; 도형(직선/사각형/원) 미리보기를 그리기 전에 현재 그림을 스냅샷으로 저장해뒀다가,
@@ -583,14 +618,30 @@ UndoDrawing(*) {
     UpdateOverlay()
 }
 
-snapshotBuf := Buffer(vw * vh * 4, 0)
+; 드래그를 시작하는 순간의 판서 전체를 떠두는 복사본. 도형의 고무줄 미리보기(매 프레임 직전 도형
+; 자리를 이것으로 되돌린다)와 반투명 선(긋기 전 모습 위에 겹쳐 얹는다)이 쓴다.
+; **처음 쓸 때 만들고 드로잉을 끄면 돌려준다**(반투명 획 전용 판과 같은 이유 — 화면 크기라
+; 드로잉을 안 쓰는 동안 8MB를 붙들고 있을 까닭이 없다). 못 만들면 SaveSnapshot이 false를 돌려주고,
+; 부른 쪽은 도형을 건너뛰거나 반투명 선을 예전 방식으로 긋는다.
+snapshotBuf := 0
 SaveSnapshot() {
     global ppvBits, snapshotBuf, vw, vh
+    if !IsObject(snapshotBuf) {
+        try snapshotBuf := Buffer(vw * vh * 4) ; 바로 아래에서 통째로 덮어쓰므로 0으로 채울 필요가 없다
+        catch
+            return false
+    }
     DllCall("RtlCopyMemory", "ptr", snapshotBuf, "ptr", ppvBits, "uptr", vw * vh * 4)
+    return true
 }
 RestoreSnapshot() {
     global ppvBits, snapshotBuf, vw, vh
-    DllCall("RtlCopyMemory", "ptr", ppvBits, "ptr", snapshotBuf, "uptr", vw * vh * 4)
+    if IsObject(snapshotBuf)
+        DllCall("RtlCopyMemory", "ptr", ppvBits, "ptr", snapshotBuf, "uptr", vw * vh * 4)
+}
+FreeSnapshot() {
+    global snapshotBuf
+    snapshotBuf := 0
 }
 
 ; 알파값 0(완전 투명)인 픽셀은 Windows가 자동으로 클릭을 통과시켜버리므로,
@@ -628,7 +679,9 @@ LASER_FADE_MS := 500     ; 그 뒤 사라지는 데 걸리는 시간
 LASER_MIN_WIDTH := 8     ; 펜을 가늘게 해둬도 레이저는 이만큼은 굵게 (너무 가늘면 빛나 보이지 않는다)
 laserGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080020", "FocusDraw-Laser")
 laserGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
-laserCanvas := CreateAlphaCanvas(vw, vh)
+; 그림판은 A를 처음 누를 때 만들고 드로잉을 끄면 돌려준다 — 반투명 획 전용 판과 같은 이유다
+; (EnsureLaserCanvas / LaserClearAll).
+laserCanvas := 0
 laserStrokes := [] ; 화면에 남아 있는 획들 {pts: [[x, y, 그은 시각]...], color, width, ended}
 laserCur := 0      ; 지금 긋고 있는 획
 laserLastBox := 0  ; 직전 프레임이 그린 범위 (다음 프레임에 이 자리를 비운다)
@@ -637,6 +690,8 @@ laserLastBox := 0  ; 직전 프레임이 그린 범위 (다음 프레임에 이 
 LaserPush(box := 0) {
     global laserGui, laserCanvas, vx, vy, vw, vh
     static info := 0, ptDst := 0, size := 0, ptSrc := 0, blend := 0, dirty := 0
+    if !IsObject(laserCanvas)
+        return
     if !info {
         ptDst := Buffer(8), NumPut("Int", vx, "Int", vy, ptDst)
         size := Buffer(8), NumPut("Int", vw, "Int", vh, size)
@@ -647,11 +702,11 @@ LaserPush(box := 0) {
         NumPut("UInt", 80, info, 0)
         NumPut("Ptr", ptDst.Ptr, info, 16)
         NumPut("Ptr", size.Ptr, info, 24)
-        NumPut("Ptr", laserCanvas.dc, info, 32)
         NumPut("Ptr", ptSrc.Ptr, info, 40)
         NumPut("Ptr", blend.Ptr, info, 56)
         NumPut("UInt", 2, info, 64) ; ULW_ALPHA
     }
+    NumPut("Ptr", laserCanvas.dc, info, 32) ; 그림판은 드로잉을 켤 때마다 새로 만들어질 수 있다
     if IsObject(box) {
         NumPut("Int", Max(0, box[1]), "Int", Max(0, box[2]), "Int", Min(vw, box[3]), "Int", Min(vh, box[4]), dirty)
         NumPut("Ptr", dirty.Ptr, info, 72)
@@ -661,9 +716,26 @@ LaserPush(box := 0) {
     DllCall("UpdateLayeredWindowIndirect", "ptr", laserGui.Hwnd, "ptr", info)
 }
 
+; 그림판이 없으면 만든다. 만들 수 있으면(또는 이미 있으면) true.
+EnsureLaserCanvas() {
+    global laserCanvas, vw, vh
+    if IsObject(laserCanvas)
+        return true
+    c := CreateAlphaCanvas(vw, vh)
+    if !c.graphics {
+        DestroyAlphaCanvas(c)
+        return false
+    }
+    laserCanvas := c
+    LaserPush() ; 새 그림판은 한 번 통째로 올려둔다 (그 뒤로는 바뀐 범위만 보낸다)
+    return true
+}
+
 ; 캔버스의 box 범위를 완전히 투명하게 비운다
 LaserClearBox(box) {
     global laserCanvas
+    if !IsObject(laserCanvas)
+        return
     g := laserCanvas.graphics
     pBrush := 0
     DllCall("gdiplus\GdipCreateSolidFill", "uint", 0, "ptr*", &pBrush)
@@ -760,6 +832,8 @@ LaserRender(box, now, dotX, dotY, dotColor, dotW) {
 
 LaserBegin(x, y) {
     global laserCur, laserStrokes, vx, vy, activeDrawColor, activeDrawThickness
+    if !EnsureLaserCanvas()
+        return
     laserCur := {pts: [[x - vx, y - vy, A_TickCount]], color: activeDrawColor, width: activeDrawThickness, ended: false}
     laserStrokes.Push(laserCur)
     SetTimer(LaserTick, 16)
@@ -784,7 +858,7 @@ LaserEnd() {
 ; A를 누르면 레이저 점을 띄우기 시작한다 (SetShapeKeyHeld에서 부른다)
 LaserKeyDown() {
     global drawOn
-    if drawOn
+    if (drawOn && EnsureLaserCanvas())
         SetTimer(LaserTick, 16)
 }
 
@@ -792,7 +866,12 @@ LaserKeyDown() {
 ; 그릴 것이 하나도 없으면 멈춘다(마지막으로 비운 자리까지 창에 반영한 다음에).
 LaserTick() {
     global laserStrokes, laserLastBox, shapeKeyHeld, drawOn, vx, vy, activeDrawColor, activeDrawThickness
-    global LASER_HOLD_MS, LASER_FADE_MS, LASER_MIN_WIDTH, LASER_LAYERS
+    global LASER_HOLD_MS, LASER_FADE_MS, LASER_MIN_WIDTH, LASER_LAYERS, laserCanvas
+    Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 — LaserRender 도중에 그림판을 돌려주면 오류가 난다 (DrawPoll 설명 참고)
+    if !IsObject(laserCanvas) {
+        SetTimer(LaserTick, 0)
+        return
+    }
     now := A_TickCount
     life := LASER_HOLD_MS + LASER_FADE_MS
     i := laserStrokes.Length
@@ -842,15 +921,20 @@ LaserBoxAdd(box, x, y, pad) {
 
 ; 드로잉을 끌 때 — 남은 것을 모두 걷는다
 LaserClearAll() {
-    global laserStrokes, laserCur, laserLastBox, vw, vh
+    global laserStrokes, laserCur, laserLastBox, laserCanvas, vw, vh
     SetTimer(LaserTick, 0)
     laserStrokes := []
     laserCur := 0
     laserLastBox := 0
+    if !IsObject(laserCanvas)
+        return
+    ; 비운 모습을 창에 한 번 올려두고 그림판을 돌려준다. 그래야 다음에 창을 띄웠을 때 지난 레이저가
+    ; 남아 있지 않다.
     LaserClearBox([0, 0, vw, vh])
     LaserPush()
+    DestroyAlphaCanvas(laserCanvas)
+    laserCanvas := 0
 }
-LaserPush() ; 처음 한 번은 창 전체를 채워둔다 (그 뒤로는 바뀐 범위만 보낸다)
 
 ; 시작점에서 끝점 쪽으로 가는 방향을 가장 가까운 0°·45°·90°(와 그 반대쪽)로 맞춘 끝점. 길이는 그대로 둔다.
 SnapTo45(x1, y1, x2, y2) {
@@ -1375,6 +1459,8 @@ ShapeOutlinePoints(mode, x1, y1, x2, y2) {
 ; 화면 전체(수 MB)를 매 프레임 복사할 필요가 없다.
 RestoreSnapshotBox(box) {
     global ppvBits, snapshotBuf, vw, vh
+    if !IsObject(snapshotBuf)
+        return
     minX := Max(0, box[1]), minY := Max(0, box[2])
     maxX := Min(vw, box[3]), maxY := Min(vh, box[4])
     if (maxX <= minX || maxY <= minY)
@@ -1388,11 +1474,8 @@ RestoreSnapshotBox(box) {
 }
 
 ; ---- 반투명 획 전용 판 (위 inkLayerBuf 설명 참고) ----
-; 판을 쓸 수 있으면 true. GDI+ 준비에 실패했으면 예전 방식(덮어쓰기)으로 그린다.
-InkLayerReady() {
-    global pInkGraphics, pInkAttr
-    return pInkGraphics && pInkAttr
-}
+; 판을 쓸 수 있으면 true(없으면 이때 만든다). 만들지 못하면 예전 방식(덮어쓰기)으로 그린다.
+InkLayerReady() => EnsureInkLayer()
 
 ; 판의 box 범위를 완전히 투명하게 비운다.
 InkClearBox(box) {
@@ -1417,7 +1500,8 @@ BeginInkStroke(alpha) {
     if (inkDirty.Length = 4)
         InkClearBox(inkDirty)
     inkDirty := []
-    SaveSnapshot()
+    if !SaveSnapshot()
+        return ; 복사본을 못 만들면 겹쳐 얹을 바탕이 없으니 예전 방식(덮어쓰기)으로 긋는다
     inkStrokeAlpha := alpha
 }
 
@@ -1934,6 +2018,7 @@ OnPointerDown(wp, lp, msg, hwnd) {
     global drawOn, drawGui, penStroke, penErasing, penEraserWide, penLastX, penLastY, penIgnoreMouse
     global drawing, erasing, dragOnOtherWindow, dragShapeMode, penContacts, penGesture
     global strokeRainbow, activeDrawAlpha
+    Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 (DrawPoll 설명 참고)
     if (!drawOn || hwnd != drawGui.Hwnd || !IsPenOrTouch(wp))
         return
     id := wp & 0xFFFF
@@ -1986,6 +2071,7 @@ OnPointerDown(wp, lp, msg, hwnd) {
 
 OnPointerUpdate(wp, lp, msg, hwnd) {
     global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY
+    Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 (DrawPoll 설명 참고)
     if (!penStroke || !drawOn || hwnd != drawGui.Hwnd)
         return
     pt := PointerXY(lp)
@@ -2027,6 +2113,10 @@ DrawPoll() {
     global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
     global dragOnOtherWindow, lastShapeBox, VK_LBUTTON, VK_RBUTTON, penStroke, penIgnoreMouse
     global dragPenKind, strokeRainbow, activeDrawAlpha, inkStrokeAlpha
+    ; **끼어들 수 없게 한다(Critical).** 드로잉을 끌 때(F9 등) 화면 크기의 판들을 돌려주는데, 그리던
+    ; 도중에 단축키가 끼어들어 판을 돌려주면 돌아와서 없는 판에 그리다 오류가 난다(실제로 났다).
+    ; 한 번 도는 데 몇 ms라, 단축키는 그만큼만 기다렸다 처리된다.
+    Critical
     if !drawOn
         return
     MouseGetPos(&mx, &my, &winUnder)
@@ -2118,8 +2208,10 @@ DrawPoll() {
             PushUndo()
             BeginInkStroke(activeDrawAlpha)
             if (dragShapeMode != "") {
-                if !inkStrokeAlpha ; 반투명이면 BeginInkStroke가 이미 떠뒀다
-                    SaveSnapshot()
+                ; 반투명이면 BeginInkStroke가 이미 떠뒀다. 복사본을 못 만들면 고무줄 미리보기를 할 수
+                ; 없으므로 이 도형은 그리지 않는다(다른 창 위의 드래그처럼 흘려보낸다).
+                if (!inkStrokeAlpha && !SaveSnapshot())
+                    dragOnOtherWindow := true
                 lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
             }
         }
@@ -2516,8 +2608,10 @@ ToggleDraw(*) {
         SetTimer(DrawPoll, 0)
         SetDrawModeHotkeys("Off")
         brushGui.Hide()
-        LaserClearAll()
+        LaserClearAll()   ; 레이저 그림판도 함께 돌려준다
         laserGui.Hide()
+        FreeInkLayer()    ; 반투명 획 전용 판도 다음에 쓸 때 다시 만든다
+        FreeSnapshot()    ; 드래그 시작 때 뜨는 복사본도
         drawGui.Hide()
         ; 칠판은 감추기만 하고 무슨 색이었는지는 기억해둔다 (다시 켤 때 그대로 깔린다)
         SetBoardColor(boardColor, boardAlpha)
