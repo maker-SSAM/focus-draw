@@ -222,19 +222,20 @@
   #s7 .dl .mit .t { font-size:19px; font-weight:800; color:var(--ink); margin-bottom:4px; }
 
   /* ---------- GitHub 링크 썸네일 (1280x640) ----------
-     가운데에 아이콘과 이름을 크게, 둘레에 드로잉 예시(사각형 · 직선 · 무지개 물결 · 화살표 · 원)와
-     포커스 효과(노란 강조 원 + 십자선, 왼쪽 · 오른쪽 클릭 링)를 깐다. 글자 뒤는 흰 안개로 받쳐 읽히게 한다. */
+     가운데에 아이콘과 이름을 크게, 둘레에 드로잉 예시를 깐다: 색(숫자키 1~9) · 굵기 · 투명도를 고르는 획,
+     형광펜, 무지개 펜, 사라지는 펜(레이저), 도형, 포커스 효과(커서 있는 강조 원 · 십자선 강조 원 · 클릭 링).
+     레이저와 무지개 획은 아래 스크립트가 프로그램과 같은 방식으로 그린다. 글자 뒤는 흰 안개로 받친다. */
   html.og, html.og body { width:1280px; height:640px; }
   #og { width:1280px; height:640px; padding:0; align-items:center; justify-content:center; background:#fff; }
   #og .deco { position:absolute; inset:0; }
-  #og .fog { position:absolute; left:50%; top:50%; width:740px; height:540px; transform:translate(-50%,-50%);
-    background:radial-gradient(closest-side, rgba(255,255,255,.97) 55%, rgba(255,255,255,.85) 72%, rgba(255,255,255,0) 100%); }
+  #og .fog { position:absolute; left:50%; top:50%; width:660px; height:500px; transform:translate(-50%,-50%);
+    background:radial-gradient(closest-side, rgba(255,255,255,.97) 60%, rgba(255,255,255,.8) 78%, rgba(255,255,255,0) 100%); }
   #og .center { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; }
-  #og .appicon { width:120px; height:120px; border-radius:28px; box-shadow:0 18px 40px -14px rgba(60,40,200,.45); }
-  #og .title { font-size:100px; font-weight:800; letter-spacing:-3.5px; margin-top:22px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
-  #og .kor { font-size:22px; color:var(--soft); margin-top:14px; font-weight:700; letter-spacing:3px; }
-  #og .tag { font-size:36px; font-weight:800; margin-top:24px; letter-spacing:-1px; }
-  #og .meta { font-size:17px; color:var(--muted); margin-top:14px; }</style>
+  #og .appicon { width:216px; height:216px; border-radius:50px; box-shadow:0 26px 56px -18px rgba(60,40,200,.5); }
+  #og .title { font-size:88px; font-weight:800; letter-spacing:-3px; margin-top:20px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
+  #og .kor { font-size:20px; color:var(--soft); margin-top:12px; font-weight:700; letter-spacing:3px; }
+  #og .tag { font-size:32px; font-weight:800; margin-top:18px; letter-spacing:-1px; }
+  #og .meta { font-size:16px; color:var(--muted); margin-top:10px; }</style>
 </head>
 <body>
 
@@ -561,37 +562,51 @@
 
 <!-- ======================= GitHub 링크 썸네일 ======================= -->
 <section class="slide" id="og">
-  <svg class="deco" width="1280" height="640" viewBox="0 0 1280 640">
-    <defs>
-      <linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="#7b2cf5"/><stop offset=".3" stop-color="#e02bd1"/><stop offset=".55" stop-color="#ff1e3c"/><stop offset=".8" stop-color="#ff8a00"/><stop offset="1" stop-color="#ffd000"/></linearGradient>
-      <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.2"/></filter>
-    </defs>
-    <!-- 드로잉: 사각형 (왼쪽 위) -->
-    <rect x="64" y="58" width="190" height="140" fill="none" stroke="#ff7f00" stroke-width="11"/>
-    <!-- 드로잉: 직선 (오른쪽 위) -->
-    <line x1="930" y1="138" x2="1212" y2="82" stroke="#ff0000" stroke-width="11" stroke-linecap="round"/>
-    <!-- 드로잉: 무지개 물결 (오른쪽 가운데) -->
-    <path id="wave" d="M1002 388 q 13 -14 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0" transform="rotate(-6 1106 388)" fill="none" stroke="url(#rb)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-    <!-- 드로잉: 화살표 (오른쪽 아래) -->
-    <line x1="905" y1="560" x2="1150" y2="505" stroke="#00e000" stroke-width="11" stroke-linecap="round"/>
-    <polygon points="1210,492 1144,482 1156,532" fill="#00e000"/>
-    <!-- 드로잉: 원 (왼쪽 아래) -->
-    <circle cx="165" cy="505" r="68" fill="none" stroke="#0000ff" stroke-width="11"/>
+  <svg class="deco" id="ogsvg" width="1280" height="640" viewBox="0 0 1280 640">
+    <!-- 색 고르기: 숫자키 1~9의 기본 색으로 짧게 그은 획 (왼쪽 위) -->
+    <g stroke-width="11" stroke-linecap="round">
+      <line x1="44" y1="128" x2="66" y2="46" stroke="#FF0000"/><line x1="76" y1="128" x2="98" y2="46" stroke="#FF7F00"/>
+      <line x1="108" y1="128" x2="130" y2="46" stroke="#FFD400"/><line x1="140" y1="128" x2="162" y2="46" stroke="#00D000"/>
+      <line x1="172" y1="128" x2="194" y2="46" stroke="#0000FF"/><line x1="204" y1="128" x2="226" y2="46" stroke="#4B0082"/>
+      <line x1="236" y1="128" x2="258" y2="46" stroke="#9400D3"/><line x1="268" y1="128" x2="290" y2="46" stroke="#000000"/>
+    </g>
+    <!-- 굵기 고르기: 점점 굵어지는 획 (오른쪽 위) -->
+    <g stroke="#ff2d2d" stroke-linecap="round">
+      <line x1="992" y1="132" x2="1012" y2="50" stroke-width="3"/><line x1="1026" y1="132" x2="1046" y2="50" stroke-width="6"/>
+      <line x1="1062" y1="132" x2="1082" y2="50" stroke-width="10"/><line x1="1102" y1="132" x2="1122" y2="50" stroke-width="15"/>
+      <line x1="1148" y1="132" x2="1168" y2="50" stroke-width="21"/><line x1="1202" y1="132" x2="1222" y2="50" stroke-width="28"/>
+    </g>
+    <!-- 투명도 고르기: 점점 옅어지는 획 (오른쪽 아래) -->
+    <g stroke="#1e6bff" stroke-width="15" stroke-linecap="round">
+      <line x1="1000" y1="600" x2="1020" y2="518" stroke-opacity="1"/><line x1="1040" y1="600" x2="1060" y2="518" stroke-opacity=".8"/>
+      <line x1="1080" y1="600" x2="1100" y2="518" stroke-opacity=".62"/><line x1="1120" y1="600" x2="1140" y2="518" stroke-opacity=".46"/>
+      <line x1="1160" y1="600" x2="1180" y2="518" stroke-opacity=".3"/><line x1="1200" y1="600" x2="1220" y2="518" stroke-opacity=".16"/>
+    </g>
+    <!-- 형광펜: 글 줄 위에 반투명 노랑 (왼쪽 아래) -->
+    <rect x="44" y="470" width="230" height="12" rx="6" fill="#e3e6f1"/><rect x="44" y="498" width="170" height="12" rx="6" fill="#e3e6f1"/><rect x="44" y="526" width="210" height="12" rx="6" fill="#e3e6f1"/>
+    <line x1="48" y1="504" x2="220" y2="504" stroke="#ffd60a" stroke-opacity=".55" stroke-width="26" stroke-linecap="round"/>
+    <!-- 도형: 동그라미로 둘러 강조 + 화살표 (아래 가운데) -->
+    <ellipse cx="150" cy="504" rx="118" ry="36" fill="none" stroke="#ff3b30" stroke-width="5" transform="rotate(-3 150 504)"/>
+    <line x1="700" y1="612" x2="880" y2="590" stroke="#00c800" stroke-width="9" stroke-linecap="round"/>
+    <polygon points="920,585 874,574 882,610" fill="#00c800"/>
 
-    <!-- 포커스: 노란 강조 원 + 십자선 (왼쪽 가운데) -->
-    <circle cx="200" cy="320" r="62" fill="#ffd60a" fill-opacity=".45"/>
-    <path d="M200 310 V330 M190 320 H210" stroke="#111" stroke-width="2.6"/>
-    <!-- 포커스: 왼쪽 클릭 링 (위 가운데 오른쪽) -->
-    <circle cx="1085" cy="215" r="36" fill="none" stroke="#1e6bff" stroke-width="6" stroke-opacity=".85"/>
-    <circle cx="1085" cy="215" r="20" fill="none" stroke="#1e6bff" stroke-width="3.5" stroke-opacity=".35"/>
-    <!-- 포커스: 오른쪽 클릭 링 (아래 가운데 왼쪽) -->
-    <circle cx="335" cy="585" r="28" fill="none" stroke="#ff3b30" stroke-width="6" stroke-opacity=".85"/>
-    <circle cx="335" cy="585" r="14" fill="none" stroke="#ff3b30" stroke-width="3" stroke-opacity=".35"/>
-    <!-- 사라지는 펜: 레이저 꼬리 (왼쪽 위 → 가운데 쪽) -->
-    <path d="M290 96 C 325 58, 365 128, 410 84" stroke="#ff3b30" stroke-width="22" stroke-opacity=".16" fill="none" stroke-linecap="round" filter="url(#soft)"/>
-    <path d="M300 88 C 330 64, 366 124, 410 84" stroke="#ff3b30" stroke-width="8" fill="none" stroke-linecap="round"/>
-    <path d="M372 100 C 386 100, 400 94, 410 84" stroke="#ffc2bd" stroke-width="2.5" fill="none" stroke-linecap="round"/>
-    <circle cx="410" cy="84" r="13" fill="#ff3b30" fill-opacity=".3"/><circle cx="410" cy="84" r="5" fill="#ffd6d2"/>
+    <!-- 포커스: 커서가 보이는 강조 원 (왼쪽 가운데) -->
+    <circle cx="160" cy="300" r="70" fill="#ffd60a" fill-opacity=".45"/>
+    <path d="M160 300 L160 336 L169 327 L176 343 L182 340 L175 325 L188 325 Z" fill="#fff" stroke="#111" stroke-width="2" stroke-linejoin="round"/>
+    <!-- 포커스: 커서를 숨긴 강조 원 (십자선만, 위 가운데 왼쪽) + 왼쪽 클릭 링 -->
+    <circle cx="410" cy="112" r="56" fill="#ff9ecb" fill-opacity=".4"/>
+    <path d="M410 102 V122 M400 112 H420" stroke="#111" stroke-width="2.6"/>
+    <circle cx="300" cy="400" r="30" fill="none" stroke="#1e6bff" stroke-width="6" stroke-opacity=".85"/>
+    <circle cx="300" cy="400" r="16" fill="none" stroke="#1e6bff" stroke-width="3" stroke-opacity=".35"/>
+    <!-- 오른쪽 클릭 링 (위 가운데 오른쪽) -->
+    <circle cx="880" cy="96" r="30" fill="none" stroke="#ff3b30" stroke-width="6" stroke-opacity=".85"/>
+    <circle cx="880" cy="96" r="16" fill="none" stroke="#ff3b30" stroke-width="3" stroke-opacity=".35"/>
+
+    <!-- 무지개 펜과 레이저 펜이 따라갈 길 (보이지 않음) -->
+    <path id="rbPath" d="M988 330 C 996 250, 1062 236, 1066 296 C 1070 350, 1016 352, 1030 300 C 1044 250, 1112 226, 1120 296 C 1126 350, 1080 350, 1094 300 C 1108 250, 1176 228, 1186 290 C 1192 334, 1160 346, 1172 300 C 1182 262, 1226 258, 1240 300" fill="none" stroke="none"/>
+    <path id="lzPath" d="M330 606 C 390 548, 440 640, 500 594 S 600 556, 640 588" fill="none" stroke="none"/>
+    <g id="rbInk"></g>
+    <g id="lzInk"></g>
   </svg>
   <div class="fog"></div>
   <div class="center">
@@ -607,9 +622,48 @@
   if (h === 'og') {
     document.documentElement.classList.add('og');
     document.getElementById('og').classList.add('show');
-  } else {
+    drawOgInk();  } else {
     document.getElementById('s' + (parseInt(h, 10) || 1)).classList.add('show');
   }
-</script>
+
+  // 썸네일의 무지개 펜과 레이저 펜 — 프로그램이 그리는 방식을 그대로 따른다.
+  function drawOgInk() {
+    var NS = 'http://www.w3.org/2000/svg';
+    function seg(g, a, b, color, w) {
+      var l = document.createElementNS(NS, 'line');
+      l.setAttribute('x1', a.x); l.setAttribute('y1', a.y); l.setAttribute('x2', b.x); l.setAttribute('y2', b.y);
+      l.setAttribute('stroke', color); l.setAttribute('stroke-width', w); l.setAttribute('stroke-linecap', 'round');
+      g.appendChild(l);
+    }
+    function sample(path, step) {
+      var len = path.getTotalLength(), pts = [];
+      for (var d = 0; d <= len; d += step) pts.push(path.getPointAtLength(d));
+      return pts;
+    }
+    // 무지개 펜: 지나간 거리에 따라 색상환을 돈다 (프로그램은 700px에 한 바퀴 — 여기선 짧은 획이라 더 빨리)
+    var rb = document.getElementById('rbInk'), rp = sample(document.getElementById('rbPath'), 3);
+    for (var i = 0; i < rp.length - 1; i++) seg(rb, rp[i], rp[i + 1], 'hsl(' + (i * 360 / rp.length * 1.4 + 270) % 360 + ',100%,50%)', 12);
+    // 사라지는 펜: 네 겹(바깥 번짐 · 안쪽 번짐 · 심지 · 흰 빛줄기), 꼬리로 갈수록 가늘어진다.
+    // 겹마다 불투명하게 그린 뒤 그 겹 전체에 진하기를 한 번 준다 — 토막끼리 겹친 자리가 얼룩지지 않는다.
+    var lz = document.getElementById('lzInk'), lp = sample(document.getElementById('lzPath'), 3), W = 15;
+    // 그림 한 장이라 번짐은 흐림 효과로 부드럽게 준다(프로그램은 매 프레임 그려야 해서 굵기 차이로만 낸다)
+    var layers = [[3.2, .28, '#ff2a1f', 7], [1.8, .5, '#ff2a1f', 3], [.7, 1, '#ff2a1f', 0], [.22, .95, '#ffe3e0', 0]];
+    var defs = document.createElementNS(NS, 'defs'); lz.appendChild(defs);
+    layers.forEach(function (L, k) {
+      var g = document.createElementNS(NS, 'g'); g.setAttribute('opacity', L[1]); lz.appendChild(g);
+      if (L[3]) {
+        var fl = document.createElementNS(NS, 'filter'); fl.setAttribute('id', 'lzb' + k); fl.setAttribute('x', '-20%'); fl.setAttribute('y', '-60%'); fl.setAttribute('width', '140%'); fl.setAttribute('height', '220%');
+        var bl = document.createElementNS(NS, 'feGaussianBlur'); bl.setAttribute('stdDeviation', L[3]); fl.appendChild(bl); defs.appendChild(fl);
+        g.setAttribute('filter', 'url(#lzb' + k + ')');
+      }
+      for (var i = 0; i < lp.length - 1; i++) {
+        var life = (i + 1) / (lp.length - 1);            // 0 = 꼬리 끝, 1 = 방금 그은 머리
+        seg(g, lp[i], lp[i + 1], L[2], W * L[0] * (0.08 + 0.92 * life));
+      }
+      var c = document.createElementNS(NS, 'circle'), h = lp[lp.length - 1];   // 레이저 점
+      c.setAttribute('cx', h.x); c.setAttribute('cy', h.y); c.setAttribute('r', W * L[0] * .6); c.setAttribute('fill', L[2]);
+      g.appendChild(c);
+    });
+  }</script>
 </body>
 </html>
