@@ -4,7 +4,7 @@ import Carbon
 // 진단 기록: ~/Library/Logs/Focus & Draw/diag.log
 // 스크린샷 없이도 "우리 창이 화면에 떠 있었는가, 키가 어디로 갔는가"를 나중에 읽을 수 있게 남긴다.
 //   켜기: FocusDraw --diag, 또는 메뉴 막대 › 진단 기록 (켜 두면 다시 실행해도 이어서 기록)
-//   한 줄 = "시각 꼬리표 내용". 꼬리표: SESSION SYS SCREEN MARK EXP DRAW KEY HK CURSOR APP FRONT SPACE WIN POWER SAMPLE
+//   한 줄 = "시각 꼬리표 내용". 꼬리표: SESSION SYS SCREEN MARK EXP DRAW KEY HK CURSOR APP FRONT SPACE WIN POWER SAMPLE SPOT WIDGET
 //   키는 키 자리 번호(keyCode)만 적는다 — 무슨 글자를 쳤는지는 남기지 않는다.
 //   화면 기록 권한이 필요 없는 정보만 쓴다 (CGWindowList의 창 제목은 읽지 않는다).
 enum Diag {
@@ -23,11 +23,15 @@ enum Diag {
     // 앱 쪽 상태를 한 줄로 알려 주는 곳 (AppDelegate가 채운다)
     static var appState: () -> String = { "" }
     static var inkWindowNumbers: () -> [Int] = { [] }
+    // 판 말고도 "지금 데스크톱에 떠 있는가"를 볼 창: ("spot", 번호), ("widget", 번호)
+    static var otherWindows: () -> [(String, Int)] = { [] }
     // 1초 사이에 받은 입력 수 (C안에서 비활성 창이 마우스 이동을 받는지 보려고)
     static var moves = 0
     static var keys = 0
     private static var lastSecure: Bool?
     private static var lastInput = ""
+    private static var lastScreens = ""
+    private static var sameScreens = 0
 
     private static let stamp: DateFormatter = {
         let f = DateFormatter()
@@ -108,7 +112,31 @@ enum Diag {
         writeScreens()
     }
 
+    // 화면 구성이 정말 바뀐 알림만 자세히 적는다. 같은 알림이 쏟아지면(키노트 쇼 시작·끝) 2초 뒤 한 줄로 센다
+    // — S1 집 시험 기록 9,008줄 중 5,009줄이 이 알림이었다.
+    private static func screenNotice() {
+        if screenSignature() != lastScreens {
+            flushSameScreens()
+            log("SCREEN", "changed n=\(NSScreen.screens.count)")
+            writeScreens()
+            return
+        }
+        sameScreens += 1
+        if sameScreens == 1 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { flushSameScreens() }
+        }
+    }
+
+    private static func flushSameScreens() {
+        guard sameScreens > 0 else { return }
+        let edr = NSScreen.screens.map { String(format: "%.2f", $0.maximumExtendedDynamicRangeColorComponentValue) }
+        log("SCREEN", "same x\(sameScreens) (알림만 오고 화면 구성은 그대로) visible=\(r(NSScreen.main?.visibleFrame ?? .zero)) "
+            + "edr=\(edr.joined(separator: ","))")
+        sameScreens = 0
+    }
+
     static func writeScreens() {
+        lastScreens = screenSignature()
         for (i, s) in NSScreen.screens.enumerated() {
             let id = (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
             var uuid = "?"
@@ -141,8 +169,17 @@ enum Diag {
     // 우리 판 창이 정말 화면에 떠 있는지, 그 위에 다른 앱 창이 있는지 (창 제목은 읽지 않음)
     static func windowReport() -> String {
         let ink = Set(inkWindowNumbers())
-        guard !ink.isEmpty else { return "ink=[]" }
         let all = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] ?? []
+        // 강조 원·위젯도 지금 데스크톱에 떠 있는지 (S1 집 시험: 전체 화면 데스크톱에서 강조가 안 보임)
+        var others: [String] = []
+        for (name, n) in otherWindows() {
+            let info = all.first { ($0[kCGWindowNumber as String] as? Int) == n }
+            let on = (info?[kCGWindowIsOnscreen as String] as? Bool) == true
+            let space = NSApp.window(withWindowNumber: n).map { $0.isOnActiveSpace ? 1 : 0 } ?? -1
+            others.append("\(name)=[on=\(on ? 1 : 0) space=\(space)]")
+        }
+        let tail = others.isEmpty ? "" : " " + others.joined(separator: " ")
+        guard !ink.isEmpty else { return "ink=[]" + tail }
         let onscreen = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] ?? []
         let pid = Int(ProcessInfo.processInfo.processIdentifier)
         var parts: [String] = []
@@ -170,7 +207,7 @@ enum Diag {
             if above.count >= 6 { break }
         }
         let inFront = onscreen.contains { ink.contains($0[kCGWindowNumber as String] as? Int ?? -1) }
-        return "ink=[\(parts.joined(separator: "; "))] inkOnscreenList=\(inFront ? 1 : 0) above=[\(above.joined(separator: ","))]"
+        return "ink=[\(parts.joined(separator: "; "))] inkOnscreenList=\(inFront ? 1 : 0) above=[\(above.joined(separator: ","))]" + tail
     }
 
     // ---------- 알림 ----------
@@ -182,7 +219,7 @@ enum Diag {
         }
         on(nc, NSApplication.didBecomeActiveNotification) { _ in log("APP", "active") }
         on(nc, NSApplication.didResignActiveNotification) { _ in log("APP", "resign") }
-        on(nc, NSApplication.didChangeScreenParametersNotification) { _ in log("SCREEN", "changed n=\(NSScreen.screens.count)"); writeScreens() }
+        on(nc, NSApplication.didChangeScreenParametersNotification) { _ in screenNotice() }
         on(ws, NSWorkspace.didActivateApplicationNotification) { n in
             let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
             log("FRONT", app?.bundleIdentifier ?? "?")

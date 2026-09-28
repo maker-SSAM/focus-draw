@@ -164,6 +164,26 @@ final class Widget {
     private(set) var window: GlassPanel!
 
     init() {
+        window = Widget.makeWindow(view)
+        view.reloadIcons()
+        view.onMoved = { Settings.shared.saveWidgetPosition($0) }
+        applySettings()
+        let s = Settings.shared
+        if let x = s.widgetX, let y = s.widgetY {
+            window.setFrameOrigin(NSPoint(x: x, y: y))
+            clampIntoScreen()
+        } else {
+            moveToDefault()
+        }
+        // 다른 데스크톱으로 넘어갔는데 위젯이 따라오지 않았으면 새로 만든다 (판·강조 원과 같은 까닭)
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            guard let self, Settings.shared.showWidget, isOffActiveSpace(self.window) else { return }
+            self.setVisible(true)
+        }
+    }
+
+    private static func makeWindow(_ view: WidgetView) -> GlassPanel {
         let w = GlassPanel(contentRect: NSRect(origin: .zero, size: WidgetView.size),
                            styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         w.isOpaque = false
@@ -173,18 +193,9 @@ final class Widget {
         w.collectionBehavior = EVERYWHERE
         w.hidesOnDeactivate = false
         w.becomesKeyOnlyIfNeeded = true
+        w.isReleasedWhenClosed = false
         w.contentView = view
-        window = w
-        view.reloadIcons()
-        view.onMoved = { Settings.shared.saveWidgetPosition($0) }
-        applySettings()
-        let s = Settings.shared
-        if let x = s.widgetX, let y = s.widgetY {
-            w.setFrameOrigin(NSPoint(x: x, y: y))
-            clampIntoScreen()
-        } else {
-            moveToDefault()
-        }
+        return w
     }
 
     func applySettings() {
@@ -198,7 +209,18 @@ final class Widget {
     }
 
     func setVisible(_ on: Bool) {
-        if on { window.orderFrontRegardless() } else { window.orderOut(nil) }
+        guard on else { window.orderOut(nil); return }
+        if isOffActiveSpace(window) {
+            // 숨겼던 위젯을 전체 화면 데스크톱에서 다시 띄우면 나타나지 않으므로, 새 창으로 옮겨 띄운다
+            let old: GlassPanel = window
+            let w = Widget.makeWindow(view) // view가 새 창으로 옮겨 간다
+            w.setFrame(old.frame, display: false)
+            w.alphaValue = old.alphaValue
+            old.orderOut(nil); old.close()
+            window = w
+            Diag.log("WIDGET", "rebuilt reason=offSpace")
+        }
+        window.orderFrontRegardless()
     }
 
     // 늘 주 화면 오른쪽 아래(Dock 위)로

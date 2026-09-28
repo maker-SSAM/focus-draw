@@ -26,6 +26,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Diag.appState = { [weak self] in self?.diagState ?? "" }
         Diag.inkWindowNumbers = { [weak self] in self?.draw.inkWindowNumbers ?? [] }
+        Diag.otherWindows = { [weak self] in
+            guard let self else { return [] }
+            var list: [(String, Int)] = []
+            if self.spotlight.isOn, let n = self.spotlight.windowNumber { list.append(("spot", n)) }
+            if let w = self.widget?.window { list.append(("widget", w.windowNumber)) }
+            return list
+        }
         Experiments.onChange = { [weak self] in self?.experimentsChanged() }
 
         Settings.shared.load()

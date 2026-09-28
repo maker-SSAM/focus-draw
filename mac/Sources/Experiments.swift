@@ -3,8 +3,9 @@ import Carbon
 
 // ================= 시험용 스위치 (S1b) =================
 // 개발 빌드(build.sh 기본·--quick)에만 메뉴 막대 › "실험" 메뉴가 생긴다. 배포 빌드(--release)는 늘 기본값(B안)이다.
-// 선생님은 확인 목록(mac/spikes/checklist.md)의 항목 번호를 메뉴에서 고르기만 하면 된다 —
-// 그 항목에 맞는 스위치가 한꺼번에 켜지고, 진단 기록에 "MARK 항목 N"이 남는다.
+// 선생님은 재시험 목록(mac/spikes/checklist-2.md)의 항목(R1~R5)을 메뉴에서 고르기만 하면 된다 —
+// 그 항목에 맞는 스위치가 한꺼번에 켜지고, 진단 기록에 "MARK 항목 R1"이 남는다.
+// 드로잉을 켤 때마다 커서 옆에 "R1 · C안"처럼 지금 안이 2초 뜬다 (S1 집 시험은 항목을 안 고른 채 모두 B안으로 돌았다).
 //
 // 키 받기 방식
 //   B안: 드로잉을 켜면 우리 앱이 앞으로 나와 모든 키를 받는다 (지금 방식). 끌 때 macOS 14+의 양보 방식으로 돌려준다.
@@ -84,6 +85,9 @@ enum Experiments {
             + "behavior=\(behavior.rawValue) cursor=\(boardCursor ? "board" : "system") spotHide=\(hideSpotCursor ? 1 : 0)"
     }
 
+    // 드로잉을 켤 때 커서 옆에 잠깐 뜨는 이름: "R1 · C안", 항목을 안 골랐으면 "항목 없음 · B안"
+    static var label: String { "\(item ?? "항목 없음") · \(keyMode.rawValue)안" }
+
     static func apply(_ p: ExperimentPreset?) {
         let p = p ?? ExperimentPreset(id: "", title: "", key: .b, panel: false, behavior: .current, boardCursor: false)
         store("key", p.key.rawValue)
@@ -107,25 +111,14 @@ enum Experiments {
         onChange()
     }
 
-    // 확인 목록(mac/spikes/checklist.md)의 항목 번호와 같다
+    // 재시험 목록(mac/spikes/checklist-2.md)의 항목과 같다. 첫 집 시험(checklist.md)의 B안 결과는 이미 있으므로
+    // B안 항목은 두지 않는다. 판 커서(판에 직접 그리기)는 D3 규칙대로 모두 켠다(포인터 크기를 따라 커지는 것이 확인됨).
     static let presets: [ExperimentPreset] = [
-        ExperimentPreset(id: "1", title: "C안 · 키노트 전체 화면"),
-        ExperimentPreset(id: "2", title: "C안 · 드로잉 키"),
-        ExperimentPreset(id: "3", title: "C안 · 한글 입력 상태"),
-        ExperimentPreset(id: "4", title: "C안 · 끈 뒤 글자 입력"),
-        ExperimentPreset(id: "5", title: "C안 · 암호 칸"),
-        ExperimentPreset(id: "6", title: "B안 · 키노트 전체 화면", key: .b, panel: false, boardCursor: false),
-        ExperimentPreset(id: "7", title: "A안 · 키노트 전체 화면", key: .a, boardCursor: false),
-        ExperimentPreset(id: "8-1", title: "C안 · 창 동작 .stationary 뺌", behavior: .noStationary),
-        ExperimentPreset(id: "8-2", title: "C안 · 창 동작 canJoinAllApplications", behavior: .joinAllApps),
-        ExperimentPreset(id: "9", title: "C안 · 파워포인트"),
-        ExperimentPreset(id: "10", title: "C안 · PDF·브라우저 전체 화면"),
-        ExperimentPreset(id: "11-1", title: "B안 · 시스템 커서", key: .b, panel: false, boardCursor: false),
-        ExperimentPreset(id: "11-2", title: "C안 · 시스템 커서", boardCursor: false),
-        ExperimentPreset(id: "12", title: "강조 중 커서 숨기기", key: .b, panel: false, boardCursor: false, hideSpotCursor: true),
-        ExperimentPreset(id: "13", title: "C안 · 단축키·화면 캡처·확대"),
-        ExperimentPreset(id: "14", title: "C안 · 잠자기"),
-        ExperimentPreset(id: "15", title: "C안 · 모니터 연결"),
+        ExperimentPreset(id: "R1", title: "C안 (재시험 대부분)"),
+        ExperimentPreset(id: "R2", title: "A안 · 키노트만", key: .a),
+        ExperimentPreset(id: "R3", title: "C안 · 창 동작 .stationary 뺌", behavior: .noStationary),
+        ExperimentPreset(id: "R4", title: "C안 · 창 동작 canJoinAllApplications", behavior: .joinAllApps),
+        ExperimentPreset(id: "R5", title: "C안 · 강조 중 커서 숨기기", hideSpotCursor: true),
     ]
 
     // ---------- 메뉴 ----------
@@ -139,7 +132,7 @@ enum Experiments {
         for p in presets {
             items.addItem(ActionItem("\(p.id) · \(p.title)", on: item == p.id) { apply(p) })
         }
-        let itemsTop = NSMenuItem(title: "확인 항목 고르기", action: nil, keyEquivalent: "")
+        let itemsTop = NSMenuItem(title: "재시험 항목 고르기", action: nil, keyEquivalent: "")
         itemsTop.submenu = items
         root.addItem(itemsTop)
         root.addItem(ActionItem("실험 끝 — 모두 기본값으로") { apply(nil) })

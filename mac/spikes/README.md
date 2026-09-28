@@ -1,11 +1,13 @@
 # S1 시험 자료 — S1c가 읽는 곳
 
 S1c는 이 폴더와 진단 기록만 읽고 `mac/design/SPIKES.md`(D1~D8)를 쓴다.
+S1c-1(2026-09-29)이 첫 집 시험을 읽고 D3·D4를 정했다. 첫 시험은 모두 B안으로 돌았으므로, S1c-2는 **재시험 결과**로 D1·D2·D5를 정한다.
 
 | 자료 | 위치 | 누가 |
 |---|---|---|
-| 선생님 확인 결과 | [checklist.md](checklist.md)의 "결과:" 줄 | 선생님 (집 실습) |
-| 진단 기록 | `~/Library/Logs/Focus & Draw/diag.log` (5MB 넘으면 `diag.1.log`) | 앱이 자동으로 |
+| 첫 집 시험 결과 (모두 B안) | [checklist.md](checklist.md)의 "결과:" 줄 | 선생님 (2026-09-29 00:21~01:19) |
+| **재시험 결과 (C안 중심)** | [checklist-2.md](checklist-2.md)의 "결과:" 줄 | 선생님 |
+| 진단 기록 | `~/Library/Logs/Focus & Draw/diag.log` (5MB 넘으면 `diag.1.log`). 재시험은 `MARK 항목 R1` 줄부터 | 앱이 자동으로 |
 | 속도 측정 | [bench-2026-09-28.txt](bench-2026-09-28.txt) (원자료), 아래 해석 | Claude (S1b) |
 
 ## 속도 측정 해석 (M4 맥북 프로 14형, macOS 15.7.3)
@@ -40,5 +42,10 @@ S1c는 이 폴더와 진단 기록만 읽고 `mac/design/SPIKES.md`(D1~D8)를 �
 | D3·D5 커서 | `CURSOR SetsCursorInBackground err=0`, `CURSOR hide/show`, SAMPLE의 `cgCursorVisible`, `moves=`(1초 동안 판이 받은 마우스 이동 수 — C안에서 0이면 비활성 판이 이동을 못 받는 것) |
 | D6 모니터 | `SCREEN changed`, `SCREEN #n … mirrorSet=… mirrors=…` |
 | D7 단축키·잠자기 | `HK reg … status=`(0이 성공), `HK press F8`, `POWER willSleep/didWake/sessionActive` |
+| 지금 어느 안인가 (S1c-1부터) | `MARK 항목 R1 — …` 다음 `DRAW on item=R1 key=C …`. `item=-`이면 항목을 안 고른 것 |
+| 판·강조·위젯이 지금 데스크톱에 있나 (S1c-1부터) | SAMPLE 끝의 `space=`(판), `spot=[on= space=]`, `widget=[on= space=]`. `DRAW rebuilt reason=offSpace·spaceChanged`, `SPOT rebuilt`, `WIDGET rebuilt`은 묶여 있던 창을 새로 만든 것 |
+| 화면 알림 폭주 (S1c-1부터) | `SCREEN same xN … edr=` — 화면 구성은 그대로인데 알림만 N번 온 것(판은 새로 만들지 않음). 진짜 바뀌면 `SCREEN changed` + `DRAW rebuilt reason=screens` |
 
-키는 키 자리 번호만 남는다(예: 18=1, 6=Z, 24==/+, 51=delete, 53=Esc). 창 제목·입력한 글자는 남기지 않는다.
+키는 키 자리 번호만 남는다(예: 18=1, 6=Z, 24==/+, 51=delete, 53=Esc, 123~126=←→↓↑). 창 제목·입력한 글자는 남기지 않는다.
+
+**읽는 요령**: 1초 표본(SAMPLE)이 대부분이므로 접어서 본다. `python3 mac/spikes/condense-diag.py --from "MARK 항목 R1"`은 moves·keys만 다른 표본을 한 줄로 합치고, 쉬는 동안의 표본과 `SCREEN` 폭주·키 반복 줄을 줄인다(첫 시험 9,008줄 → 1,502줄). 앞 숫자는 원래 줄 번호다.

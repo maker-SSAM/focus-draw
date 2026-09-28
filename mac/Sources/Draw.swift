@@ -314,6 +314,8 @@ final class DrawController {
     private var windows: [NSWindow] = []
     private var views: [InkView] { windows.compactMap { $0.contentView as? InkView } }
     var inkWindowNumbers: [Int] { windows.map(\.windowNumber) }
+    private var builtForScreens = ""        // 판을 만든 때의 화면 구성 (screenSignature)
+    private var screenCheck: DispatchWorkItem?
 
     // 시험용 스위치(Experiments)는 켤 때 읽어 끌 때까지 고정한다
     private(set) var keyMode: KeyMode = .b
@@ -355,9 +357,10 @@ final class DrawController {
     private var laserTimer: Timer?
     private var mouse: CGPoint = .zero
 
-    // 굵기·진하기를 바꿀 때 잠깐 뜨는 숫자
+    // 굵기·진하기를 바꿀 때 잠깐 뜨는 숫자 (개발용 빌드는 켤 때 실험 이름도)
     private var badge: (text: String, until: Date)?
     private var badgeRect: CGRect = .null
+    var badgeText: String? { badge?.text }
 
     private var previousApp: NSRunningApplication?
     private(set) var cursor = NSCursor.arrow
@@ -366,9 +369,24 @@ final class DrawController {
     private var mouseInside = true
 
     init() {
+        // 키노트 쇼가 시작·끝날 때는 화면이 그대로인데도 이 알림이 1~2초에 수십~수백 번 온다(S1 집 시험: 2,504번).
+        // 잠깐 모았다가 화면 구성이 정말 바뀌었을 때만 판을 새로 만든다.
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
-            self?.rebuildWindows()
+            guard let self else { return }
+            self.screenCheck?.cancel()
+            let work = DispatchWorkItem { [weak self] in
+                guard let self, !self.windows.isEmpty, screenSignature() != self.builtForScreens else { return }
+                self.rebuildWindows(reason: "screens")
+            }
+            self.screenCheck = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
+        }
+        // 드로잉 중에 다른 데스크톱으로 넘어갔는데 판이 따라오지 않았으면 새로 만든다
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.isOn, self.windows.contains(where: isOffActiveSpace) else { return }
+            self.rebuildWindows(reason: "spaceChanged")
         }
         carbonKeys.isDrawing = { [weak self] in self?.isOn == true && self?.keyMode == .c }
         carbonKeys.onKey = { [weak self] code, flags, rep in self?.handleKey(code, flags, isRepeat: rep, source: "hk") }
@@ -389,7 +407,14 @@ final class DrawController {
         offSince = nil
         keyMode = Experiments.keyMode
         boardCursor = Experiments.boardCursor
-        if windows.isEmpty || windowsBuiltFor != windowSignature { rebuildWindows() }
+        // 한 번 숨긴 판은 지금 데스크톱(다른 앱의 전체 화면)에 다시 뜨지 않을 수 있다 → 그때는 새로 만든다
+        if windows.isEmpty {
+            rebuildWindows(reason: "first")
+        } else if windowsBuiltFor != windowSignature {
+            rebuildWindows(reason: "mode")
+        } else if windows.contains(where: isOffActiveSpace) {
+            rebuildWindows(reason: "offSpace")
+        }
 
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
@@ -403,6 +428,8 @@ final class DrawController {
         if boardCursor { SystemCursor.hide("board"); invalidateAll() } // 지난번 자리에 남은 동그라미까지 지운다
         updateCursor()
         Diag.log("DRAW", "on \(Experiments.summary) front=\(previousApp?.bundleIdentifier ?? "-") windows=\(windows.count)")
+        // 개발용 빌드: 지금 어느 안으로 시험하는지 커서 옆에 2초 보여 준다 (항목을 안 고르고 시험하는 일을 막으려고)
+        if Experiments.enabled { showBadge(Experiments.label, seconds: 2) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             guard let self, self.isOn else { return }
             Diag.log("DRAW", "0.3s after on: active=\(NSApp.isActive) key=\(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "-") "
@@ -471,7 +498,7 @@ final class DrawController {
         }
     }
 
-    func rebuildWindows() {
+    func rebuildWindows(reason: String) {
         // 옛 판은 닫고 화면 크기만 한 캐시 그림을 직접 버린다. 앞서 키 창이었던 판(InkView)은 닫고 떼어 내도
         // 무언가가 계속 붙들고 있어서(원인 미확인, S1b 기록), 캐시를 버리지 않으면 모니터를 바꿀 때마다 쌓인다.
         for w in windows {
@@ -481,6 +508,9 @@ final class DrawController {
             w.contentView = nil
         }
         windowsBuiltFor = windowSignature
+        builtForScreens = screenSignature()
+        screenCheck?.cancel()
+        Diag.log("DRAW", "rebuilt reason=\(reason) screens=\(NSScreen.screens.count) on=\(isOn)")
         windows = NSScreen.screens.map { screen in
             let w = makeInkWindow(screen.frame)
             w.setFrame(screen.frame, display: false)
@@ -878,15 +908,16 @@ final class DrawController {
     }
 
     // 커서 오른쪽 위, 늘 같은 자리에 잠깐 뜬다 (굵기가 바뀌어도 숫자가 따라 움직이지 않는다)
-    private func showBadge(_ text: String) {
+    private func showBadge(_ text: String, seconds: Double = 0.5) {
         invalidate(badgeRect)
         let m = NSEvent.mouseLocation
-        let w = CGFloat(max(34, text.count * 10 + 16))
+        let textWidth = NSAttributedString(string: text, attributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold)]).size().width
+        let w = max(34, ceil(textWidth) + 20)
         badgeRect = CGRect(x: m.x + 28, y: m.y + 14, width: w, height: 26)
-        let until = Date().addingTimeInterval(0.5)
+        let until = Date().addingTimeInterval(seconds)
         badge = (text, until)
         invalidate(badgeRect)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds + 0.05) { [weak self] in
             guard let self, let b = self.badge, b.until == until else { return }
             self.badge = nil
             self.invalidate(self.badgeRect)

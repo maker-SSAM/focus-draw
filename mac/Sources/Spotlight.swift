@@ -10,6 +10,21 @@ let SPOT_LEVEL = NSWindow.Level(rawValue: OVERLAY_LEVEL.rawValue + 2)
 // 기본은 [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle] — 실험 메뉴에서 바꿔 볼 수 있다.
 var EVERYWHERE: NSWindow.CollectionBehavior { Experiments.collectionBehavior }
 
+// 그래도 한 번 숨긴(orderOut) 창은 숨긴 데스크톱에 묶여, 그 전부터 있던 다른 앱의 전체 화면에서는
+// 다시 띄워도 나타나지 않는다 (S1 집 시험: 사파리·크롬 전체 화면에서 판·강조가 안 뜸, 기록에 space=0).
+// 새로 만든 창은 지금 데스크톱에 뜨므로, 띄우기 전에 이것으로 확인하고 아니면 새로 만든다.
+func isOffActiveSpace(_ w: NSWindow?) -> Bool { w.map { !$0.isOnActiveSpace } ?? false }
+
+// 화면 구성(번호·자리·크기·배율). 키노트 쇼가 시작·끝날 때는 화면이 그대로인데도 "화면 설정 바뀜" 알림이
+// 1~2초에 수십~수백 번 오므로(S1 집 시험), 이 값이 정말 바뀌었을 때만 판을 새로 만든다.
+func screenSignature() -> String {
+    NSScreen.screens.map { s in
+        let id = (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0
+        let f = s.frame
+        return "\(id):\(Int(f.minX)),\(Int(f.minY)),\(Int(f.width))x\(Int(f.height))@\(s.backingScaleFactor)"
+    }.joined(separator: " ")
+}
+
 final class GlassPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
@@ -26,6 +41,7 @@ func makeClickThroughWindow(size: CGFloat, level: NSWindow.Level) -> GlassPanel 
     w.level = level
     w.collectionBehavior = EVERYWHERE
     w.hidesOnDeactivate = false
+    w.isReleasedWhenClosed = false
     return w
 }
 
@@ -43,6 +59,16 @@ final class Spotlight {
     private var timer: Timer?
     private(set) var isOn = false
     var suspended = false { didSet { refresh() } } // 드로잉 중에는 쉰다
+    var windowNumber: Int? { window?.windowNumber }
+
+    init() {
+        // 켜 둔 채 다른 데스크톱으로 넘어갔는데 원이 따라오지 않았으면 그 자리에서 새로 만든다
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
+                                                          object: nil, queue: .main) { [weak self] _ in
+            guard let self, self.isOn, !self.suspended, isOffActiveSpace(self.window) else { return }
+            self.refresh()
+        }
+    }
 
     func toggle() { isOn.toggle(); refresh() }
 
@@ -56,6 +82,11 @@ final class Spotlight {
 
     private func refresh() {
         if isOn && !suspended {
+            if let old = window, isOffActiveSpace(old) {
+                old.orderOut(nil); old.close()
+                window = nil
+                Diag.log("SPOT", "rebuilt reason=offSpace")
+            }
             if window == nil {
                 let w = makeClickThroughWindow(size: CGFloat(Settings.shared.spotSize), level: SPOT_LEVEL)
                 w.contentView = SpotView()
@@ -126,6 +157,11 @@ final class ClickEffect {
         guard enabledNow(), right ? s.rclickEffect : s.clickEffect else { return }
         let side = sides[right ? 1 : 0]
         let size = CGFloat(s.spotSize)
+        if let old = side.window, isOffActiveSpace(old) {
+            side.timer?.invalidate(); side.timer = nil
+            old.orderOut(nil); old.close()
+            side.window = nil
+        }
         if side.window == nil {
             let w = makeClickThroughWindow(size: size, level: SPOT_LEVEL)
             w.contentView = side.view

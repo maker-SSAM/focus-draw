@@ -174,6 +174,19 @@ enum SelfTest {
         check("A안은 드로잉 키 단축키를 쓰지 않음", d.draw.carbonKeys.ids.isEmpty, "")
         d.draw.turnOff(clear: false)
 
+        // S1c: 키노트 쇼가 시작·끝날 때처럼 화면 알림이 쏟아져도, 화면 구성이 그대로면 판을 새로 만들지 않는다
+        d.draw.turnOn()
+        if Experiments.enabled {
+            check("켤 때 실험 이름이 커서 옆에 뜸", d.draw.badgeText == Experiments.label, "표시=\(d.draw.badgeText ?? "-")")
+        }
+        let boardsBefore = d.draw.inkWindowNumbers
+        for _ in 0..<60 { NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: NSApp) }
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        check("화면 알림 60번에도 판을 새로 만들지 않음", !boardsBefore.isEmpty && d.draw.inkWindowNumbers == boardsBefore,
+              "판 \(boardsBefore) → \(d.draw.inkWindowNumbers)")
+        Diag.sample()
+        d.draw.turnOff(clear: false)
+
         // 창 동작 조합 바꾸기가 떠 있는 창(위젯)에 바로 들어간다
         Experiments.memoryOnly = ["behavior": "joinAllApps"]
         d.experimentsChanged()
@@ -189,6 +202,8 @@ enum SelfTest {
         check("진단 기록: 시스템·화면·샘플·키·단축키 줄이 있음",
               ["SYS macOS=", "SCREEN #0", "SAMPLE draw=1", "ink=[#", "KEY hk down code=51", "HK drawkeys off", "DRAW off"].allSatisfy(text.contains),
               "")
+        check("진단 기록: 판을 새로 만든 까닭과 위젯이 지금 데스크톱에 있는지가 남음",
+              text.contains("DRAW rebuilt reason=") && text.contains("widget=[on=1 space=1]"), "")
         check("진단 기록: 샘플에 판이 화면에 있다고 나옴", text.contains(" on=1 L=\(OVERLAY_LEVEL.rawValue)"), "")
     }
 
