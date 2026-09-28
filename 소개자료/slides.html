@@ -221,19 +221,20 @@
   #s7 .dl .mit b { color:var(--ink); }
   #s7 .dl .mit .t { font-size:19px; font-weight:800; color:var(--ink); margin-bottom:4px; }
 
-  /* ---------- GitHub 링크 썸네일 (1280x640) ---------- */
+  /* ---------- GitHub 링크 썸네일 (1280x640) ----------
+     가운데에 아이콘과 이름을 크게, 둘레에 드로잉 예시(사각형 · 직선 · 무지개 물결 · 화살표 · 원)와
+     포커스 효과(노란 강조 원 + 십자선, 왼쪽 · 오른쪽 클릭 링)를 깐다. 글자 뒤는 흰 안개로 받쳐 읽히게 한다. */
   html.og, html.og body { width:1280px; height:640px; }
-  #og { width:1280px; height:640px; padding:0 64px; flex-direction:row; align-items:center; gap:34px; }
-  #og .left { width:560px; flex-shrink:0; }
-  #og .appicon { width:88px; height:88px; border-radius:21px; box-shadow:0 14px 30px -12px rgba(60,40,200,.45); }
-  #og .title { font-size:70px; font-weight:800; letter-spacing:-2.5px; margin-top:20px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
-  #og .kor { font-size:20px; color:var(--soft); margin-top:10px; font-weight:700; letter-spacing:2px; }
-  #og .tag { font-size:30px; font-weight:800; margin-top:22px; line-height:1.35; letter-spacing:-.8px; }
-  #og .pills { gap:10px; margin-top:22px; }
-  #og .pill { padding:9px 15px; font-size:16px; }
-  #og .meta { margin-top:20px; font-size:16px; color:var(--soft); }
-  #og .boardwrap { width:800px; transform:scale(.74); transform-origin:left center; flex-shrink:0; }
-</style>
+  #og { width:1280px; height:640px; padding:0; align-items:center; justify-content:center; background:#fff; }
+  #og .deco { position:absolute; inset:0; }
+  #og .fog { position:absolute; left:50%; top:50%; width:740px; height:540px; transform:translate(-50%,-50%);
+    background:radial-gradient(closest-side, rgba(255,255,255,.97) 55%, rgba(255,255,255,.85) 72%, rgba(255,255,255,0) 100%); }
+  #og .center { position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; }
+  #og .appicon { width:120px; height:120px; border-radius:28px; box-shadow:0 18px 40px -14px rgba(60,40,200,.45); }
+  #og .title { font-size:100px; font-weight:800; letter-spacing:-3.5px; margin-top:22px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
+  #og .kor { font-size:22px; color:var(--soft); margin-top:14px; font-weight:700; letter-spacing:3px; }
+  #og .tag { font-size:36px; font-weight:800; margin-top:24px; letter-spacing:-1px; }
+  #og .meta { font-size:17px; color:var(--muted); margin-top:14px; }</style>
 </head>
 <body>
 
@@ -560,29 +561,51 @@
 
 <!-- ======================= GitHub 링크 썸네일 ======================= -->
 <section class="slide" id="og">
-  <div class="left">
+  <svg class="deco" width="1280" height="640" viewBox="0 0 1280 640">
+    <defs>
+      <linearGradient id="rb" x1="0" x2="1"><stop offset="0" stop-color="#7b2cf5"/><stop offset=".3" stop-color="#e02bd1"/><stop offset=".55" stop-color="#ff1e3c"/><stop offset=".8" stop-color="#ff8a00"/><stop offset="1" stop-color="#ffd000"/></linearGradient>
+      <filter id="soft" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="1.2"/></filter>
+    </defs>
+    <!-- 드로잉: 사각형 (왼쪽 위) -->
+    <rect x="64" y="58" width="190" height="140" fill="none" stroke="#ff7f00" stroke-width="11"/>
+    <!-- 드로잉: 직선 (오른쪽 위) -->
+    <line x1="930" y1="138" x2="1212" y2="82" stroke="#ff0000" stroke-width="11" stroke-linecap="round"/>
+    <!-- 드로잉: 무지개 물결 (오른쪽 가운데) -->
+    <path id="wave" d="M1002 388 q 13 -14 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0 t 26 0" transform="rotate(-6 1106 388)" fill="none" stroke="url(#rb)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- 드로잉: 화살표 (오른쪽 아래) -->
+    <line x1="905" y1="560" x2="1150" y2="505" stroke="#00e000" stroke-width="11" stroke-linecap="round"/>
+    <polygon points="1210,492 1144,482 1156,532" fill="#00e000"/>
+    <!-- 드로잉: 원 (왼쪽 아래) -->
+    <circle cx="165" cy="505" r="68" fill="none" stroke="#0000ff" stroke-width="11"/>
+
+    <!-- 포커스: 노란 강조 원 + 십자선 (왼쪽 가운데) -->
+    <circle cx="200" cy="320" r="62" fill="#ffd60a" fill-opacity=".45"/>
+    <path d="M200 310 V330 M190 320 H210" stroke="#111" stroke-width="2.6"/>
+    <!-- 포커스: 왼쪽 클릭 링 (위 가운데 오른쪽) -->
+    <circle cx="1085" cy="215" r="36" fill="none" stroke="#1e6bff" stroke-width="6" stroke-opacity=".85"/>
+    <circle cx="1085" cy="215" r="20" fill="none" stroke="#1e6bff" stroke-width="3.5" stroke-opacity=".35"/>
+    <!-- 포커스: 오른쪽 클릭 링 (아래 가운데 왼쪽) -->
+    <circle cx="335" cy="585" r="28" fill="none" stroke="#ff3b30" stroke-width="6" stroke-opacity=".85"/>
+    <circle cx="335" cy="585" r="14" fill="none" stroke="#ff3b30" stroke-width="3" stroke-opacity=".35"/>
+    <!-- 사라지는 펜: 레이저 꼬리 (왼쪽 위 → 가운데 쪽) -->
+    <path d="M290 96 C 325 58, 365 128, 410 84" stroke="#ff3b30" stroke-width="22" stroke-opacity=".16" fill="none" stroke-linecap="round" filter="url(#soft)"/>
+    <path d="M300 88 C 330 64, 366 124, 410 84" stroke="#ff3b30" stroke-width="8" fill="none" stroke-linecap="round"/>
+    <path d="M372 100 C 386 100, 400 94, 410 84" stroke="#ffc2bd" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+    <circle cx="410" cy="84" r="13" fill="#ff3b30" fill-opacity=".3"/><circle cx="410" cy="84" r="5" fill="#ffd6d2"/>
+  </svg>
+  <div class="fog"></div>
+  <div class="center">
     <img class="appicon" src="{{icon.png}}">
     <div class="title"><span class="grad">Focus &amp; Draw</span></div>
     <div class="kor">포커스 앤 드로우</div>
     <div class="tag">수업용 화면 강조 · 드로잉 도구</div>
-    <div class="pills">
-      <div class="pill"><span class="dot" style="background:var(--red)"></span>포커스</div>
-      <div class="pill"><span class="dot" style="background:var(--blue)"></span>드로잉</div>
-      <div class="pill"><span class="dot" style="background:var(--green)"></span>전자칠판</div>
-    </div>
     <div class="meta">무료 · Windows · 설치 없이 exe 파일 하나</div>
   </div>
-  <div class="boardwrap"></div>
 </section>
-
 <script>
   var h = (location.hash || '#1').slice(1);
   if (h === 'og') {
-    // 썸네일: 1장의 전자칠판 장면을 그대로 가져온다 (아래 설명 줄은 뺀다)
     document.documentElement.classList.add('og');
-    var b = document.querySelector('#s1 .board').cloneNode(true);
-    var n = b.querySelector('.capnote'); if (n) n.remove();
-    document.querySelector('#og .boardwrap').appendChild(b);
     document.getElementById('og').classList.add('show');
   } else {
     document.getElementById('s' + (parseInt(h, 10) || 1)).classList.add('show');
