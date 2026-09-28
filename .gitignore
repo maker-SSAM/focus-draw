@@ -15,3 +15,6 @@ settings*.ini
 
 # Windows/OneDrive가 폴더마다 몰래 만드는 표시용 파일
 desktop.ini
+
+# 맥용 빌드 결과물 (mac/build.sh가 만든다)
+mac/build/
