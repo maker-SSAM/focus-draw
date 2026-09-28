@@ -399,12 +399,16 @@ DRAW_ALPHAS := [100, 100, 100, 100, 100, 100, 100, 100, 100]
 ; 글자키도 다른 용도가 없으므로 그냥 쓸 수 있다. 다만 판서 오버레이는 포커스를 가져가지
 ; 않아서(drawGui.Show("NA")) 그냥 두면 누른 글자가 뒤에 있는 프로그램에 그대로 입력된다 —
 ; 그래서 드로잉 모드일 때만 이 키들을 핫키로 잡아 삼킨다(SetDrawModeHotkeys).
-; A·S는 도형이 아니라 **펜의 종류**를 바꾸지만 "누른 채로 끈다"는 쓰는 법이 같아서 같은 목록에 둔다
-; (DrawPoll이 드래그를 시작할 때 둘을 갈라낸다).
-SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"], ["a", "laser"], ["s", "rainbow"]]
+SHAPE_HOLD_KEYS := [["z", "line"], ["x", "wave"], ["c", "arrow"]]
+; A·S는 도형이 아니라 **펜의 종류**를 바꾼다. 도형 키와 달리 **한 번 누르면 계속 그 펜**이고,
+; 숫자키(1~9, 0)로 색을 고르면 보통 펜으로 돌아온다(사용자 결정 — 전자칠판 앞에서는 키를 쥔 채
+; 칠판을 그을 수 없다). 드로잉을 껐다 켜도 보통 펜으로 돌아온다(색·굵기와 같다).
+PEN_KIND_KEYS := [["a", "laser"], ["s", "rainbow"]]
+penKind := "" ; 지금 고른 특수 펜: "laser" | "rainbow" | ""(보통 펜)
 ; 도형 키를 누른 채로 Shift를 더하면(직선 각도 맞추기) 그 조합도 잡아야 한다. 수식키 없는 핫키는
 ; Shift가 함께 눌리면 발동하지 않아서, Shift를 먼저 누르면 글자가 뒤의 프로그램으로 새고 뗀 것도
-; 못 봐 "계속 눌림"으로 남는다. 그래서 두 가지(맨 키 / Shift+키)를 모두 등록한다.
+; 못 봐 "계속 눌림"으로 남는다. 그래서 두 가지(맨 키 / Shift+키)를 모두 등록한다. (A·S도 같은
+; 이유로 두 가지를 등록한다 — Shift와 함께 눌러도 글자가 뒤로 새지 않게)
 ; (별표 * 로 한 번에 잡는 방법도 있지만, 그러면 Ctrl+Z까지 가로챌 수 있어 피했다)
 HOLD_KEY_PREFIXES := ["", "+"]
 ; 지금 눌려 있는 도형 키. 핫키에 삼켜진 키는 GetKeyState(..., "P")로 읽히리라 기대할 수 없어서
@@ -678,13 +682,13 @@ ClearBackBuffer()
 drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080000", "FocusDraw-Draw")
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
-; ================= 사라지는 펜 (A를 누른 채로 긋기) =================
+; ================= 사라지는 펜 (A를 누르고 긋기) =================
 ; 파워포인트의 "레이저 포인터"처럼 보이게 한다 — 설명하면서 잠깐 가리키는 선이다.
 ;   - 선은 **밝은 심지 + 둘레의 빛 번짐** 세 겹으로 그려 빛나 보이게 한다
 ;   - **점마다 따로 나이를 먹는다.** 그어진 지 LASER_HOLD_MS가 지나면 LASER_FADE_MS에 걸쳐
 ;     가늘어지며 사라진다. 그래서 움직이는 동안에는 혜성처럼 꼬리가 뒤따라오고,
 ;     멈추면 꼬리가 커서 쪽으로 줄어들며 없어진다
-;   - A를 누르고 있는 동안에는 커서 자리에 **빛나는 점**이 뜬다 (레이저 점)
+;   - 사라지는 펜을 고른 동안에는 커서 자리에 **빛나는 점**이 뜬다 (레이저 점)
 ; 판서 그림과는 **다른 창**에 그린다 — 같은 그림에 그으면 사라질 때 그 아래 있던 글씨를
 ; 되살려야 하고, 실행 취소 기록도 엉킨다. 이 창은 판서 층 바로 위에 뜨고, 클릭은 그대로
 ; 통과시킨다(E0x20). 색은 지금 쓰는 펜을 따른다(기본 빨강이 파워포인트와 같다).
@@ -860,6 +864,27 @@ LaserAdd(x, y) {
         laserCur.pts.Push([x - vx, y - vy, A_TickCount])
 }
 
+; 레이저로 긋는 도형 — 지금 획의 점들을 도형 테두리(화면 좌표)로 통째로 바꾼다. 끄는 동안 매번
+; 지금 시각으로 찍으므로 사라지지 않고, 손을 떼면 도형 전체가 한꺼번에 나이를 먹어 함께 사라진다.
+LaserSetShape(pts) {
+    global laserCur, vx, vy
+    if !laserCur
+        return
+    now := A_TickCount
+    local_ := []
+    ; 물결은 2px마다 점이 있는데, 레이저는 16ms마다 토막마다 네 겹을 다시 그리므로 그대로 쓰면
+    ; 무겁다. 앞 점과 5px보다 가까운 점은 건너뛴다(끝점은 꼭 남긴다).
+    for i, p in pts {
+        if (local_.Length && i < pts.Length) {
+            q := local_[local_.Length]
+            if ((p[1] - vx - q[1]) ** 2 + (p[2] - vy - q[2]) ** 2 < 25)
+                continue
+        }
+        local_.Push([p[1] - vx, p[2] - vy, now])
+    }
+    laserCur.pts := local_
+}
+
 ; 손을 뗐다 — 남은 꼬리는 제 시간에 맞춰 사라진다
 LaserEnd() {
     global laserCur
@@ -869,7 +894,7 @@ LaserEnd() {
     }
 }
 
-; A를 누르면 레이저 점을 띄우기 시작한다 (SetShapeKeyHeld에서 부른다)
+; 사라지는 펜을 고르면 레이저 점을 띄우기 시작한다 (SetPenKind에서 부른다)
 LaserKeyDown() {
     global drawOn
     if (drawOn && EnsureLaserCanvas())
@@ -879,13 +904,31 @@ LaserKeyDown() {
 ; 한 프레임: 다 사라진 점을 버리고, 직전 프레임 자리를 비운 뒤 남은 꼬리와 레이저 점을 다시 그린다.
 ; 그릴 것이 하나도 없으면 멈춘다(마지막으로 비운 자리까지 창에 반영한 다음에).
 LaserTick() {
-    global laserStrokes, laserLastBox, shapeKeyHeld, drawOn, vx, vy, activeDrawColor, activeDrawThickness
+    global laserStrokes, laserLastBox, penKind, drawOn, vx, vy, activeDrawColor, activeDrawThickness
     global LASER_HOLD_MS, LASER_FADE_MS, LASER_MIN_WIDTH, LASER_LAYERS, laserCanvas
+    global penStroke, penLastX, penLastY
+    static lastDot := ""
     Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 — LaserRender 도중에 그림판을 돌려주면 오류가 난다 (DrawPoll 설명 참고)
     if !IsObject(laserCanvas) {
         SetTimer(LaserTick, 0)
         return
     }
+    dotOn := drawOn && penKind = "laser"
+    mx := 0, my := 0, dotW := 0
+    if dotOn {
+        ; 터치·펜으로 긋는 중이면 포인터 좌표를 쓴다 — 진짜 커서는 변환이 늦어 뒤처진다
+        if penStroke
+            mx := penLastX, my := penLastY
+        else
+            MouseGetPos(&mx, &my)
+        dotW := Max(activeDrawThickness, LASER_MIN_WIDTH)
+    }
+    ; 사라지는 펜을 고른 동안에는 이 타이머가 계속 돈다. 남은 꼬리가 없고 점도 그대로면 다시
+    ; 그릴 것이 없으므로 바로 돌아간다 — 가만히 두는 동안 16ms마다 같은 그림을 그리지 않게.
+    dotKey := dotOn ? mx "," my "," dotW "," activeDrawColor : ""
+    if (laserStrokes.Length = 0 && dotOn && dotKey = lastDot && IsObject(laserLastBox))
+        return
+    lastDot := dotKey
     now := A_TickCount
     life := LASER_HOLD_MS + LASER_FADE_MS
     i := laserStrokes.Length
@@ -897,7 +940,6 @@ LaserTick() {
             laserStrokes.RemoveAt(i)
         i -= 1
     }
-    dotOn := drawOn && shapeKeyHeld.Has("a") && shapeKeyHeld["a"]
 
     ; 이번 프레임에 그릴 범위 (가장 바깥 번짐의 반지름만큼 여유를 둔다)
     box := 0
@@ -906,12 +948,8 @@ LaserTick() {
         for p in st.pts
             box := LaserBoxAdd(box, p[1], p[2], pad)
     }
-    mx := 0, my := 0, dotW := 0
-    if dotOn {
-        MouseGetPos(&mx, &my)
-        dotW := Max(activeDrawThickness, LASER_MIN_WIDTH)
+    if dotOn
         box := LaserBoxAdd(box, mx - vx, my - vy, dotW * LASER_LAYERS[1][1] * 0.6 + 3)
-    }
 
     if IsObject(laserLastBox)
         LaserClearBox(laserLastBox)
@@ -1664,7 +1702,7 @@ GetFreehandPen(argb) {
     return freehandPen
 }
 
-; ---- 무지개 펜 (S를 누른 채로 긋기) ----
+; ---- 무지개 펜 (S를 누르고 긋기) ----
 ; 긋는 동안 지나간 거리만큼 색상환을 돌아 색이 저절로 바뀐다. RAINBOW_CYCLE_PX만큼 그으면 한 바퀴.
 ; 획이 끝나도 색상을 이어 가서, 다음 획은 앞 획이 끝난 색에서 시작한다.
 RAINBOW_CYCLE_PX := 700
@@ -1684,8 +1722,47 @@ HueToRGB(h) {
     return (Round(rgb[1] * 255) << 16) | (Round(rgb[2] * 255) << 8) | Round(rgb[3] * 255)
 }
 
-; 지금 긋는 자유선이 무지개 펜인가. 드래그를 시작할 때 정해져 획이 끝날 때까지 유지된다.
+; 지금 긋는 획이 무지개 펜인가. 드래그를 시작할 때 정해져 획이 끝날 때까지 유지된다.
+; 도형도 따른다 — 무지개 펜을 고른 채 도형을 그리면 테두리를 따라 색이 바뀐다.
 strokeRainbow := false
+; 무지개 도형을 그리기 시작할 때의 색상. 미리보기는 매 프레임 처음부터 다시 그리므로, 늘 이 색에서
+; 출발하고 다 그린 길이만큼 돌아간 색을 rainbowHue에 남긴다(다음 획이 거기서 이어진다).
+rainbowShapeHue := 0
+RAINBOW_PIECE_PX := 12 ; 무지개 도형을 이만큼씩 끊어 색을 바꿔 칠한다 (색상으로 약 6도)
+
+; 점들을 이은 선을 무지개 색으로 긋는다. 선을 따라 RAINBOW_PIECE_PX 남짓씩 끊어 토막마다 색을
+; 바꾼다. 끝과 이음매를 둥글게 해 토막 사이가 끊겨 보이지 않게 한다. 다 그은 뒤의 색상을 돌려준다.
+DrawRainbowPolyline(gr, pPen, alphaMask, pts, hue) {
+    global RAINBOW_CYCLE_PX, RAINBOW_PIECE_PX
+    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+    DllCall("gdiplus\GdipSetPenLineJoin", "ptr", pPen, "int", 2)
+    ; 긴 변(사각형·직선)은 한 토막 안에서도 색이 바뀌어야 하므로 먼저 잘게 나눈다
+    fine := [pts[1]]
+    loop pts.Length - 1 {
+        p := pts[A_Index], q := pts[A_Index + 1]
+        seg := Sqrt((q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2)
+        n := Max(1, Ceil(seg / RAINBOW_PIECE_PX))
+        loop n
+            fine.Push([p[1] + (q[1] - p[1]) * A_Index / n, p[2] + (q[2] - p[2]) * A_Index / n])
+    }
+    ; 가까운 점들(물결)은 한 토막으로 묶어 한 번에 긋는다
+    buf := Buffer(fine.Length * 8)
+    i := 1
+    while (i < fine.Length) {
+        start := i, run := 0
+        while (i < fine.Length && (run < RAINBOW_PIECE_PX || i = start)) {
+            run += Sqrt((fine[i + 1][1] - fine[i][1]) ** 2 + (fine[i + 1][2] - fine[i][2]) ** 2)
+            i += 1
+        }
+        loop i - start + 1
+            NumPut("float", fine[start + A_Index - 1][1], "float", fine[start + A_Index - 1][2], buf, (A_Index - 1) * 8)
+        DllCall("gdiplus\GdipSetPenColor", "ptr", pPen, "uint", alphaMask | HueToRGB(Mod(hue + run * 180 / RAINBOW_CYCLE_PX, 360)))
+        DllCall("gdiplus\GdipDrawLines", "ptr", gr, "ptr", pPen, "ptr", buf, "int", i - start + 1)
+        hue := Mod(hue + run * 360 / RAINBOW_CYCLE_PX, 360)
+    }
+    return hue
+}
 
 DrawSegment(x1, y1, x2, y2) {
     global memDC, vx, vy, activeDrawThickness, activeDrawColor, activeDrawAlpha, pShapeGraphics
@@ -1742,7 +1819,7 @@ DrawSegment(x1, y1, x2, y2) {
 ; (매번 스냅샷으로 되돌린 뒤 새로 그려서, 드래그 중인 미리보기가 쌓이지 않고 하나만 보이게 함)
 DrawShapePreview(mode, x1, y1, x2, y2) {
     global memDC, vx, vy, activeDrawThickness, activeDrawColor, lastShapeBox, pShapeGraphics
-    global pInkGraphics, inkStrokeAlpha
+    global pInkGraphics, inkStrokeAlpha, strokeRainbow, rainbowShapeHue, rainbowHue
     ; 직전 프레임이 그린 자리만 되돌리면 된다. 첫 프레임은 되돌릴 것이 없다(스냅샷을 방금 떴다).
     if (lastShapeBox.Length = 4) {
         RestoreSnapshotBox(lastShapeBox)
@@ -1769,7 +1846,22 @@ DrawShapePreview(mode, x1, y1, x2, y2) {
         pPen := 0
         ; GDI+ 색은 0xAARRGGBB — GDI처럼 BGR로 뒤집지 않는다
         DllCall("gdiplus\GdipCreatePen1", "uint", argb, "float", activeDrawThickness, "int", 2, "ptr*", &pPen)
-        if mode = "line"
+        if strokeRainbow {
+            ; 무지개 펜: 테두리를 따라 색이 바뀐다. 화살표는 몸통만 무지개로 긋고, 머리는 몸통이
+            ; 끝난 색으로 채운다(테두리를 따라 그으면 채운 삼각형이 아니라 빈 삼각형이 된다).
+            alphaMask := argb & 0xFF000000
+            if (mode = "arrow") {
+                g := ArrowGeometry(lx1, ly1, lx2, ly2)
+                endHue := g ? DrawRainbowPolyline(gr, pPen, alphaMask, [[lx1, ly1], [g.bx, g.by]], rainbowShapeHue) : rainbowShapeHue
+                if g
+                    DrawArrowGdip(gr, 0, alphaMask | HueToRGB(endHue), lx1, ly1, lx2, ly2)
+            } else if (mode = "line") {
+                endHue := DrawRainbowPolyline(gr, pPen, alphaMask, [[lx1, ly1], [lx2, ly2]], rainbowShapeHue)
+            } else {
+                endHue := DrawRainbowPolyline(gr, pPen, alphaMask, ShapeOutlinePoints(mode, lx1, ly1, lx2, ly2), rainbowShapeHue)
+            }
+            rainbowHue := endHue ; 다음 획은 이 도형이 끝난 색에서 이어진다
+        } else if mode = "line"
             DllCall("gdiplus\GdipDrawLine", "ptr", gr, "ptr", pPen, "float", lx1, "float", ly1, "float", lx2, "float", ly2)
         else if mode = "rect"
             DllCall("gdiplus\GdipDrawRectangle", "ptr", gr, "ptr", pPen, "float", bx, "float", by, "float", bw, "float", bh)
@@ -1847,9 +1939,12 @@ DrawArrowGdip(gr, pPen, argb, x1, y1, x2, y2) {
         return
     ; 몸통은 머리 밑변까지만 그린다 — 끝까지 그으면 머리 꼭짓점 밖으로 삐져나갈 수 있다.
     ; 끝을 둥글게 해야 삼각형과 만나는 자리가 매끄럽게 이어진다.
-    DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; LineCapRound
-    DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
-    DllCall("gdiplus\GdipDrawLine", "ptr", gr, "ptr", pPen, "float", x1, "float", y1, "float", g.bx, "float", g.by)
+    ; pPen이 0이면 머리만 그린다 (무지개 화살표는 몸통을 따로 긋는다)
+    if pPen {
+        DllCall("gdiplus\GdipSetPenStartCap", "ptr", pPen, "int", 2) ; LineCapRound
+        DllCall("gdiplus\GdipSetPenEndCap", "ptr", pPen, "int", 2)
+        DllCall("gdiplus\GdipDrawLine", "ptr", gr, "ptr", pPen, "float", x1, "float", y1, "float", g.bx, "float", g.by)
+    }
 
     ; 머리는 테두리가 아니라 채워야 화살표처럼 보인다 — 펜이 아니라 브러시로 삼각형을 채운다.
     pts := Buffer(24) ; PointF 3개 (실수 x, y)
@@ -1952,6 +2047,7 @@ TwoFingerUndo() {
     abortedInk := penStroke && undoStack.Length > 0 && undoStack[undoStack.Length].Count > 0
     if penStroke {
         penStroke := false
+        LaserEnd() ; 사라지는 펜이었으면 그 자국은 저절로 사라진다 (실행 취소 기록에도 없다)
         if penErasing {
             penErasing := false
             penEraserWide := false
@@ -2030,8 +2126,8 @@ IsPenOrTouch(wp) {
 
 OnPointerDown(wp, lp, msg, hwnd) {
     global drawOn, drawGui, penStroke, penErasing, penEraserWide, penLastX, penLastY, penIgnoreMouse
-    global drawing, erasing, dragOnOtherWindow, dragShapeMode, penContacts, penGesture
-    global strokeRainbow, activeDrawAlpha
+    global drawing, erasing, dragOnOtherWindow, dragShapeMode, dragPenKind, penContacts, penGesture
+    global strokeRainbow
     Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 (DrawPoll 설명 참고)
     if (!drawOn || hwnd != drawGui.Hwnd || !IsPenOrTouch(wp))
         return
@@ -2054,10 +2150,10 @@ OnPointerDown(wp, lp, msg, hwnd) {
     ; 제스처가 걸린 동안에는 손을 다 뗄 때까지 아무것도 그리지 않는다
     if penGesture
         return
-    ; 도형(Shift·Ctrl·Z·X·C)은 기존 마우스 경로에 맡긴다. 전자칠판 앞에 서서 수식키를 쥐고
-    ; 끄는 일은 드물어서, 미리보기와 스냅샷까지 여기에 다시 만들 이유가 없다고 봤다.
-    if (CurrentShapeMode() != "")
-        return
+    ; **도형(Shift·Ctrl·Z·X·C)과 특수 펜(A·S)도 여기서 직접 긋는다.** 예전에는 이것들을 마우스
+    ; 경로에 맡겼는데, 그러면 Windows의 터치→마우스 변환을 기다려야 해서 칠판에서 **닿고 한참
+    ; 뒤에야 반응했다**(2026-09-28 제보). 마우스와 같은 함수(StrokeBegin/StrokeMove)를 쓰므로
+    ; 어느 쪽으로 그어도 결과가 같다.
     pt := PointerXY(lp)
     penStroke := true
     ; **닿는 순간 한 번만** 앞뒤를 판단하고 획이 끝날 때까지 유지한다. 긋는 도중에 계속
@@ -2070,13 +2166,18 @@ OnPointerDown(wp, lp, msg, hwnd) {
     penIgnoreMouse := true
     drawing := false
     erasing := false
-    dragOnOtherWindow := false
-    dragShapeMode := ""
-    PushUndo() ; 이 획 하나만 Ctrl+Z로 되돌릴 수 있도록
-    strokeRainbow := false
-    BeginInkStroke(penErasing ? 100 : activeDrawAlpha) ; 반투명이면 전용 판을 거쳐 긋는다
+    dragOnOtherWindow := false ; 포인터 메시지는 판서 층을 직접 닿았을 때만 온다
     penLastX := pt[1]
     penLastY := pt[2]
+    if penErasing {
+        dragShapeMode := ""
+        dragPenKind := ""
+        strokeRainbow := false
+        PushUndo() ; 이 지우기 한 번만 Ctrl+Z로 되돌릴 수 있도록
+        BeginInkStroke(100)
+    } else {
+        StrokeBegin(pt[1], pt[2])
+    }
     ; 뒤쪽으로 대면 커서도 지우개 테두리 원으로 바뀌어, 어디까지 지워지는지 보인다
     SetBrushMode(penErasing ? "eraser" : "pen")
     ; 여기서 점을 찍지는 않는다 — 마우스로 그냥 클릭만 했을 때 점이 안 남는 것과 맞춘다
@@ -2084,7 +2185,7 @@ OnPointerDown(wp, lp, msg, hwnd) {
 }
 
 OnPointerUpdate(wp, lp, msg, hwnd) {
-    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY
+    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY, dragShapeMode
     Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 (DrawPoll 설명 참고)
     if (!penStroke || !drawOn || hwnd != drawGui.Hwnd)
         return
@@ -2093,8 +2194,11 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
         return
     if penErasing
         EraseSegment(penLastX, penLastY, pt[1], pt[2])
-    else
-        DrawSegment(penLastX, penLastY, pt[1], pt[2])
+    else if (dragShapeMode = "")
+        StrokeMove(pt[1], pt[2]) ; 자유선·사라지는 펜·무지개 펜은 오는 대로 바로 긋는다
+    ; 도형은 여기서 그리지 않고 자리만 적어둔다 — DrawPoll이 10ms마다 마지막 자리로 다시 그린다.
+    ; 도형은 한 번 그릴 때마다 전체를 다시 그리는데, 칠판은 포인터 메시지를 마우스보다 훨씬
+    ; 자주 보내서 오는 대로 다 그리면 밀린 메시지가 쌓여 도형이 손을 늦게 따라온다.
     penLastX := pt[1]
     penLastY := pt[2]
     ; 커서 노릇을 하는 원도 포인터 좌표로 옮긴다. 진짜 마우스 커서는 변환이 늦어 뒤처지므로
@@ -2103,7 +2207,9 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
 }
 
 OnPointerUp(wp, lp, msg, hwnd) {
-    global penStroke, penErasing, penEraserWide, penContacts, penGesture
+    global penStroke, penErasing, penEraserWide, penContacts, penGesture, penLastX, penLastY
+    global dragShapeMode, drawOn
+    Critical ; 도형의 마지막 모습을 그리는 도중에 드로잉 끄기가 끼어들지 않게
     id := wp & 0xFFFF
     if penContacts.Has(id)
         penContacts.Delete(id)
@@ -2111,6 +2217,12 @@ OnPointerUp(wp, lp, msg, hwnd) {
     ; 남은 손가락이 이어서 선을 긋기 시작한다.
     if (penContacts.Count = 0)
         penGesture := false
+    if (penStroke && !penErasing && drawOn) {
+        ; 도형은 10ms마다 그리므로, 손을 뗀 자리가 아직 안 그려졌을 수 있다
+        if (dragShapeMode != "")
+            StrokeMove(penLastX, penLastY)
+        LaserEnd() ; 사라지는 펜으로 긋던 중이면 이제부터 사라지기 시작한다
+    }
     penStroke := false
     if penErasing {
         penErasing := false
@@ -2123,10 +2235,72 @@ OnMessage(0x0246, OnPointerDown)   ; WM_POINTERDOWN
 OnMessage(0x0245, OnPointerUpdate) ; WM_POINTERUPDATE
 OnMessage(0x0247, OnPointerUp)     ; WM_POINTERUP
 
+; 왼쪽 드래그(마우스)나 터치·펜 획을 시작한다. 두 경로가 이 함수와 StrokeMove를 함께 써야 도형과
+; 특수 펜이 어느 쪽으로 그어도 똑같이 나온다. 부르기 전에 dragOnOtherWindow를 정해둬야 한다.
+StrokeBegin(x, y) {
+    global lastX, lastY, dragStartX, dragStartY, dragShapeMode, dragPenKind, penKind
+    global dragOnOtherWindow, lastShapeBox, strokeRainbow, activeDrawAlpha, inkStrokeAlpha
+    global rainbowShapeHue, rainbowHue
+    lastX := x, lastY := y
+    dragStartX := x, dragStartY := y
+    ; 도형은 긋기 시작하는 순간 눌려 있던 키로 정한다. **특수 펜은 도형에도 그대로 적용된다**
+    ; (사용자 요청) — 무지개 펜이면 테두리를 따라 색이 바뀌고, 사라지는 펜이면 빛나는 도형이
+    ; 손을 뗀 뒤 저절로 사라진다(LaserSetShape).
+    dragShapeMode := CurrentShapeMode()
+    dragPenKind := penKind
+    strokeRainbow := (penKind = "rainbow")
+    rainbowShapeHue := rainbowHue
+    if dragOnOtherWindow
+        return ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
+    if (dragPenKind = "laser") {
+        ; 사라지는 펜은 판서 그림을 건드리지 않으므로 실행 취소에 남기지 않는다
+        LaserBegin(x, y)
+        return
+    }
+    ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
+    PushUndo()
+    BeginInkStroke(activeDrawAlpha)
+    if (dragShapeMode != "") {
+        ; 반투명이면 BeginInkStroke가 이미 떠뒀다. 복사본을 못 만들면 고무줄 미리보기를 할 수
+        ; 없으므로 이 도형은 그리지 않는다(다른 창 위의 드래그처럼 흘려보낸다).
+        if (!inkStrokeAlpha && !SaveSnapshot())
+            dragOnOtherWindow := true
+        lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
+    }
+}
+
+; 시작한 획을 (x, y)까지 잇는다. 도형은 시작점부터 이 자리까지를 다시 그린다.
+StrokeMove(x, y) {
+    global lastX, lastY, dragStartX, dragStartY, dragShapeMode, dragPenKind, dragOnOtherWindow
+    if dragOnOtherWindow
+        return
+    if (dragShapeMode != "") {
+        ex := x, ey := y
+        ; 선 종류(직선·화살표·물결)는 Shift를 함께 누르면 0°·45°·90° 방향으로 맞춘다.
+        ; 드래그 도중에 눌러도 바로 따라온다.
+        if (GetKeyState("Shift", "P") && (dragShapeMode = "line" || dragShapeMode = "arrow" || dragShapeMode = "wave")) {
+            snapped := SnapTo45(dragStartX, dragStartY, x, y)
+            ex := snapped[1], ey := snapped[2]
+        }
+        if (dragPenKind = "laser")
+            LaserSetShape(ShapeOutlinePoints(dragShapeMode, dragStartX, dragStartY, ex, ey))
+        else
+            DrawShapePreview(dragShapeMode, dragStartX, dragStartY, ex, ey)
+        return
+    } else if (dragPenKind = "laser") {
+        if (x != lastX || y != lastY)
+            LaserAdd(x, y)
+    } else {
+        DrawSegment(lastX, lastY, x, y)
+    }
+    lastX := x
+    lastY := y
+}
+
 DrawPoll() {
-    global drawOn, drawing, erasing, lastX, lastY, dragStartX, dragStartY, dragShapeMode, drawGui
-    global dragOnOtherWindow, lastShapeBox, VK_LBUTTON, VK_RBUTTON, penStroke, penIgnoreMouse
-    global dragPenKind, strokeRainbow, activeDrawAlpha, inkStrokeAlpha
+    global drawOn, drawing, erasing, lastX, lastY, dragShapeMode, drawGui
+    global dragOnOtherWindow, VK_LBUTTON, VK_RBUTTON, penStroke, penIgnoreMouse, penErasing
+    global penLastX, penLastY
     ; **끼어들 수 없게 한다(Critical).** 드로잉을 끌 때(F9 등) 화면 크기의 판들을 돌려주는데, 그리던
     ; 도중에 단축키가 끼어들어 판을 돌려주면 돌아와서 없는 판에 그리다 오류가 난다(실제로 났다).
     ; 한 번 도는 데 몇 ms라, 단축키는 그만큼만 기다렸다 처리된다.
@@ -2138,18 +2312,23 @@ DrawPoll() {
     ; 돌려준다. 안 그러면 그 창 위에서 커서가 아예 안 보인다 — 판서 중에는 진짜 커서를
     ; 완전히 감추고 우리가 그리는 원으로 대신하는데, 그 원은 저 창들 아래에 깔리기 때문이다.
     UpdateDrawCursorForWindow(winUnder)
+    ; 터치·펜으로 긋는 중이면 마우스 판정은 쳐다보지 않는다. 뒤늦게 따라 들어오는 마우스
+    ; 입력까지 같이 그리면 **한 획이 두 번 그려지고 실행 취소도 두 칸**이 된다.
+    ; 커서 원도 여기서 옮기지 않는다 — 포인터 메시지가 닿은 자리로 옮기고 있는데, 뒤처진 진짜
+    ; 커서 자리로 되돌려 놓으면 원이 두 자리를 오가며 떨린다.
+    if penStroke {
+        penIgnoreMouse := true
+        ; 터치로 긋는 도형은 여기서 마지막 자리까지 다시 그린다 (OnPointerUpdate 설명 참고)
+        if (!penErasing && dragShapeMode != "")
+            StrokeMove(penLastX, penLastY)
+        return
+    }
     ; 커서 노릇을 하는 원을 옮긴다. 버튼을 안 누르고 있어도 따라와야 하므로 아래
     ; "아무 버튼도 안 눌림 → 그냥 빠져나감"보다 앞에 둔다.
     MoveBrushCursor()
 
     leftDown := MouseDown(VK_LBUTTON)
     rightDown := MouseDown(VK_RBUTTON)
-    ; 터치·펜으로 긋는 중이면 마우스 판정은 쳐다보지 않는다. 뒤늦게 따라 들어오는 마우스
-    ; 입력까지 같이 그리면 **한 획이 두 번 그려지고 실행 취소도 두 칸**이 된다.
-    if penStroke {
-        penIgnoreMouse := true
-        return
-    }
     ; 획이 끝난 뒤에도 마우스 쪽은 아직 "눌림"으로 남아 있다. 그게 풀릴 때까지 흘려보내야
     ; 손을 뗀 자리에 짧은 획이 하나 더 그려지지 않는다.
     if penIgnoreMouse {
@@ -2191,10 +2370,6 @@ DrawPoll() {
 
     if !drawing {
         drawing := true
-        lastX := mx
-        lastY := my
-        dragStartX := mx
-        dragStartY := my
             ; 마우스를 누른 순간 커서 아래에 있는 창이 판서 오버레이가 아니면, 그 위에 다른 창이
             ; 떠 있다는 뜻이다 — 위젯이나 Win+Shift+S 캡처 도구 오버레이처럼 위로 올라온 창
             ; 등. 그 창이 클릭을 받는 드래그이므로 판서로 그리지 않는다. 드래그를 시작한 시점에
@@ -2203,53 +2378,9 @@ DrawPoll() {
             ; 세어 건너뛰었는데, 캡처 도구가 툴바 클릭을 요구하는지가 Windows 버전마다 달라
             ; 첫 판서 한 획을 삼키거나 캡처 드래그가 그려지는 일이 있었다.)
         dragOnOtherWindow := winUnder != drawGui.Hwnd
-        ; 드래그를 시작하는 순간 눌려있던 키로 도형 종류를 정한다. A·S는 도형이 아니라 펜의 종류라서
-        ; 따로 떼어 둔다 — 그리는 방식은 보통 자유선과 같다.
-        dragShapeMode := CurrentShapeMode()
-        dragPenKind := ""
-        if (dragShapeMode = "laser" || dragShapeMode = "rainbow") {
-            dragPenKind := dragShapeMode
-            dragShapeMode := ""
-        }
-        strokeRainbow := (dragPenKind = "rainbow")
-        if dragOnOtherWindow {
-            ; 다른 창 위에서 시작된 드래그 — 아래에서 아무것도 그리지 않는다
-        } else if (dragPenKind = "laser") {
-            ; 사라지는 펜은 판서 그림을 건드리지 않으므로 실행 취소에 남기지 않는다
-            LaserBegin(mx, my)
-        } else {
-            ; 획을 긋기 전 상태를 기록해둬야 Ctrl+Z로 이 한 획만 되돌릴 수 있다
-            PushUndo()
-            BeginInkStroke(activeDrawAlpha)
-            if (dragShapeMode != "") {
-                ; 반투명이면 BeginInkStroke가 이미 떠뒀다. 복사본을 못 만들면 고무줄 미리보기를 할 수
-                ; 없으므로 이 도형은 그리지 않는다(다른 창 위의 드래그처럼 흘려보낸다).
-                if (!inkStrokeAlpha && !SaveSnapshot())
-                    dragOnOtherWindow := true
-                lastShapeBox := [] ; 새 도형이므로 지울 이전 프레임이 없다
-            }
-        }
-    } else if dragOnOtherWindow {
-        ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
-    } else if (dragPenKind = "laser") {
-        if (mx != lastX || my != lastY) {
-            LaserAdd(mx, my)
-            lastX := mx
-            lastY := my
-        }
-    } else if dragShapeMode != "" {
-        ex := mx, ey := my
-        ; 선 종류(직선·화살표·물결)는 Shift를 함께 누르면 0°·45°·90° 방향으로 맞춘다.
-        ; 드래그 도중에 눌러도 바로 따라온다.
-        if (GetKeyState("Shift", "P") && (dragShapeMode = "line" || dragShapeMode = "arrow" || dragShapeMode = "wave")) {
-            snapped := SnapTo45(dragStartX, dragStartY, mx, my)
-            ex := snapped[1], ey := snapped[2]
-        }
-        DrawShapePreview(dragShapeMode, dragStartX, dragStartY, ex, ey)
+        StrokeBegin(mx, my)
     } else {
-        DrawSegment(lastX, lastY, mx, my)
-        lastX := mx
-        lastY := my
+        StrokeMove(mx, my)
     }
 }
 
@@ -2580,10 +2711,11 @@ ToggleDraw(*) {
     global drawOn, drawGui, brushGui, widget, settingsGui, settingsHiddenByDraw, activeDrawColor, drawColor
     global activeDrawThickness, activeDrawStep, DrawStep, activeEraserSize, activeEraserStep, EraserStep
     global PEN_BASE_PX, PEN_STEP_RATIO, ERASER_BASE_PX, ERASER_STEP_RATIO
-    global erasing, brushMode, boardGui, stepGui, laserGui
+    global erasing, brushMode, boardGui, stepGui, laserGui, penKind, activeDrawAlpha
     drawOn := !drawOn
     ; 숫자키와 +/-로 잠깐 바꿔둔 색·굵기·지우개 크기는 여기서 초기화한다. 드로잉을 켤 때마다
-    ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다.
+    ; 설정에 저장된 값으로 시작하고, Esc 등으로 끄면 그 자리에서 되돌아간다. A·S로 고른 특수 펜도.
+    penKind := ""
     activeDrawColor := drawColor
     activeDrawAlpha := 100
     activeDrawStep := DrawStep
@@ -2664,8 +2796,10 @@ ClearDrawing(*) {
 ; 드로잉 중 숫자키로 선 색을 바로 바꾼다. 설정에 저장된 색(drawColor)은 건드리지 않아서,
 ; 드로잉을 껐다 켜면 원래 색으로 돌아온다. 커서 원도 바뀐 색으로 다시 그린다.
 ; **0은 설정 창의 기본 색으로 되돌아오는 자리다** — 그 색은 투명도를 따로 갖지 않으므로 100%로 본다.
+; 숫자키는 **보통 펜으로 돌아오는 키**이기도 하다 — A·S로 고른 특수 펜을 여기서 푼다(SetPenKind 참고).
 SetDrawColor(index) {
-    global DRAW_COLORS, DRAW_ALPHAS, activeDrawColor, activeDrawAlpha, drawColor
+    global DRAW_COLORS, DRAW_ALPHAS, activeDrawColor, activeDrawAlpha, drawColor, penKind
+    penKind := "" ; 레이저 점은 LaserTick이 다음 프레임에 걷는다
     if (index = 0) {
         activeDrawColor := drawColor
         activeDrawAlpha := 100
@@ -2739,13 +2873,23 @@ MakeColorSetter(index) => (*) => SetDrawColor(index)
 SetShapeKeyHeld(key, down) {
     global shapeKeyHeld
     shapeKeyHeld[key] := down
-    if (key = "a" && down)
-        LaserKeyDown() ; 사라지는 펜 키를 누르면 커서 자리에 레이저 점을 띄운다
 }
 
 ; 색 설정과 같은 이유로 함수를 만들어 쓴다 — 반복문 안에서 화살표 함수를 바로 쓰면 모두 같은
 ; 변수를 붙들어 마지막 키 하나만 제대로 동작한다.
 MakeShapeKeyTracker(key, down) => (*) => SetShapeKeyHeld(key, down)
+
+; A·S: 특수 펜을 고른다. **한 번 누르면 계속 그 펜이다** — 전자칠판 앞에서는 키를 쥔 채로 칠판에
+; 그을 수 없어서 "누른 채로 긋기"를 바꿨다(2026-09-28 사용자 요청). 숫자키로 색을 고르면 보통
+; 펜으로 돌아온다(SetDrawColor). 긋는 중에 바꿔도 지금 획은 그대로이고 다음 획부터 바뀐다.
+SetPenKind(kind) {
+    global penKind
+    penKind := kind
+    if (kind = "laser")
+        LaserKeyDown() ; 커서 자리에 레이저 점을 띄운다
+}
+
+MakePenKindSetter(kind) => (*) => SetPenKind(kind)
 
 ; Esc: 판서 내용을 지우고 판서 모드까지 종료
 ; **칠판도 함께 걷는다.** 이쪽은 "이제 다 썼으니 정리한다"는 뜻이라, 다음에 켤 때는 아무것도
@@ -4218,11 +4362,19 @@ for pair in SHAPE_HOLD_KEYS {
         Hotkey(prefix pair[1] " up", MakeShapeKeyTracker(pair[1], false), "Off")
     }
 }
+; 특수 펜 키(A/S)는 한 번 누르면 고른 것이 유지되므로 누를 때만 받는다
+for pair in PEN_KIND_KEYS
+    for prefix in HOLD_KEY_PREFIXES
+        Hotkey(prefix pair[1], MakePenKindSetter(pair[2]), "Off")
 
 ; 위 키들은 드로잉 모드일 때만 켠다. 그래야 평소에 숫자나 Ctrl+Z를 다른 프로그램에서
 ; 그대로 쓸 수 있다.
 SetDrawModeHotkeys(state) {
     global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld, THICKNESS_KEYS, BOARD_KEYS, ALPHA_WHEEL_KEYS
+    global PEN_KIND_KEYS, HOLD_KEY_PREFIXES
+    for pair in PEN_KIND_KEYS
+        for prefix in HOLD_KEY_PREFIXES
+            Hotkey(prefix pair[1], state)
     Hotkey("Esc", state)
     Hotkey("Delete", state)
     Hotkey("^z", state)
