@@ -12,3 +12,6 @@ settings*.ini
 
 # 터치펜 확인 도구가 남기는 결과 파일 (기기마다 달라 공유할 것이 아님)
 터치펜-확인-결과.txt
+
+# Windows/OneDrive가 폴더마다 몰래 만드는 표시용 파일
+desktop.ini

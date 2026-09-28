@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Focus &amp; Draw 소개</title>
+<!--
+  선생님들께 보내는 소개 그림 일곱 장과 GitHub 썸네일의 원본이다.
+  그림을 다시 뽑으려면 이 폴더의 build.py를 실행한다 (그림을 끼워 넣고 Edge로 PNG를 뽑는다).
+  주소 끝의 #1 ~ #7(썸네일은 #og)로 몇 번째 장을 그릴지 고른다.
+  내용은 제작자가 쓴 소개글(2026-09-28)의 순서를 따른다. 용어는 "판서"가 아니라 "드로잉".
+-->
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --ink:#111827; --muted:#5b6275; --soft:#8a90a2; --line:#e4e7f2;
+    --blue:#1e6bff; --purple:#7b2cf5; --lav:#eef0ff; --lav2:#f6f7ff;
+    --on:#0a84ff; --red:#ff3b30; --green:#34a853;
+  }
+  html,body { width:1600px; height:900px; overflow:hidden; }
+  body { font-family:"Malgun Gothic","맑은 고딕",sans-serif; color:var(--ink); background:#fff; -webkit-font-smoothing:antialiased; }
+  .slide { display:none; position:relative; width:1600px; height:900px; padding:56px 80px 48px; overflow:hidden;
+    background:
+      radial-gradient(900px 500px at 105% -10%, rgba(123,44,245,.10), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, rgba(30,107,255,.09), transparent 60%),
+      #fff; }
+  .slide.show { display:flex; flex-direction:column; }
+
+  /* 위쪽 머리줄 */
+  .brand { display:flex; align-items:center; gap:12px; font-size:19px; font-weight:700; color:var(--muted); }
+  .brand img { width:34px; height:34px; border-radius:8px; }
+  .page { position:absolute; top:62px; right:80px; font-size:17px; color:var(--soft); font-weight:700; letter-spacing:1px; }
+  .kicker { margin-top:26px; font-size:20px; font-weight:700; color:var(--blue); letter-spacing:.5px; }
+  h1 { font-size:50px; font-weight:800; letter-spacing:-1.5px; margin-top:8px; line-height:1.2; }
+  .grad { background:linear-gradient(90deg,var(--blue),var(--purple)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { font-size:21px; color:var(--muted); margin-top:12px; line-height:1.55; }
+  .lead b { color:var(--ink); }
+
+  /* 키캡 */
+  .key { display:inline-flex; align-items:center; justify-content:center; min-width:36px; height:36px; padding:0 10px;
+    font-size:17px; font-weight:800; color:var(--ink); background:#fff; border:1.5px solid #cfd3e2; border-bottom-width:4px;
+    border-radius:9px; line-height:1; font-family:"Segoe UI","Malgun Gothic",sans-serif; white-space:nowrap; }
+  .key.lg { min-width:64px; height:56px; font-size:26px; border-radius:12px; border-bottom-width:5px; }
+  .plus { color:var(--soft); font-weight:700; margin:0 2px; }
+
+  /* 위젯 (실제 모양: 회색 바탕 + 흰 둥근 칸 세 개 + ⋮ ✕) */
+  .widget { display:inline-flex; align-items:center; gap:4px; padding:4px 6px; background:#f2f2f2;
+    box-shadow:0 6px 16px rgba(0,0,0,.18); border:1px solid #d9d9d9; }
+  .widget .nar { width:14px; height:32px; display:flex; align-items:center; justify-content:center; font-size:14px; color:#000; }
+  .widget .chip { width:32px; height:32px; border-radius:12px; background:#fff; display:flex; align-items:center; justify-content:center; }
+  .widget.dark { background:#2b2d33; border-color:#3a3d45; }
+  .widget.dark .nar { color:#fff; }
+  .widget.dark .chip { background:#3c3f47; }
+  .widget.dark .ico { background:#fff; }
+  .ico { width:22px; height:22px; background:#000; -webkit-mask-size:contain; -webkit-mask-repeat:no-repeat; -webkit-mask-position:center; }
+  .ico.on, .widget.dark .ico.on { background:var(--on); }
+  .ico-spot { -webkit-mask-image:url({{icon_spotlight.png}}); }
+  .ico-draw { -webkit-mask-image:url({{icon_draw.png}}); }
+  .ico-set  { -webkit-mask-image:url({{settings.png}}); }
+
+  .card { background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:0 10px 30px -18px rgba(34,38,80,.35); }
+  .foot { margin-top:auto; display:flex; justify-content:space-between; align-items:center; font-size:16px; color:var(--soft); }
+  .tipbar { display:flex; align-items:center; gap:14px; border-radius:16px; padding:16px 24px; font-size:19px; color:#303a57;
+    background:linear-gradient(90deg,rgba(30,107,255,.08),rgba(123,44,245,.10)); }
+  .tipbar b { color:var(--ink); }
+  .emo { font-family:"Segoe UI Emoji"; }
+  .badge { display:inline-flex; align-items:center; justify-content:center; width:40px; height:40px; border-radius:50%;
+    background:linear-gradient(135deg,var(--blue),var(--purple)); color:#fff; font-weight:800; font-size:20px; flex-shrink:0; }
+
+  /* 전자칠판 모양 틀 (표지·썸네일) */
+  .board { width:800px; flex-shrink:0; position:relative; }
+  .tv { background:#16181f; border-radius:18px; padding:14px 14px 22px; box-shadow:0 34px 60px -24px rgba(20,24,60,.55); position:relative; }
+  .tv .cam { position:absolute; top:5px; left:50%; width:5px; height:5px; margin-left:-2px; border-radius:50%; background:#3a3f4c; }
+  .tv .logo { position:absolute; bottom:5px; left:50%; transform:translateX(-50%); width:44px; height:4px; border-radius:2px; background:#2c303b; }
+  .panel { position:relative; width:772px; height:434px; background:#1e1e1e; border-radius:4px; overflow:hidden; }
+  .panel img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .panel .nocap { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#8a90a2; font-size:20px; }
+  .stand { margin:0 auto; width:120px; height:26px; background:linear-gradient(#cfd3df,#b8bdcb); clip-path:polygon(38% 0,62% 0,72% 100%,28% 100%); }
+  .foot2 { margin:0 auto; width:320px; height:10px; border-radius:6px; background:#c3c8d6; }
+  .capnote { text-align:center; margin-top:14px; font-size:15px; color:var(--soft); }
+
+  /* ---------- 1장: 표지 ---------- */
+  #s1 .wrap { display:flex; gap:56px; align-items:center; flex:1; }
+  #s1 .left { width:640px; flex-shrink:0; }
+  #s1 .appicon { width:112px; height:112px; border-radius:26px; box-shadow:0 18px 40px -14px rgba(60,40,200,.45); }
+  #s1 .title { font-size:84px; font-weight:800; letter-spacing:-3px; margin-top:22px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
+  #s1 .kor { font-size:22px; color:var(--soft); margin-top:12px; font-weight:700; letter-spacing:2px; }
+  #s1 .tag { font-size:38px; font-weight:800; margin-top:30px; line-height:1.35; letter-spacing:-1px; }
+  #s1 .desc { font-size:20px; color:var(--muted); margin-top:16px; line-height:1.6; }
+  #s1 .desc b { color:var(--ink); }
+  .pills { display:flex; gap:12px; margin-top:26px; flex-wrap:wrap; }
+  .pill { display:flex; align-items:center; gap:10px; padding:11px 18px; border-radius:40px; background:var(--lav2); border:1px solid var(--line); font-size:18px; font-weight:700; }
+  .pill small { font-weight:400; color:var(--muted); font-size:16px; }
+  .pill .dot { width:10px; height:10px; border-radius:50%; }
+
+  /* ---------- 2장: 왜 만들었나 ---------- */
+  #s2 .merge { display:flex; align-items:center; gap:18px; margin-top:24px; }
+  #s2 .old { padding:14px 22px; border-radius:16px; background:#f1f2f7; border:1px dashed #c9cedd; }
+  #s2 .old b { font-size:21px; display:block; color:#39405a; }
+  #s2 .old span { font-size:15px; color:var(--soft); }
+  #s2 .op { font-size:30px; color:#b3b8c8; font-weight:800; }
+  #s2 .new { display:flex; align-items:center; gap:14px; padding:12px 24px 12px 14px; border-radius:18px; background:#fff;
+    border:2px solid transparent; background-image:linear-gradient(#fff,#fff),linear-gradient(90deg,var(--blue),var(--purple));
+    background-origin:border-box; background-clip:padding-box,border-box; box-shadow:0 14px 30px -16px rgba(60,40,200,.45); }
+  #s2 .new img { width:52px; height:52px; border-radius:13px; }
+  #s2 .new b { font-size:23px; display:block; }
+  #s2 .new span { font-size:15px; color:var(--muted); }
+  #s2 .wishes { display:grid; grid-template-columns:repeat(3,1fr); gap:20px; margin-top:26px; }
+  #s2 .wish { padding:24px 26px; }
+  #s2 .wish .q { font-size:17px; color:var(--soft); font-weight:700; }
+  #s2 .wish .q em { font-style:normal; font-size:30px; font-weight:800; color:var(--ink); margin:0 2px; }
+  #s2 .wish .a { display:flex; gap:10px; margin-top:14px; font-size:17.5px; color:var(--muted); line-height:1.6; }
+  #s2 .wish .a b { color:var(--ink); }
+  #s2 .wish .a .arr { color:var(--purple); font-weight:800; }
+  #s2 .exe { display:flex; align-items:center; gap:26px; margin-top:20px; padding:22px 30px; }
+  #s2 .exe .fileic { width:66px; height:78px; flex-shrink:0; position:relative; }
+  #s2 .exe h4 { font-size:25px; font-weight:800; }
+  #s2 .exe p { font-size:17.5px; color:var(--muted); margin-top:6px; }
+  #s2 .exe p b { color:var(--ink); }
+  #s2 .exe .facts { margin-left:auto; display:flex; gap:12px; }
+  #s2 .exe .fact { text-align:center; padding:10px 18px; border-radius:14px; background:var(--lav2); border:1px solid var(--line); }
+  #s2 .exe .fact b { display:block; font-size:24px; font-weight:800; font-family:"Segoe UI","Malgun Gothic"; }
+  #s2 .exe .fact span { font-size:14px; color:var(--muted); }
+
+  /* ---------- 3장: 위젯 ---------- */
+  #s3 .flow { display:flex; align-items:stretch; margin-top:24px; }
+  #s3 .col { flex:1; padding:22px 26px 24px; display:flex; flex-direction:column; }
+  #s3 .col h4 { display:flex; align-items:center; gap:12px; font-size:23px; font-weight:800; }
+  #s3 .col p { font-size:16.5px; color:var(--muted); line-height:1.6; margin-top:14px; }
+  #s3 .col p b { color:var(--ink); }
+  #s3 .col .where { margin-top:auto; padding-top:12px; font-size:15px; color:#6b5bd6; font-weight:700; }
+  #s3 .vis { height:150px; margin-top:16px; border-radius:14px; overflow:hidden; position:relative; }
+  #s3 .gap { width:74px; flex-shrink:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--soft); font-size:14px; font-weight:700; text-align:center; }
+  #s3 .desk { background:linear-gradient(135deg,#dfe8ff,#efe6ff); }
+  #s3 .taskbar { position:absolute; left:0; right:0; bottom:0; height:38px; background:rgba(243,244,249,.96); border-top:1px solid #d9dce8; display:flex; align-items:center; justify-content:flex-end; gap:10px; padding:0 14px; font-size:12.5px; color:#39405a; font-family:"Segoe UI","Malgun Gothic"; }
+  #s3 .tray { width:26px; height:26px; border-radius:6px; display:flex; align-items:center; justify-content:center; }
+  #s3 .tray.hl { background:#dfe6fb; outline:2px solid #ffb020; outline-offset:1px; }
+  #s3 .keysvis { background:var(--lav2); display:flex; align-items:center; justify-content:center; gap:22px; }
+  #s3 .keysvis div { display:flex; flex-direction:column; align-items:center; gap:8px; font-size:15px; font-weight:700; color:var(--muted); }
+  #s3 .win { position:absolute; left:22px; top:18px; width:180px; height:72px; border-radius:8px; background:#fff; box-shadow:0 6px 14px rgba(0,0,0,.08); }
+
+  /* ---------- 4장: 개인화 ---------- */
+  #s4 .cols { display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-top:24px; }
+  #s4 .c { padding:22px 24px 22px; }
+  #s4 .c h4 { font-size:23px; font-weight:800; display:flex; align-items:center; gap:10px; }
+  #s4 .c h4 .dot { width:12px; height:12px; border-radius:50%; }
+  #s4 .vis { height:150px; margin-top:14px; border-radius:14px; background:var(--lav2); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  #s4 ul { list-style:none; margin-top:16px; display:flex; flex-direction:column; gap:9px; }
+  #s4 li { font-size:16.5px; color:var(--muted); line-height:1.45; padding-left:18px; position:relative; }
+  #s4 li::before { content:""; position:absolute; left:2px; top:9px; width:7px; height:7px; border-radius:50%; background:#b9b2f3; }
+  #s4 li b { color:var(--ink); }
+  #s4 .sw { display:flex; gap:5px; }
+  #s4 .sw span { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:12px; font-weight:800; color:#39405a; font-family:"Segoe UI"; }
+  #s4 .sw i { width:30px; height:30px; border-radius:7px; border:1.5px solid #c9cedd; display:block; }
+  #s4 .save { display:flex; align-items:center; gap:22px; margin-top:20px; padding:18px 28px; }
+  #s4 .save .txt { font-size:18px; color:#303a57; line-height:1.55; }
+  #s4 .save .txt b { color:var(--ink); }
+  #s4 .chain { margin-left:auto; display:flex; align-items:center; gap:12px; font-size:14px; color:var(--muted); font-weight:700; }
+  #s4 .chain .box { display:flex; flex-direction:column; align-items:center; gap:6px; }
+  #s4 .btnsave { padding:8px 18px; border-radius:8px; background:#fff; border:1.5px solid #c9cedd; font-size:16px; font-weight:800; color:var(--ink); }
+
+  /* ---------- 5장: 단축키 ---------- */
+  #s5 .wrap { display:flex; gap:34px; margin-top:22px; align-items:flex-start; }
+  #s5 .win { width:680px; flex-shrink:0; border-radius:10px; overflow:hidden; background:#fff; border:1px solid #d6d9e4;
+    box-shadow:0 30px 60px -22px rgba(34,38,80,.40), 0 8px 18px -8px rgba(34,38,80,.18); }
+  #s5 .win .tb { height:30px; display:flex; align-items:center; gap:8px; padding:0 10px; font-size:12.5px; color:#39405a; border-bottom:1px solid #eceef4; }
+  #s5 .win .tb img { width:16px; height:16px; border-radius:4px; }
+  #s5 .win .tb .x { margin-left:auto; color:#8a90a2; font-size:14px; }
+  #s5 .win .pic { display:block; width:678px; height:486px; }
+  #s5 .rows { flex:1; display:flex; flex-direction:column; gap:8px; }
+  #s5 .row { display:grid; grid-template-columns:230px 1fr; align-items:center; gap:14px; padding:9px 16px; border-radius:14px; background:#fff; border:1px solid var(--line); }
+  #s5 .row .ks { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  #s5 .row .what { font-size:16.5px; color:var(--muted); line-height:1.4; }
+  #s5 .row .what b { color:var(--ink); }
+  #s5 .row.grp { border-left:5px solid var(--c); }
+  #s5 .note { font-size:14.5px; color:var(--soft); margin-top:4px; line-height:1.5; }
+
+  /* ---------- 6장: 전자칠판 ---------- */
+  #s6 .wrap { display:flex; gap:34px; margin-top:22px; align-items:stretch; }
+  #s6 .dia { width:760px; flex-shrink:0; padding:24px 26px; display:flex; flex-direction:column; }
+  #s6 .dia .row { display:flex; align-items:center; gap:18px; flex:1; }
+  #s6 .pc { width:230px; flex-shrink:0; text-align:center; }
+  #s6 .pc .scr { height:130px; border-radius:10px; border:8px solid #22252d; background:#fbfcff; position:relative; overflow:hidden; }
+  #s6 .pc .base { height:12px; margin:0 -14px; border-radius:0 0 12px 12px; background:#c3c8d6; }
+  #s6 .pc .lbl { margin-top:12px; font-size:16px; font-weight:800; }
+  #s6 .pc .lbl small { display:block; font-weight:400; color:var(--muted); font-size:14px; margin-top:2px; }
+  #s6 .mid { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:14px; font-weight:700; color:var(--soft); }
+  #s6 .boards { display:flex; flex-direction:column; gap:14px; }
+  #s6 .bd { display:flex; align-items:center; gap:14px; }
+  #s6 .bd .fr { width:190px; height:107px; border-radius:8px; border:7px solid #16181f; background:#fbfcff; position:relative; overflow:hidden; }
+  #s6 .bd .fr svg { position:absolute; inset:0; }
+  #s6 .bd span { font-size:15px; color:var(--muted); font-weight:700; }
+  #s6 .bd span small { display:block; font-weight:400; font-size:13.5px; color:var(--soft); margin-top:2px; }
+  #s6 .dia .cap { margin-top:16px; padding:14px 18px; border-radius:14px; background:var(--lav); font-size:17px; color:#303a57; line-height:1.5; }
+  #s6 .dia .cap b { color:var(--ink); }
+  #s6 .list { flex:1; display:flex; flex-direction:column; gap:12px; }
+  #s6 .it { display:flex; gap:16px; align-items:center; padding:14px 20px; }
+  #s6 .it .ic { width:48px; height:48px; border-radius:14px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:25px; }
+  #s6 .it h4 { font-size:19px; font-weight:800; }
+  #s6 .it p { font-size:15.5px; color:var(--muted); margin-top:3px; line-height:1.5; }
+
+  /* ---------- 7장: 시작하기 ---------- */
+  #s7 .steps { display:flex; gap:24px; margin-top:22px; }
+  #s7 .step { flex:1; padding:20px 24px; }
+  #s7 .step h4 { display:flex; align-items:center; gap:14px; font-size:24px; font-weight:800; }
+  #s7 .step p { font-size:16.5px; color:var(--muted); line-height:1.55; margin-top:12px; }
+  #s7 .step p b { color:var(--ink); }
+  #s7 .ill { height:108px; margin-top:14px; border-radius:14px; background:var(--lav2); display:flex; align-items:center; justify-content:center; gap:18px; }
+  #s7 .warn { margin-top:10px; font-size:15px; color:#b4232a; background:#fff1f0; border-radius:10px; padding:8px 12px; line-height:1.45; }
+  #s7 .smart { width:250px; background:#0b5cad; border-radius:6px; padding:12px 14px; color:#fff; font-family:"Segoe UI","Malgun Gothic"; }
+  #s7 .smart .t { font-size:14px; font-weight:700; }
+  #s7 .smart .l { font-size:12px; text-decoration:underline; margin-top:8px; color:#cfe6ff; display:inline-block; padding:1px 4px; border:2px solid #ffd60a; border-radius:4px; }
+  #s7 .smart .btns { display:flex; justify-content:flex-end; gap:6px; margin-top:10px; }
+  #s7 .smart .btns span { font-size:12px; padding:4px 12px; border:1px solid #fff; }
+  #s7 .smart .btns .run { outline:2px solid #ffd60a; outline-offset:2px; }
+  #s7 .dl { display:flex; align-items:center; gap:30px; margin-top:20px; padding:22px 30px; border:2px solid transparent;
+    background-image:linear-gradient(#fff,#fff),linear-gradient(90deg,var(--blue),var(--purple)); background-origin:border-box; background-clip:padding-box,border-box; }
+  #s7 .dl .lab { font-size:17px; font-weight:800; color:var(--blue); }
+  #s7 .dl .url { font-size:29px; font-weight:800; margin-top:6px; font-family:"Segoe UI","Malgun Gothic"; letter-spacing:-.5px; }
+  #s7 .dl .sub { font-size:16px; color:var(--muted); margin-top:6px; }
+  #s7 .dl .mit { margin-left:auto; width:430px; padding:16px 20px; border-radius:14px; background:var(--lav2); border:1px solid var(--line); font-size:16px; color:var(--muted); line-height:1.55; }
+  #s7 .dl .mit b { color:var(--ink); }
+  #s7 .dl .mit .t { font-size:19px; font-weight:800; color:var(--ink); margin-bottom:4px; }
+
+  /* ---------- GitHub 링크 썸네일 (1280x640) ---------- */
+  html.og, html.og body { width:1280px; height:640px; }
+  #og { width:1280px; height:640px; padding:0 64px; flex-direction:row; align-items:center; gap:34px; }
+  #og .left { width:560px; flex-shrink:0; }
+  #og .appicon { width:88px; height:88px; border-radius:21px; box-shadow:0 14px 30px -12px rgba(60,40,200,.45); }
+  #og .title { font-size:70px; font-weight:800; letter-spacing:-2.5px; margin-top:20px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
+  #og .kor { font-size:20px; color:var(--soft); margin-top:10px; font-weight:700; letter-spacing:2px; }
+  #og .tag { font-size:30px; font-weight:800; margin-top:22px; line-height:1.35; letter-spacing:-.8px; }
+  #og .pills { gap:10px; margin-top:22px; }
+  #og .pill { padding:9px 15px; font-size:16px; }
+  #og .meta { margin-top:20px; font-size:16px; color:var(--soft); }
+  #og .boardwrap { width:800px; transform:scale(.74); transform-origin:left center; flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<!-- ======================= 1. 표지 ======================= -->
+<section class="slide" id="s1">
+  <div class="brand"><img src="{{icon.png}}">무료 수업 도구</div>
+  <div class="page">1 / 7</div>
+  <div class="wrap">
+    <div class="left">
+      <img class="appicon" src="{{icon.png}}">
+      <div class="title"><span class="grad">Focus &amp; Draw</span></div>
+      <div class="kor">포커스 앤 드로우</div>
+      <div class="tag">수업용 화면 강조 · 드로잉 도구</div>
+      <div class="desc">줌잇의 <b>드로잉</b>과 스팟마우스의 <b>하이라이트</b>를 하나로.<br>설치 없이 <b>exe 파일 하나</b>로 바로 실행합니다.</div>
+      <div class="pills">
+        <div class="pill"><span class="dot" style="background:var(--red)"></span>포커스 <small>커서 위치 강조</small></div>
+        <div class="pill"><span class="dot" style="background:var(--blue)"></span>드로잉 <small>화면 위에 그리기</small></div>
+        <div class="pill"><span class="dot" style="background:var(--green)"></span>전자칠판 <small>어느 칠판에서나</small></div>
+      </div>
+    </div>
+    <div class="board">
+      <div class="tv"><span class="cam"></span><span class="logo"></span>
+        <div class="panel"><div class="nocap">1번-화면.png</div><img src="{{?1번-화면.png}}" onerror="this.remove()"></div>
+      </div>
+      <div class="stand"></div><div class="foot2"></div>
+      <div class="capnote">Focus &amp; Draw로 직접 그려 본 화면</div>
+    </div>
+  </div>
+  <div class="foot"><span>무료 · MIT 라이선스 · 누구나 자유롭게 쓰고, 고치고, 나눠 주셔도 됩니다</span><span>제작 maker_SSAM · 버전 1.0.0</span></div>
+</section>
+
+<!-- ======================= 2. 왜 만들었나 ======================= -->
+<section class="slide" id="s2">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">2 / 7</div>
+  <div class="kicker">두 프로그램을 하나로</div>
+  <h1>줌잇 · 스팟마우스, <span class="grad">이제 하나로</span></h1>
+
+  <div class="merge">
+    <div class="old"><b>줌잇 (ZoomIt)</b><span>화면 위에 드로잉</span></div>
+    <div class="op">+</div>
+    <div class="old"><b>스팟마우스 (SpotMouse)</b><span>마우스 주변 하이라이트</span></div>
+    <svg width="70" height="30"><defs><linearGradient id="ag"><stop offset="0" stop-color="#1e6bff"/><stop offset="1" stop-color="#7b2cf5"/></linearGradient></defs><path d="M4 15 H56 M44 5 L60 15 L44 25" stroke="url(#ag)" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <div class="new"><img src="{{icon.png}}"><div><b>Focus &amp; Draw</b><span>하이라이트와 드로잉을 위젯 하나로</span></div></div>
+  </div>
+  <div class="lead" style="margin-top:22px">두 프로그램을 잘 쓰면서도 종종 이런 생각을 했습니다. 그래서 <b>AI의 도움을 받아 직접 만들었고</b>, 다른 선생님들께도 도움이 될 것 같아 공유합니다.</div>
+
+  <div class="wishes">
+    <div class="card wish">
+      <div class="q">두 기능을 <em>'합치면'</em> 좋겠다</div>
+      <div class="a"><span class="arr">→</span><span>두 프로그램의 대표 기능을 <b>하나의 프로그램</b>에서. 하이라이트와 드로잉을 <b>위젯 하나</b>로 켜고 끕니다.</span></div>
+    </div>
+    <div class="card wish">
+      <div class="q">좀 더 쓰기 <em>'편하면'</em> 좋겠다</div>
+      <div class="a"><span class="arr">→</span><span>필요한 순간 <b>클릭 한 번</b>, 드로잉 중에는 <b>키 하나</b>로. 복잡한 조합키를 외우지 않아도 돼요.</span></div>
+    </div>
+    <div class="card wish">
+      <div class="q">개인화가 <em>'강력하면'</em> 좋겠다</div>
+      <div class="a"><span class="arr">→</span><span>하이라이트, 펜의 색 · 굵기 · 투명도, 위젯, 단축키까지 <b>내 수업에 맞게</b>. 저장 한 번이면 폴더째 들고 다녀요.</span></div>
+    </div>
+  </div>
+
+  <div class="card exe">
+    <svg class="fileic" viewBox="0 0 66 78"><path d="M4 8 Q4 2 10 2 H44 L62 20 V70 Q62 76 56 76 H10 Q4 76 4 70 Z" fill="#fff" stroke="#c7cce0" stroke-width="3"/><path d="M44 2 V20 H62" fill="#eef0ff" stroke="#c7cce0" stroke-width="3" stroke-linejoin="round"/><image href="{{icon.png}}" x="15" y="30" width="36" height="36"/></svg>
+    <div>
+      <h4>설치 없이, <span class="grad">exe 파일 하나</span>로 바로 실행</h4>
+      <p>요란한 설치 과정이 없습니다. 하나뿐인 실행 파일을 더블클릭하면 끝 — <b>관리자 권한이 없어도</b> 됩니다.</p>
+    </div>
+    <div class="facts">
+      <div class="fact"><b>1.6MB</b><span>파일 하나</span></div>
+      <div class="fact"><b>0%</b><span>켜 둘 때 CPU</span></div>
+      <div class="fact"><b>14MB</b><span>켜 둘 때 메모리</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 3. 위젯 ======================= -->
+<section class="slide" id="s3">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">3 / 7</div>
+  <div class="kicker">늘 곁에 있는 작은 위젯</div>
+  <h1>잠깐 필요한 강조, <span class="grad">클릭 한 번에</span></h1>
+  <div class="lead">수업 중 하이라이트가 필요한 순간은 <b>아주 잠깐</b>입니다. 그때마다 프로그램을 켜고 끄다 보면 결국 안 쓰게 되죠.<br>화면 구석의 작은 위젯을 <b>한 번 누르면 바로</b> 켜지고 꺼집니다. 거슬리면 원하는 만큼만 보이게 하세요.</div>
+
+  <div class="flow">
+    <div class="card col">
+      <h4><span class="badge">1</span>위젯을 띄워 두고</h4>
+      <div class="vis desk">
+        <div class="win"></div>
+        <div style="position:absolute;right:16px;bottom:48px"><div class="widget"><div class="nar">⋮</div><div class="chip"><div class="ico ico-spot on"></div></div><div class="chip"><div class="ico ico-draw"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div></div></div>
+        <div class="taskbar"><span>오전 9:00</span></div>
+      </div>
+      <p>위젯은 화면 구석에 늘 떠 있습니다. <b>위치 · 크기 · 투명도 · 배경색</b>을 내 교실 화면에 맞게 바꿀 수 있어요.</p>
+      <div class="where">설정 → 위젯 탭</div>
+    </div>
+
+    <div class="gap"><span>거슬린다면</span><svg width="40" height="22"><path d="M2 11 H30 M22 3 L32 11 L22 19" stroke="#b3b8c8" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+    <div class="card col">
+      <h4><span class="badge">2</span>작업표시줄 아이콘으로</h4>
+      <div class="vis desk">
+        <div class="win"></div>
+        <div class="taskbar">
+          <span style="color:#8a90a2">^</span>
+          <div class="tray hl"><div class="ico ico-spot on" style="width:18px;height:18px"></div></div>
+          <div class="tray hl"><div class="ico ico-draw" style="width:18px;height:18px"></div></div>
+          <span>오전 9:00</span>
+        </div>
+      </div>
+      <p>위젯은 끄고 <b>작업표시줄의 아이콘 두 개</b>로 켜고 끕니다. 켜진 기능은 파란색으로 보여요.</p>
+      <div class="where">설정 → 위젯 탭 → "작업표시줄 아이콘 활성화"</div>
+    </div>
+
+    <div class="gap"><span>그것마저<br>거슬린다면</span><svg width="40" height="22"><path d="M2 11 H30 M22 3 L32 11 L22 19" stroke="#b3b8c8" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+
+    <div class="card col">
+      <h4><span class="badge">3</span>모두 숨기고 단축키로</h4>
+      <div class="vis keysvis">
+        <div><span class="key lg">F8</span>포커스</div>
+        <div><span class="key lg">F9</span>드로잉</div>
+      </div>
+      <p>화면에는 아무것도 두지 않고 <b>단축키만으로</b> 불러옵니다. 단축키는 <b>원하는 키로 바꿀 수</b> 있어요.</p>
+      <div class="where">설정 → 단축키 탭</div>
+    </div>
+  </div>
+
+  <div class="tipbar" style="margin-top:20px"><span class="emo" style="font-size:22px">🍃</span><span>항상 켜 두어도 PC 성능에 거의 영향이 없습니다 — 켜 두기만 했을 때 <b>CPU 0%, 메모리 약 14MB</b>.</span></div>
+</section>
+
+<!-- ======================= 4. 개인화 ======================= -->
+<section class="slide" id="s4">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">4 / 7</div>
+  <div class="kicker">강력한 개인화</div>
+  <h1>내 수업에 맞게, <span class="grad">마음대로 바꾸세요</span></h1>
+
+  <div class="cols">
+    <div class="card c">
+      <h4><span class="dot" style="background:var(--red)"></span>하이라이트 (포커스)</h4>
+      <div class="vis">
+        <svg width="380" height="150" viewBox="0 0 380 150">
+          <rect x="30" y="34" width="150" height="10" rx="5" fill="#e3e6f1"/><rect x="30" y="56" width="120" height="10" rx="5" fill="#e3e6f1"/><rect x="30" y="100" width="140" height="10" rx="5" fill="#e3e6f1"/>
+          <circle cx="112" cy="62" r="40" fill="#ffd60a" fill-opacity=".45"/>
+          <path d="M112 54 V70 M104 62 H120" stroke="#111" stroke-width="2.2"/>
+          <circle cx="260" cy="64" r="30" fill="none" stroke="#1e6bff" stroke-width="5" stroke-opacity=".8"/>
+          <circle cx="260" cy="64" r="16" fill="none" stroke="#1e6bff" stroke-width="3" stroke-opacity=".35"/>
+          <circle cx="330" cy="100" r="22" fill="none" stroke="#ff3b30" stroke-width="5" stroke-opacity=".8"/>
+          <text x="260" y="122" font-size="13" fill="#5b6275" text-anchor="middle" font-weight="700">왼쪽 클릭</text>
+          <text x="330" y="140" font-size="13" fill="#5b6275" text-anchor="middle" font-weight="700">오른쪽 클릭</text>
+        </svg>
+      </div>
+      <ul>
+        <li><b>색상 · 크기 · 투명도</b>를 세세하게</li>
+        <li>강조 중 <b>커서 숨기기</b> — 작은 십자선만</li>
+        <li><b>클릭 효과</b> — 왼쪽 · 오른쪽 따로 색과 빠르기</li>
+      </ul>
+    </div>
+
+    <div class="card c">
+      <h4><span class="dot" style="background:var(--blue)"></span>드로잉 펜</h4>
+      <div class="vis" style="flex-direction:column;gap:16px">
+        <div class="sw">
+          <span><i style="background:#FF0000"></i>1</span><span><i style="background:#FF7F00"></i>2</span><span><i style="background:#FFFF00"></i>3</span><span><i style="background:#00FF00"></i>4</span><span><i style="background:#0000FF"></i>5</span><span><i style="background:#4B0082"></i>6</span><span><i style="background:#9400D3"></i>7</span><span><i style="background:#000"></i>8</span><span><i style="background:#fff"></i>9</span><span><i style="background:linear-gradient(135deg,#ff3b30 50%,#1e6bff 50%)"></i>0</span>
+        </div>
+        <svg width="360" height="40" viewBox="0 0 360 40">
+          <rect x="14" y="8" width="150" height="10" rx="5" fill="#e3e6f1"/><rect x="14" y="26" width="110" height="10" rx="5" fill="#e3e6f1"/>
+          <path d="M14 22 H164" stroke="#ffd60a" stroke-opacity=".55" stroke-width="20" stroke-linecap="round"/>
+          <path d="M200 30 C 230 4, 250 36, 280 12 S 330 20, 346 8" stroke="#ff3b30" stroke-width="6" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <ul>
+        <li><b>기본 펜</b>의 색 · 굵기 · 투명도</li>
+        <li><b>숫자키 1~9 펜</b>마다 색과 투명도 — 낮추면 형광펜</li>
+        <li>칠판(W · E · R) 색도 내 색으로</li>
+      </ul>
+    </div>
+
+    <div class="card c">
+      <h4><span class="dot" style="background:var(--purple)"></span>위젯 · 단축키</h4>
+      <div class="vis" style="gap:26px">
+        <div class="widget" style="transform:scale(.8)"><div class="nar">⋮</div><div class="chip"><div class="ico ico-spot"></div></div><div class="chip"><div class="ico ico-draw on"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div></div>
+        <div class="widget dark" style="transform:scale(1.15)"><div class="nar">⋮</div><div class="chip"><div class="ico ico-spot on"></div></div><div class="chip"><div class="ico ico-draw"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div></div>
+      </div>
+      <ul>
+        <li>위젯 <b>크기(60~250%) · 배경색 · 투명도</b></li>
+        <li>위젯 / 작업표시줄 아이콘 / 단축키만 — 골라 쓰기</li>
+        <li>포커스 · 드로잉 <b>단축키를 원하는 키로</b></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card save">
+    <span class="emo" style="font-size:30px">💾</span>
+    <div class="txt">모든 설정은 <b>'저장' 버튼 한 번</b>으로 프로그램 폴더 안 파일 하나에 저장됩니다.<br>컴퓨터를 바꿔도 <b>폴더째 복사해 실행하면</b> 나만의 설정이 그대로예요.</div>
+    <div class="chain">
+      <div class="box"><span class="btnsave">저장</span>한 번</div>
+      <span>→</span>
+      <div class="box"><span class="emo" style="font-size:34px">📁</span>폴더째 복사</div>
+      <span>→</span>
+      <div class="box"><span class="emo" style="font-size:34px">💻</span>다른 PC에서도 그대로</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 5. 단축키 ======================= -->
+<section class="slide" id="s5">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">5 / 7</div>
+  <div class="kicker">직관적인 단축키</div>
+  <h1>드로잉 중에는 <span class="grad">키 하나로</span></h1>
+  <div class="lead">영어 첫 글자가 아니라 <b>키보드의 자리</b>로 모았습니다. 줄마다 쓰임새가 정해져 있어 금방 손에 익어요.</div>
+
+  <div class="wrap">
+    <div class="win">
+      <div class="tb"><img src="{{icon.png}}">Focus &amp; Draw - 드로잉 모드 단축키<span class="x">✕</span></div>
+      <img class="pic" src="{{shortcuts.png}}">
+    </div>
+    <div class="rows">
+      <div class="row grp" style="--c:#1e6bff"><div class="ks"><span class="key">1</span><span class="plus">~</span><span class="key">9</span><span class="key">0</span></div><div class="what"><b>펜 색</b> 바꾸기 · 0은 기본 색</div></div>
+      <div class="row grp" style="--c:#34a853"><div class="ks"><span class="key">Q</span><span class="key">W</span><span class="key">E</span><span class="key">R</span></div><div class="what"><b>칠판</b> — 투명 / 흰색 / 초록 / 검정</div></div>
+      <div class="row grp" style="--c:#e0569b"><div class="ks"><span class="key">A</span><span class="key">S</span></div><div class="what"><b>특수 펜</b> — 사라지는 레이저 펜 / 무지개 펜</div></div>
+      <div class="row grp" style="--c:#7b2cf5"><div class="ks"><span class="key">Z</span><span class="key">X</span><span class="key">C</span></div><div class="what"><b>직선 · 물결 · 화살표</b> (+ Shift로 반듯하게)</div></div>
+      <div class="row"><div class="ks"><span class="key">Shift</span><span class="key">Ctrl</span></div><div class="what">+ 드래그로 <b>사각형 / 원</b></div></div>
+      <div class="row"><div class="ks"><span class="key">우클릭</span><span class="key">+</span><span class="key">−</span></div><div class="what"><b>지우개</b> · 펜 <b>굵기</b> (우클릭 중엔 지우개 굵기)</div></div>
+      <div class="row"><div class="ks"><span class="key">휠</span></div><div class="what">펜 <b>투명도</b> — 위로 진하게, 아래로 연하게</div></div>
+      <div class="row"><div class="ks"><span class="key">Ctrl</span><span class="plus">+</span><span class="key">Z</span><span class="key">Del</span><span class="key">Esc</span></div><div class="what"><b>실행 취소 · 모두 지우기 · 지우고 끝내기</b></div></div>
+      <div class="row"><div class="ks"><span class="key">F8</span><span class="key">F9</span></div><div class="what"><b>포커스 · 드로잉</b> 켜고 끄기 (다른 키로 변경 가능)</div></div>
+      <div class="note">외우지 않아도 됩니다 — 설정 창의 "드로잉 모드 단축키 보기"를 누르면 왼쪽 그림이 뜹니다.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 6. 전자칠판 ======================= -->
+<section class="slide" id="s6">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">6 / 7</div>
+  <div class="kicker">전자칠판에도 친화적으로</div>
+  <h1>어느 교실 칠판이든, <span class="grad">늘 같은 방법으로</span></h1>
+  <div class="lead">전자칠판은 대부분 <b>PC 화면을 미러링</b>해서 씁니다. 그런데 화면 위에 필기하는 기능은 제조사마다 달라서,<br>교실을 옮기거나 다른 곳에서 수업하면 그 칠판의 사용법을 몰라 당황하기 쉽죠.</div>
+
+  <div class="wrap">
+    <div class="card dia">
+      <div class="row">
+        <div class="pc">
+          <div class="scr">
+            <svg width="214" height="114" viewBox="0 0 214 114"><rect x="16" y="16" width="110" height="9" rx="4.5" fill="#e3e6f1"/><rect x="16" y="34" width="80" height="9" rx="4.5" fill="#e3e6f1"/><path d="M40 72 C 40 50, 110 48, 112 68 C 114 90, 44 94, 42 76" stroke="#ff3b30" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M130 86 C 146 70, 160 96, 178 78" stroke="#1e6bff" stroke-width="4" fill="none" stroke-linecap="round"/></svg>
+            <div style="position:absolute;right:6px;bottom:6px"><div class="widget" style="transform:scale(.55);transform-origin:right bottom"><div class="nar">⋮</div><div class="chip"><div class="ico ico-spot"></div></div><div class="chip"><div class="ico ico-draw on"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div></div></div>
+          </div>
+          <div class="base"></div>
+          <div class="lbl">교실 PC<small>Focus &amp; Draw는 여기서 동작</small></div>
+        </div>
+        <div class="mid"><span>화면 미러링</span><svg width="70" height="24"><path d="M4 12 H58 M48 4 L62 12 L48 20" stroke="#b3b8c8" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="boards">
+          <div class="bd"><div class="fr"><svg viewBox="0 0 214 114" preserveAspectRatio="none"><rect x="16" y="16" width="110" height="9" rx="4.5" fill="#e3e6f1"/><rect x="16" y="34" width="80" height="9" rx="4.5" fill="#e3e6f1"/><path d="M40 72 C 40 50, 110 48, 112 68 C 114 90, 44 94, 42 76" stroke="#ff3b30" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M130 86 C 146 70, 160 96, 178 78" stroke="#1e6bff" stroke-width="4" fill="none" stroke-linecap="round"/></svg></div><span>1반 칠판<small>A사 제품</small></span></div>
+          <div class="bd"><div class="fr"><svg viewBox="0 0 214 114" preserveAspectRatio="none"><rect x="16" y="16" width="110" height="9" rx="4.5" fill="#e3e6f1"/><rect x="16" y="34" width="80" height="9" rx="4.5" fill="#e3e6f1"/><path d="M40 72 C 40 50, 110 48, 112 68 C 114 90, 44 94, 42 76" stroke="#ff3b30" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M130 86 C 146 70, 160 96, 178 78" stroke="#1e6bff" stroke-width="4" fill="none" stroke-linecap="round"/></svg></div><span>과학실 칠판<small>B사 제품</small></span></div>
+          <div class="bd"><div class="fr"><svg viewBox="0 0 214 114" preserveAspectRatio="none"><rect x="16" y="16" width="110" height="9" rx="4.5" fill="#e3e6f1"/><rect x="16" y="34" width="80" height="9" rx="4.5" fill="#e3e6f1"/><path d="M40 72 C 40 50, 110 48, 112 68 C 114 90, 44 94, 42 76" stroke="#ff3b30" stroke-width="4" fill="none" stroke-linecap="round"/><path d="M130 86 C 146 70, 160 96, 178 78" stroke="#1e6bff" stroke-width="4" fill="none" stroke-linecap="round"/></svg></div><span>연수실 칠판<small>C사 제품</small></span></div>
+        </div>
+      </div>
+      <div class="cap">칠판이 아니라 <b>PC에서 동작</b>하므로, 칠판의 기능과 관계없이 <b>미러링된 화면 위에 늘 같은 방법으로</b> 그릴 수 있습니다.</div>
+    </div>
+
+    <div class="list">
+      <div class="card it"><div class="ic emo" style="background:#eef3ff">✍️</div><div><h4>닿는 순간 바로 그려져요</h4><p>손가락 · 터치펜으로 쓰기. 특수 펜과 도형도 터치로 바로.</p></div></div>
+      <div class="card it"><div class="ic emo" style="background:#fff5e0">✋</div><div><h4>손날로 문지르면 지우개</h4><p>손바닥 옆면을 대고 문지르면 넓게 지워져요.</p></div></div>
+      <div class="card it"><div class="ic emo" style="background:#f3edff">✌️</div><div><h4>두 손가락으로 톡, 실행 취소</h4><p>방금 그은 것을 되돌립니다. 키보드까지 갈 필요가 없어요.</p></div></div>
+      <div class="card it"><div class="ic emo" style="background:#eaf7f0">🖊️</div><div><h4>펜 뒤쪽으로 지우기</h4><p>앞뒤를 구분하는 펜이면 뒤집어 대는 쪽이 지우개가 돼요.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 7. 시작하기 ======================= -->
+<section class="slide" id="s7">
+  <div class="brand"><img src="{{icon.png}}">Focus &amp; Draw</div>
+  <div class="page">7 / 7</div>
+  <div class="kicker">시작하기</div>
+  <h1>세 단계면 <span class="grad">바로 쓸 수 있어요</span></h1>
+
+  <div class="steps">
+    <div class="card step">
+      <h4><span class="badge">1</span>내려받아 압축 풀기</h4>
+      <div class="ill">
+        <svg width="84" height="96" viewBox="0 0 84 96"><rect x="6" y="4" width="72" height="88" rx="10" fill="#fff" stroke="#c7cce0" stroke-width="3"/><rect x="36" y="4" width="12" height="44" fill="#e3e6f3"/><g fill="#9aa2bd"><rect x="36" y="8" width="6" height="6"/><rect x="42" y="16" width="6" height="6"/><rect x="36" y="24" width="6" height="6"/><rect x="42" y="32" width="6" height="6"/></g><rect x="30" y="50" width="24" height="18" rx="4" fill="#9aa2bd"/></svg>
+        <svg width="40" height="24"><path d="M2 12 H30 M22 4 L32 12 L22 20" stroke="#1e6bff" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <svg width="110" height="86" viewBox="0 0 110 86"><path d="M4 16 Q4 8 12 8 H40 L50 18 H98 Q106 18 106 26 V76 Q106 82 98 82 H12 Q4 82 4 76 Z" fill="#ffcf4a"/><path d="M4 30 H106 V76 Q106 82 98 82 H12 Q4 82 4 76 Z" fill="#ffdb70"/><image href="{{icon.png}}" x="38" y="38" width="34" height="34"/></svg>
+      </div>
+      <p>받은 zip을 마우스 오른쪽 버튼 → <b>압축 풀기</b>. 바탕화면이나 문서처럼 평범한 폴더에 두세요.</p>
+      <div class="warn">⚠ 압축 안에서 바로 실행하거나 Program Files에 두면 설정이 저장되지 않아요</div>
+    </div>
+    <div class="card step">
+      <h4><span class="badge">2</span>실행하기</h4>
+      <div class="ill">
+        <div class="smart">
+          <div class="t">Windows의 PC 보호</div>
+          <span class="l">추가 정보</span>
+          <div class="btns"><span class="run">실행</span><span>실행 안 함</span></div>
+        </div>
+      </div>
+      <p><b>focus-draw.exe</b>를 더블클릭. 파란 창이 뜨면 <b>추가 정보 → 실행</b>을 누르세요. 전자서명이 없는 개인 제작 프로그램에 뜨는 안내로, 처음 한 번만 확인하면 됩니다.</p>
+    </div>
+    <div class="card step">
+      <h4><span class="badge">3</span>위젯으로 켜고 끄기</h4>
+      <div class="ill" style="justify-content:flex-end;padding-right:22px;align-items:flex-end;padding-bottom:16px;background:linear-gradient(180deg,#f6f7ff 0,#f6f7ff 78%,#dfe3f0 78%)">
+        <div class="widget" style="transform:scale(1.25);transform-origin:right bottom;margin-bottom:18px">
+          <div class="nar">⋮</div><div class="chip"><div class="ico ico-spot on"></div></div><div class="chip"><div class="ico ico-draw"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div>
+        </div>
+      </div>
+      <p>화면 <b>오른쪽 아래</b>의 위젯에서 <b>포커스 · 드로잉 · 설정</b>을 누르세요. 단축키는 <span class="key" style="height:28px;min-width:0;font-size:14px;padding:0 7px">F8</span> <span class="key" style="height:28px;min-width:0;font-size:14px;padding:0 7px">F9</span>.</p>
+    </div>
+  </div>
+
+  <div class="card dl">
+    <span class="emo" style="font-size:40px">⬇️</span>
+    <div>
+      <div class="lab">내려받기 (항상 최신 버전)</div>
+      <div class="url">github.com/maker-SSAM/focus-draw/releases/latest</div>
+      <div class="sub">Windows 10 / 11 · 무료 · 설치 없음</div>
+    </div>
+    <div class="mit">
+      <div class="t">MIT 라이선스</div>
+      오픈소스 프로젝트의 정신을 잇습니다. <b>누구나 무료로 쓰고, 자유롭게 고치고 나눌 수</b> 있어요.
+    </div>
+  </div>
+</section>
+
+<!-- ======================= GitHub 링크 썸네일 ======================= -->
+<section class="slide" id="og">
+  <div class="left">
+    <img class="appicon" src="{{icon.png}}">
+    <div class="title"><span class="grad">Focus &amp; Draw</span></div>
+    <div class="kor">포커스 앤 드로우</div>
+    <div class="tag">수업용 화면 강조 · 드로잉 도구</div>
+    <div class="pills">
+      <div class="pill"><span class="dot" style="background:var(--red)"></span>포커스</div>
+      <div class="pill"><span class="dot" style="background:var(--blue)"></span>드로잉</div>
+      <div class="pill"><span class="dot" style="background:var(--green)"></span>전자칠판</div>
+    </div>
+    <div class="meta">무료 · Windows · 설치 없이 exe 파일 하나</div>
+  </div>
+  <div class="boardwrap"></div>
+</section>
+
+<script>
+  var h = (location.hash || '#1').slice(1);
+  if (h === 'og') {
+    // 썸네일: 1장의 전자칠판 장면을 그대로 가져온다 (아래 설명 줄은 뺀다)
+    document.documentElement.classList.add('og');
+    var b = document.querySelector('#s1 .board').cloneNode(true);
+    var n = b.querySelector('.capnote'); if (n) n.remove();
+    document.querySelector('#og .boardwrap').appendChild(b);
+    document.getElementById('og').classList.add('show');
+  } else {
+    document.getElementById('s' + (parseInt(h, 10) || 1)).classList.add('show');
+  }
+</script>
+</body>
+</html>

@@ -7,6 +7,10 @@
 
 **내려받기: https://github.com/maker-SSAM/focus-draw/releases/latest** — `Focus-Draw-<버전>.zip`을 받아 압축을 풀고 `focus-draw.exe`를 실행하세요. (Windows 10 / 11)
 
+![Focus & Draw — 수업용 화면 강조 · 드로잉 도구](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C/01-%EC%86%8C%EA%B0%9C.png)
+
+한눈에 보는 소개 그림 7장은 [소개자료](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C) 폴더에 있습니다. 동료 선생님께 그대로 보내셔도 됩니다.
+
 ## 준비물
 
 배포용 `focus-draw.exe`를 받았다면 아무것도 설치할 필요 없이 바로 실행하면 됩니다.
