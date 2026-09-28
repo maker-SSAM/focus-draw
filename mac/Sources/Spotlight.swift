@@ -6,8 +6,9 @@ let OVERLAY_LEVEL = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.screenSave
 let WIDGET_LEVEL = NSWindow.Level(rawValue: OVERLAY_LEVEL.rawValue + 1)
 let SPOT_LEVEL = NSWindow.Level(rawValue: OVERLAY_LEVEL.rawValue + 2)
 
-// 모든 데스크톱(Space)과 다른 앱의 전체 화면 위에도 뜨게 한다
-let EVERYWHERE: NSWindow.CollectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
+// 모든 데스크톱(Space)과 다른 앱의 전체 화면 위에도 뜨게 한다.
+// 기본은 [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle] — 실험 메뉴에서 바꿔 볼 수 있다.
+var EVERYWHERE: NSWindow.CollectionBehavior { Experiments.collectionBehavior }
 
 final class GlassPanel: NSPanel {
     override var canBecomeKey: Bool { false }

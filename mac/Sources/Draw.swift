@@ -195,9 +195,16 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
 }
 
 // ================= 화면마다 하나씩 까는 투명 판 =================
+// B안(지금 방식)은 보통 창, A·C안은 앱을 앞으로 부르지 않는 비활성 패널 (Experiments.swift)
 final class InkWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+}
+
+final class InkPanel: NSPanel {
+    var keyable = true // C안: 키 창이 되지 않는다 (키는 드로잉 중에만 전역 단축키로 받는다)
+    override var canBecomeKey: Bool { keyable }
+    override var canBecomeMain: Bool { false }
 }
 
 final class InkView: NSView {
@@ -230,6 +237,9 @@ final class InkView: NSView {
         cacheImage = c.makeImage()
         needsDisplay = true
     }
+
+    var hasCache: Bool { cache != nil || cacheImage != nil }
+    func releaseCache() { cache = nil; cacheImage = nil }
 
     func commit(_ item: InkItem) {
         guard let c = cache else { rebuildCache(); return }
@@ -275,12 +285,14 @@ final class InkView: NSView {
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.activeAlways, .mouseMoved, .mouseEnteredAndExited, .inVisibleRect],
                                        owner: self, userInfo: nil))
     }
-    override func mouseEntered(with e: NSEvent) { ctl.cursor.set() }
+    override func mouseEntered(with e: NSEvent) { ctl.mouseEntered(globalPoint(e)) }
+    override func mouseExited(with e: NSEvent) { ctl.mouseExited() }
     override func mouseMoved(with e: NSEvent) { ctl.mouseMoved(globalPoint(e)) }
-    override func mouseDown(with e: NSEvent) { window?.makeKey(); ctl.down(globalPoint(e), e, right: false) }
+    override func mouseDown(with e: NSEvent) { makeKeyIfAllowed(); ctl.down(globalPoint(e), e, right: false) }
     override func mouseDragged(with e: NSEvent) { ctl.drag(globalPoint(e), e) }
     override func mouseUp(with e: NSEvent) { ctl.up(globalPoint(e)) }
-    override func rightMouseDown(with e: NSEvent) { window?.makeKey(); ctl.down(globalPoint(e), e, right: true) }
+    override func rightMouseDown(with e: NSEvent) { makeKeyIfAllowed(); ctl.down(globalPoint(e), e, right: true) }
+    private func makeKeyIfAllowed() { if window?.canBecomeKey == true, window?.isKeyWindow == false { window?.makeKey() } }
     override func rightMouseDragged(with e: NSEvent) { ctl.drag(globalPoint(e), e) }
     override func rightMouseUp(with e: NSEvent) { ctl.up(globalPoint(e)) }
     override func scrollWheel(with e: NSEvent) { ctl.scroll(e) }
@@ -299,8 +311,15 @@ final class DrawController {
     private(set) var isOn = false
     var onStateChange: (Bool) -> Void = { _ in }
 
-    private var windows: [InkWindow] = []
+    private var windows: [NSWindow] = []
     private var views: [InkView] { windows.compactMap { $0.contentView as? InkView } }
+    var inkWindowNumbers: [Int] { windows.map(\.windowNumber) }
+
+    // 시험용 스위치(Experiments)는 켤 때 읽어 끌 때까지 고정한다
+    private(set) var keyMode: KeyMode = .b
+    private(set) var boardCursor = false
+    private var windowsBuiltFor = ""
+    let carbonKeys = CarbonDrawKeys()
 
     // 그린 것
     private(set) var items: [InkItem] = []
@@ -342,12 +361,18 @@ final class DrawController {
 
     private var previousApp: NSRunningApplication?
     private(set) var cursor = NSCursor.arrow
+    // 판에 직접 그리는 붓 동그라미 (boardCursor일 때)
+    private var cursorImage: NSImage?
+    private var mouseInside = true
 
     init() {
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification,
                                                object: nil, queue: .main) { [weak self] _ in
             self?.rebuildWindows()
         }
+        carbonKeys.isDrawing = { [weak self] in self?.isOn == true && self?.keyMode == .c }
+        carbonKeys.onKey = { [weak self] code, flags, rep in self?.handleKey(code, flags, isRepeat: rep, source: "hk") }
+        carbonKeys.onKeyUp = { [weak self] code in self?.handleKeyUp(code, source: "hk") }
     }
 
     // ---------- 켜고 끄기 ----------
@@ -362,15 +387,27 @@ final class DrawController {
         pen = .normal
         if let off = offSince, Date().timeIntervalSince(off) > 30 { setUndoFloor(items.count) }
         offSince = nil
-        if windows.isEmpty { rebuildWindows() }
+        keyMode = Experiments.keyMode
+        boardCursor = Experiments.boardCursor
+        if windows.isEmpty || windowsBuiltFor != windowSignature { rebuildWindows() }
 
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.processIdentifier == ProcessInfo.processInfo.processIdentifier ? nil : front
         isOn = true
-        NSApp.activate(ignoringOtherApps: true)
+        if keyMode == .b { NSApp.activate(ignoringOtherApps: true) } // A·C안은 발표 앱을 앞에 그대로 둔다
         for w in windows { w.orderFrontRegardless() }
-        keyWindowUnderMouse()
+        if keyMode != .c { keyWindowUnderMouse() }
+        if keyMode == .c { carbonKeys.registerAll() }
+        mouse = NSEvent.mouseLocation
+        mouseInside = true
+        if boardCursor { SystemCursor.hide("board"); invalidateAll() } // 지난번 자리에 남은 동그라미까지 지운다
         updateCursor()
+        Diag.log("DRAW", "on \(Experiments.summary) front=\(previousApp?.bundleIdentifier ?? "-") windows=\(windows.count)")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.isOn else { return }
+            Diag.log("DRAW", "0.3s after on: active=\(NSApp.isActive) key=\(NSApp.keyWindow.map { String(describing: type(of: $0)) } ?? "-") "
+                     + "front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "?")")
+        }
         onStateChange(true)
     }
 
@@ -383,13 +420,32 @@ final class DrawController {
         }
         cancelLive()
         laser = []; laserLive = nil
+        // C안: 드로잉 키 단축키를 반드시 푼다 (안 풀리면 시스템 전체에서 그 글자를 못 친다)
+        let freed = carbonKeys.unregisterAll()
         isOn = false
         offSince = Date()
         for w in windows { w.orderOut(nil) }
+        SystemCursor.show("board")
         NSCursor.arrow.set()
-        if let app = previousApp, !app.isTerminated { app.activate() }
+        if keyMode == .b { handBack() }
         previousApp = nil
+        Diag.log("DRAW", "off clear=\(clear) mode=\(keyMode.rawValue) drawkeysFreed=\(freed.removed) errors=\(freed.errors) "
+                 + "left=\(carbonKeys.ids.count) cursorHidden=\(SystemCursor.hidden)")
         onStateChange(false)
+    }
+
+    // B안: 켤 때 앞에 있던 앱에게 돌려준다. macOS 14부터는 "양보한 뒤 그 앱이 스스로 앞으로" 오는 방식이 정석이다.
+    private func handBack() {
+        guard let app = previousApp, !app.isTerminated else { return }
+        if #available(macOS 14.0, *) {
+            NSApp.yieldActivation(to: app)
+            let ok = app.activate(from: NSRunningApplication.current, options: [])
+            if !ok { app.activate() } // 시험판에서 되던 방법으로 한 번 더
+            Diag.log("DRAW", "handBack yield+activate(from:) ok=\(ok) to=\(app.bundleIdentifier ?? "?")")
+        } else {
+            let ok = app.activate()
+            Diag.log("DRAW", "handBack activate ok=\(ok) to=\(app.bundleIdentifier ?? "?")")
+        }
     }
 
     private func keyWindowUnderMouse() {
@@ -397,10 +453,36 @@ final class DrawController {
         (windows.first { $0.frame.contains(m) } ?? windows.first)?.makeKey()
     }
 
-    private func rebuildWindows() {
-        for w in windows { w.orderOut(nil) }
+    private var windowSignature: String {
+        "\(keyMode.rawValue)-\(Experiments.panelInB)-\(Experiments.behavior.rawValue)"
+    }
+
+    private func makeInkWindow(_ frame: NSRect) -> NSWindow {
+        switch keyMode {
+        case .b where !Experiments.panelInB:
+            return InkWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        case .b:
+            return InkPanel(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        case .a, .c:
+            let p = InkPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            p.keyable = keyMode == .a
+            p.becomesKeyOnlyIfNeeded = false
+            return p
+        }
+    }
+
+    func rebuildWindows() {
+        // 옛 판은 닫고 화면 크기만 한 캐시 그림을 직접 버린다. 앞서 키 창이었던 판(InkView)은 닫고 떼어 내도
+        // 무언가가 계속 붙들고 있어서(원인 미확인, S1b 기록), 캐시를 버리지 않으면 모니터를 바꿀 때마다 쌓인다.
+        for w in windows {
+            w.orderOut(nil)
+            (w.contentView as? InkView)?.releaseCache()
+            w.close()
+            w.contentView = nil
+        }
+        windowsBuiltFor = windowSignature
         windows = NSScreen.screens.map { screen in
-            let w = InkWindow(contentRect: screen.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+            let w = makeInkWindow(screen.frame)
             w.setFrame(screen.frame, display: false)
             w.isOpaque = false
             // 완전히 투명한 곳은 클릭이 뒤 창으로 빠져나가므로, 눈에 안 띌 만큼만 칠해 둔다
@@ -421,7 +503,7 @@ final class DrawController {
         }
         if isOn {
             for w in windows { w.orderFrontRegardless() }
-            keyWindowUnderMouse()
+            if keyMode != .c { keyWindowUnderMouse() }
         }
     }
 
@@ -477,17 +559,55 @@ final class DrawController {
             }
         }
         cursor = NSCursor(image: img, hotSpot: NSPoint(x: img.size.width / 2, y: img.size.height / 2))
-        if isOn { cursor.set() }
+        if boardCursor {
+            invalidate(cursorRect)
+            cursorImage = img
+            invalidate(cursorRect)
+        } else if isOn {
+            cursor.set()
+        }
+    }
+
+    // 판에 직접 그릴 때 붓 동그라미가 차지하는 자리
+    private var cursorRect: CGRect {
+        guard let img = cursorImage else { return .null }
+        return CGRect(x: mouse.x - img.size.width / 2 - 1, y: mouse.y - img.size.height / 2 - 1,
+                      width: img.size.width + 2, height: img.size.height + 2)
+    }
+
+    private func moveMouse(_ p: CGPoint) {
+        guard boardCursor, isOn else { mouse = p; return }
+        invalidate(cursorRect)
+        mouse = p
+        invalidate(cursorRect)
     }
 
     // ---------- 마우스 ----------
     func mouseMoved(_ p: CGPoint) {
-        mouse = p
-        cursor.set()
+        Diag.moves += 1
+        moveMouse(p)
+        if !boardCursor { cursor.set() }
+    }
+
+    func mouseEntered(_ p: CGPoint) {
+        guard boardCursor, isOn else { cursor.set(); return }
+        mouseInside = true
+        SystemCursor.hide("board")
+        moveMouse(p)
+    }
+
+    // 판 밖(위젯 위, 판이 없는 곳)으로 나가면 평소 화살표를 돌려준다
+    func mouseExited() {
+        guard boardCursor, isOn else { return }
+        let top = NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0)
+        if inkWindowNumbers.contains(top) { return } // 다른 화면의 판으로 옮겨 간 것
+        mouseInside = false
+        invalidate(cursorRect)
+        SystemCursor.show("board")
     }
 
     func down(_ p: CGPoint, _ e: NSEvent, right: Bool) {
-        mouse = p
+        moveMouse(p)
         start = p; lastPoint = p
         activePen = pen
         if right { rightDown = true }
@@ -518,7 +638,7 @@ final class DrawController {
     }
 
     func drag(_ p: CGPoint, _ e: NSEvent) {
-        mouse = p
+        moveMouse(p)
         if erasing, var item = live {
             item.points.append(p)
             live = item
@@ -667,16 +787,20 @@ final class DrawController {
     private static let digitKeys: [UInt16: Int] = [18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9, 29: 0,
                                                    83: 1, 84: 2, 85: 3, 86: 4, 87: 5, 88: 6, 89: 7, 91: 8, 92: 9, 82: 0]
 
-    func keyDown(_ e: NSEvent) {
-        let k = e.keyCode
-        let f = e.modifierFlags
+    func keyDown(_ e: NSEvent) { handleKey(e.keyCode, e.modifierFlags, isRepeat: e.isARepeat, source: "view") }
+    func keyUp(_ e: NSEvent) { handleKeyUp(e.keyCode, source: "view") }
+
+    // 판이 받은 키(B·A안)와 전역 단축키로 받은 키(C안)가 모두 여기로 온다
+    func handleKey(_ k: UInt16, _ f: NSEvent.ModifierFlags, isRepeat: Bool, source: String) {
+        Diag.keys += 1
+        Diag.log("KEY", "\(source) down code=\(k) mods=\(modsText(f))\(isRepeat ? " repeat" : "")")
         // ⌘Z / Ctrl+Z만 실행 취소로 쓴다. ⌘⇧Z(다시 실행이 아니다, 그냥 무시)는 걸러낸다.
         if !f.contains(.shift), f.contains(.command) || f.contains(.control), k == 6 { undo(); return }
         if f.contains(.command) { return }
         switch k {
         case 53: turnOff(clear: true)                              // Esc
         case 51, 117: clearAll()                                   // delete / 앞으로 지우기
-        case 6, 7, 8: if !e.isARepeat { held.insert(k) }           // Z X C: 누르고 있는 동안 도형
+        case 6, 7, 8: if !isRepeat { held.insert(k) }              // Z X C: 누르고 있는 동안 도형
         case 0: pen = .laser; updateCursor()                       // A
         case 1: pen = .rainbow; updateCursor()                     // S
         case 12: board = 0; invalidateAll(); updateCursor()        // Q
@@ -697,7 +821,15 @@ final class DrawController {
         }
     }
 
-    func keyUp(_ e: NSEvent) { held.remove(e.keyCode) }
+    func handleKeyUp(_ k: UInt16, source: String) {
+        if [6, 7, 8].contains(k) { Diag.log("KEY", "\(source) up code=\(k)") }
+        held.remove(k)
+    }
+
+    private func modsText(_ f: NSEvent.ModifierFlags) -> String {
+        let s = (f.contains(.control) ? "⌃" : "") + (f.contains(.option) ? "⌥" : "") + (f.contains(.shift) ? "⇧" : "") + (f.contains(.command) ? "⌘" : "")
+        return s.isEmpty ? "-" : s
+    }
 
     func flagsChanged(_ e: NSEvent) {
         // Shift를 드래그 도중에 눌러도 방향 맞춤이 바로 따라온다
@@ -735,6 +867,12 @@ final class DrawController {
             NSColor(white: 0.1, alpha: 0.8).setFill()
             NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7).fill()
             str.draw(at: NSPoint(x: r.midX - str.size().width / 2, y: r.midY - str.size().height / 2))
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        if boardCursor, isOn, mouseInside, let img = cursorImage {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+            img.draw(in: cursorRect.insetBy(dx: 1, dy: 1))
             NSGraphicsContext.restoreGraphicsState()
         }
     }

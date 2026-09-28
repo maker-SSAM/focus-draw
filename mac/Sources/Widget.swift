@@ -24,6 +24,13 @@ final class WidgetView: NSView {
     var drawOn = false { didSet { needsDisplay = true } }
     var onAction: (Part) -> Void = { _ in }
     var onMoved: (NSPoint) -> Void = { _ in }
+    // 오른쪽 클릭(⌃ 클릭)하면 메뉴 막대 아이콘과 같은 메뉴 — 노치 뒤로 아이콘이 숨었을 때를 위해
+    var contextMenu: () -> NSMenu? = { nil }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard let m = contextMenu() else { return }
+        NSMenu.popUpContextMenu(m, with: event, for: self)
+    }
 
     private var icons: [String: NSImage] = [:]
     private var dragStart: NSPoint?
@@ -114,6 +121,7 @@ final class WidgetView: NSView {
     override func mouseMoved(with event: NSEvent) { NSCursor.arrow.set() }
 
     override func mouseDown(with event: NSEvent) {
+        if event.modifierFlags.contains(.control) { rightMouseDown(with: event); return }
         let p = convert(event.locationInWindow, from: nil)
         let hit = part(at: p)
         if hit == .grip || hit == nil {

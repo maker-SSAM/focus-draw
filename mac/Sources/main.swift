@@ -12,9 +12,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var changes: AnyCancellable?
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        let args = CommandLine.arguments
+        func arg(_ name: String) -> String? {
+            guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
+            return args[i + 1]
+        }
+        let selftest = arg("--selftest"), bench = arg("--bench")
+        // 자체 점검·속도 측정은 사용자가 고른 실험 스위치와 진단 기록을 건드리지 않는다
+        if selftest != nil || bench != nil {
+            Experiments.memoryOnly = [:]
+        } else if Diag.wanted || args.contains("--diag") {
+            Diag.start(reason: args.contains("--diag") ? "--diag" : "menu")
+        }
+        Diag.appState = { [weak self] in self?.diagState ?? "" }
+        Diag.inkWindowNumbers = { [weak self] in self?.draw.inkWindowNumbers ?? [] }
+        Experiments.onChange = { [weak self] in self?.experimentsChanged() }
+
         Settings.shared.load()
         widget = Widget()
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
+        widget.view.contextMenu = { [weak self] in
+            let m = NSMenu()
+            self?.fillMenu(m)
+            return m
+        }
 
         clicks.enabledNow = { [weak self] in
             guard let self else { return false }
@@ -28,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.widget.view.drawOn = on
             // 위젯을 숨겨 둔 상태라면(showWidget = false) 드로잉을 켜고 꺼도 다시 나타나지 않아야 한다
             self.widget.setVisible(Settings.shared.showWidget) // 보일 때만 드로잉 판보다 위로
+            self.updateSpotCursor()
+            Diag.setActive(on || self.spotlight.isOn)
         }
 
         settingsWindow.onSave = { Settings.shared.save() }
@@ -43,16 +66,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         // F8·F9 (맥북은 fn과 함께), 그리고 fn 없이 누를 수 있는 ⌃⌥1·⌃⌥2
-        HotKeys.register(keyCode: kVK_F8) { [weak self] in self?.toggleSpotlight() }
-        HotKeys.register(keyCode: kVK_F9) { [weak self] in self?.draw.toggle() }
-        HotKeys.register(keyCode: kVK_ANSI_1, modifiers: controlKey | optionKey) { [weak self] in self?.toggleSpotlight() }
-        HotKeys.register(keyCode: kVK_ANSI_2, modifiers: controlKey | optionKey) { [weak self] in self?.draw.toggle() }
+        func hotkey(_ code: Int, _ mods: Int, _ name: String, _ action: @escaping () -> Void) {
+            HotKeys.register(keyCode: code, modifiers: mods, name: name) {
+                Diag.log("HK", "press \(name)")
+                action()
+            }
+        }
+        hotkey(kVK_F8, 0, "F8") { [weak self] in self?.toggleSpotlight() }
+        hotkey(kVK_F9, 0, "F9") { [weak self] in self?.draw.toggle() }
+        hotkey(kVK_ANSI_1, controlKey | optionKey, "⌃⌥1") { [weak self] in self?.toggleSpotlight() }
+        hotkey(kVK_ANSI_2, controlKey | optionKey, "⌃⌥2") { [weak self] in self?.draw.toggle() }
 
         setupStatusItem()
 
-        let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "--selftest"), i + 1 < args.count {
-            DispatchQueue.main.async { SelfTest.run(self, out: args[i + 1]) }
+        if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
+        if let out = bench { DispatchQueue.main.async { Bench.run(self, out: out) } }
+    }
+
+    // 진단 기록 1초마다 한 줄에 들어가는 앱 상태
+    var diagState: String {
+        "draw=\(draw.isOn ? 1 : 0) spot=\(spotlight.isOn ? 1 : 0) mode=\(draw.keyMode.rawValue) "
+            + "cursor=\(draw.boardCursor ? "board" : "system") hidden=\(SystemCursor.hidden ? 1 : 0) drawkeys=\(draw.carbonKeys.ids.count)"
+    }
+
+    // 실험 스위치가 바뀌면: 드로잉은 끄고(다음에 켤 때 새 방식으로 판을 만든다) 떠 있는 창들의 동작 조합을 바꾼다
+    func experimentsChanged() {
+        if draw.isOn { draw.turnOff(clear: false) }
+        for w in NSApp.windows where w.level.rawValue >= OVERLAY_LEVEL.rawValue { w.collectionBehavior = EVERYWHERE }
+        updateSpotCursor()
+    }
+
+    // 실험: 강조 중에는 화살표를 숨긴다 (드로잉 중에는 드로잉 쪽이 커서를 맡는다)
+    func updateSpotCursor() {
+        if Experiments.hideSpotCursor && spotlight.isOn && !draw.isOn {
+            SystemCursor.hide("spot")
+        } else {
+            SystemCursor.show("spot")
         }
     }
 
@@ -65,6 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func toggleSpotlight() {
         spotlight.toggle()
         widget.view.spotOn = spotlight.isOn
+        Diag.log("SPOT", spotlight.isOn ? "on" : "off")
+        updateSpotCursor()
+        Diag.setActive(spotlight.isOn || draw.isOn)
     }
 
     func widgetAction(_ part: WidgetView.Part) {
@@ -100,7 +152,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
+    func menuNeedsUpdate(_ menu: NSMenu) { fillMenu(menu) }
+
+    func fillMenu(_ menu: NSMenu) {
         menu.removeAllItems()
         func add(_ title: String, _ action: Selector, key: String = "", on: Bool = false) {
             let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
@@ -114,6 +168,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         add("위젯 표시", #selector(menuWidget), on: Settings.shared.showWidget)
         add("설정...", #selector(openSettings), key: ",")
         menu.addItem(.separator())
+        add("진단 기록", #selector(menuDiag), on: Diag.isOn)
+        add("진단 기록 폴더 열기", #selector(menuDiagFolder))
+        Experiments.appendMenu(to: menu)
+        menu.addItem(.separator())
         add("Focus & Draw 종료", #selector(menuQuit), key: "q")
     }
 
@@ -122,10 +180,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
     @objc func menuQuit() { NSApp.terminate(nil) }
 
-    // 수업 중 메뉴 막대에서 종료해도: 그린 것은 그대로 둔 채 드로잉만 끄고(판을 닫고, 커서를 되돌리고)
-    // 앱이 죽는다. draw.turnOff가 이미 판 닫기·커서 복구·이전 앱 활성화를 다 한다.
+    // 켜 두면 앱을 다시 열어도 이어서 기록한다
+    @objc func menuDiag() {
+        if Diag.isOn {
+            Diag.wanted = false
+            Diag.stop()
+        } else {
+            Diag.wanted = true
+            Diag.start(reason: "menu")
+            Diag.setActive(draw.isOn || spotlight.isOn)
+        }
+    }
+
+    @objc func menuDiagFolder() {
+        try? FileManager.default.createDirectory(at: Diag.folder, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(Diag.folder)
+    }
+
+    // 수업 중 메뉴 막대에서 종료해도: 그린 것은 그대로 둔 채 드로잉만 끄고(판을 닫고, 커서를 되돌리고,
+    // 드로잉 키 단축키를 풀고) 앱이 죽는다. 숨겨 둔 커서도 반드시 되돌린다.
     func applicationWillTerminate(_ n: Notification) {
         draw.turnOff(clear: false)
+        SystemCursor.showAll()
+        Diag.log("SESSION", "quit")
+        Diag.stop()
     }
 }
 
