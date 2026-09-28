@@ -8,7 +8,7 @@
 ; 컴파일된 exe는 이 아이콘을 파일 아이콘이자 트레이 아이콘으로 함께 사용한다.
 ;@Ahk2Exe-SetMainIcon focus-draw.ico
 ;@Ahk2Exe-SetName Focus & Draw
-;@Ahk2Exe-SetDescription Focus & Draw - 마우스 강조 / 화면 판서
+;@Ahk2Exe-SetDescription Focus & Draw - 마우스 강조 / 화면 드로잉
 ;@Ahk2Exe-SetVersion 1.0.0
 ;@Ahk2Exe-SetCopyright (c) 2026 maker_SSAM (MIT License)
 
@@ -26,7 +26,7 @@ OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
 ; 프로그램 안에서 읽을 수 없어서, 아쉽지만 두 곳에 같은 숫자를 적어두는 수밖에 없다.
 APP_VERSION := "1.0.0"
 
-A_IconTip := "Focus & Draw v" APP_VERSION " - 마우스 강조 / 화면 판서"
+A_IconTip := "Focus & Draw v" APP_VERSION " - 마우스 강조 / 화면 드로잉"
 
 ; 컴파일된 exe는 위 SetMainIcon으로 넣은 아이콘을 트레이 아이콘으로도 그대로 쓰지만,
 ; .ahk 소스로 직접 실행할 때는 AutoHotkey 기본 아이콘(초록색 H)이 뜬다. 소스로 실행할 때도
@@ -4261,7 +4261,7 @@ SetTrayIconsVisible(show) {
     showTrayIcons := show
     if show {
         AddQuickTrayIcon(1, spotlightOn ? hIconSpotOn : hIconSpotOff, "강조 켜기/끄기")
-        AddQuickTrayIcon(2, drawOn ? hIconDrawOn : hIconDrawOff, "판서 켜기/끄기")
+        AddQuickTrayIcon(2, drawOn ? hIconDrawOn : hIconDrawOff, "드로잉 켜기/끄기")
     } else {
         RemoveQuickTrayIcon(1)
         RemoveQuickTrayIcon(2)
