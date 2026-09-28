@@ -4399,8 +4399,9 @@ SetDrawModeHotkeys(state) {
 }
 
 ; ================= 전역 단축키 등록/검증 =================
-; 글자 키 하나만 단축키로 잡으면 그 글자를 어느 프로그램에서도 칠 수 없게 된다. Shift만 더해도
-; 마찬가지(대문자를 못 침)라, Ctrl이나 Alt를 반드시 포함하게 한다. 기능키(F1~F24)는 글을 쓸 때
+; 글자 키 하나만 단축키로 잡으면 글을 쓰는 동안 그 글자를 칠 때마다 강조·드로잉이 켜지고 꺼진다
+; (키는 앞 프로그램에도 넘어가므로 글자 자체는 쳐진다 — RegisterHotkey 참고). Shift만 더해도
+; 마찬가지(대문자를 칠 때마다)라, Ctrl이나 Alt를 반드시 포함하게 한다. 기능키(F1~F24)는 글을 쓸 때
 ; 쓰지 않으니 단독으로도 허용한다.
 IsSafeHotkey(combo) {
     if (combo = "")
@@ -4412,6 +4413,12 @@ IsSafeHotkey(combo) {
 
 ; combo를 name 동작의 전역 단축키로 등록한다. 성공하면 true.
 ; 이미 등록돼 있던 조합은 먼저 해제해서, 옛 조합이 계속 살아있는 일이 없게 한다.
+;
+; **키를 삼키지 않고 앞에 있는 프로그램에도 그대로 넘긴다(~).** 예전에는 가로채기만 해서,
+; 한글에서 F8(맞춤법 검사)이 아예 안 먹었다(2026-09-28 제보). 같은 키를 쓰는 프로그램은 셀 수 없이
+; 많아 목록으로 골라낼 수 없으므로, 어디서든 넘겨주고 우리도 함께 동작하게 했다(사용자 결정) —
+; 한글에서 F8을 누르면 맞춤법 검사와 강조 켜기가 함께 일어난다. 강조는 다시 누르면 꺼지니 큰 문제가 아니다.
+; 설정 창과 settings.ini에는 ~ 없이 적고, 실제로 등록할 때만 붙인다.
 RegisterHotkey(name, combo) {
     global HOTKEY_ACTIONS, hotkeyRegistered
     if hotkeyRegistered.Has(name) {
@@ -4421,11 +4428,11 @@ RegisterHotkey(name, combo) {
     if (combo = "")
         return false
     try {
-        Hotkey(combo, HOTKEY_ACTIONS[name], "On")
-        hotkeyRegistered[name] := combo
+        Hotkey("~" combo, HOTKEY_ACTIONS[name], "On")
+        hotkeyRegistered[name] := "~" combo
         return true
     }
-    return false ; 다른 프로그램이 선점한 조합 등
+    return false ; 키 이름을 알아볼 수 없는 경우 등
 }
 
 ; 설정 창의 단축키 칸에서 값이 바뀌었을 때 불린다. 문제가 있으면 원래 조합으로 되돌리고
@@ -4441,7 +4448,7 @@ ChangeHotkey(name, combo, ctrl) {
     old := hotkeyCombos[name]
     reason := ""
     if !IsSafeHotkey(combo)
-        reason := "Ctrl이나 Alt를 함께 누르는 조합으로 정해주세요.`n`n글자 키 하나만 지정하면 그 글자를 어느 프로그램에서도 칠 수 없게 됩니다. (F1~F12 같은 기능키는 단독으로도 됩니다)"
+        reason := "Ctrl이나 Alt를 함께 누르는 조합으로 정해주세요.`n`n글자 키 하나만 지정하면 글을 쓰는 동안 그 글자를 칠 때마다 기능이 켜지고 꺼집니다. (F1~F12 같은 기능키는 단독으로도 됩니다)"
     else {
         for otherName, otherCombo in hotkeyCombos {
             if (otherName != name && otherCombo = combo) {
@@ -4451,7 +4458,7 @@ ChangeHotkey(name, combo, ctrl) {
         }
     }
     if (reason = "" && !RegisterHotkey(name, combo)) {
-        reason := "다른 프로그램이 이미 쓰고 있어 이 조합은 등록할 수 없습니다.`n다른 조합으로 정해주세요."
+        reason := "이 조합은 단축키로 등록할 수 없습니다.`n다른 조합으로 정해주세요."
         RegisterHotkey(name, old) ; 원래 단축키를 되살려서 아무것도 안 먹는 상태를 피한다
     }
 
