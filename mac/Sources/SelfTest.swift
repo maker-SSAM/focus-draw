@@ -65,6 +65,53 @@ enum SelfTest {
         d.draw.keyDown(key(53, "\u{1B}"))                   // Esc
         log.append("draw on after Esc: \(d.draw.isOn)")
 
+        // ---- S1a: 수업 중 멈춤 버그 점검 ----
+        // H1: 무지개 펜으로 긋는 도중 색 키·레이저 키를 눌러도 죽지 않고 points/hues 길이가 맞아야 한다
+        d.draw.keyDown(key(1, "s"))                                     // 무지개 펜
+        d.draw.down(P(80, 640), mouse(.leftMouseDown, P(80, 640)), right: false)
+        d.draw.drag(P(120, 640), mouse(.leftMouseDragged, P(120, 640)))
+        d.draw.keyDown(key(20, "3"))                                    // 긋는 도중 색 키 (다음 획부터 적용돼야 함)
+        d.draw.drag(P(200, 640), mouse(.leftMouseDragged, P(200, 640)))
+        d.draw.keyDown(key(0, "a"))                                     // 긋는 도중 레이저 키
+        d.draw.drag(P(280, 640), mouse(.leftMouseDragged, P(280, 640)))
+        d.draw.up(P(280, 640))
+        if let last = d.draw.items.last {
+            log.append("H1 무지개 도중 키 변경 (안 죽음): points=\(last.points.count) hues=\(last.hues?.count ?? -1)")
+        }
+
+        // H1: 레이저로 긋는 도중 무지개 키를 눌러도 이번 획은 레이저로 끝나고(목록에 안 쌓임),
+        // 새 획부터 무지개가 적용된다 — laserLive가 안 막히고 제대로 끝나야 다음 확인도 통과한다
+        let beforeLaserSwap = d.draw.items.count
+        d.draw.keyDown(key(0, "a"))                                     // 레이저 펜
+        d.draw.down(P(80, 700), mouse(.leftMouseDown, P(80, 700)), right: false)
+        d.draw.drag(P(150, 700), mouse(.leftMouseDragged, P(150, 700)))
+        d.draw.keyDown(key(1, "s"))                                     // 긋는 도중 무지개로 전환 시도
+        d.draw.drag(P(220, 700), mouse(.leftMouseDragged, P(220, 700)))
+        d.draw.up(P(220, 700))
+        log.append("레이저 획은 목록에 안 쌓임: \(d.draw.items.count == beforeLaserSwap)")
+        stroke([P(80, 750), P(200, 750)])                               // 새 획 → 이제 무지개여야 한다
+        log.append("다음 획부터 무지개 적용: \(d.draw.items.last?.hues != nil)")
+
+        // 제자리 오른쪽 클릭·⌥ 클릭(트랙패드 두 손가락 탭 포함)은 아무것도 지우지 않고 실행 취소 기록도 남기지 않는다
+        let beforeStillClick = d.draw.items.count
+        d.draw.down(P(400, 700), mouse(.rightMouseDown, P(400, 700)), right: true)
+        d.draw.up(P(400, 700))
+        log.append("제자리 오른쪽 클릭 무변화: \(d.draw.items.count == beforeStillClick)")
+
+        // L1: ⌘⇧Z는 실행 취소가 아니다
+        let beforeShiftUndo = d.draw.items.count
+        d.draw.keyDown(key(6, "z", [.command, .shift]))
+        log.append("cmd-shift-z는 실행 취소가 아님: \(d.draw.items.count == beforeShiftUndo)")
+
+        // H2: 위젯을 숨긴 채 드로잉을 두 번 켜고 꺼도 계속 숨어 있어야 한다
+        Settings.shared.showWidget = false
+        d.applySettings()
+        d.draw.turnOn(); d.draw.turnOff(clear: false)
+        d.draw.turnOn(); d.draw.turnOff(clear: false)
+        log.append("숨긴 위젯이 드로잉 토글 후에도 숨어 있음: \(!d.widget.window.isVisible)")
+        Settings.shared.showWidget = true
+        d.applySettings()
+
         try? log.joined(separator: "\n").write(to: dir.appendingPathComponent("log.txt"), atomically: true, encoding: .utf8)
         NSApp.terminate(nil)
     }

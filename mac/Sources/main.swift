@@ -26,7 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.spotlight.suspended = on
             self.widget.view.drawOn = on
-            self.widget.window.orderFrontRegardless() // 드로잉 판보다 위에
+            // 위젯을 숨겨 둔 상태라면(showWidget = false) 드로잉을 켜고 꺼도 다시 나타나지 않아야 한다
+            self.widget.setVisible(Settings.shared.showWidget) // 보일 때만 드로잉 판보다 위로
         }
 
         settingsWindow.onSave = { Settings.shared.save() }
@@ -120,6 +121,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
     @objc func menuQuit() { NSApp.terminate(nil) }
+
+    // 수업 중 메뉴 막대에서 종료해도: 그린 것은 그대로 둔 채 드로잉만 끄고(판을 닫고, 커서를 되돌리고)
+    // 앱이 죽는다. draw.turnOff가 이미 판 닫기·커서 복구·이전 앱 활성화를 다 한다.
+    func applicationWillTerminate(_ n: Notification) {
+        draw.turnOff(clear: false)
+    }
 }
 
 let app = NSApplication.shared

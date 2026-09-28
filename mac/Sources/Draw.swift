@@ -54,12 +54,14 @@ func renderInk(_ item: InkItem, in ctx: CGContext) {
     case .stroke:
         let translucent = item.alpha < 1
         if translucent {
+            ctx.clip(to: item.bounds) // 화면 전체가 아니라 이 획 크기만큼만 임시 그림을 만든다
             ctx.setAlpha(item.alpha)
             ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         }
-        if let hues = item.hues, item.points.count > 1 {
+        if let hues = item.hues, !hues.isEmpty, item.points.count > 1 {
+            // hues가 점 수보다 짧아도(방어적으로) 배열 밖을 읽지 않는다
             for i in 1..<item.points.count {
-                ctx.setStrokeColor(hueColor(hues[i]))
+                ctx.setStrokeColor(hueColor(hues[min(i, hues.count - 1)]))
                 ctx.move(to: item.points[i - 1])
                 ctx.addLine(to: item.points[i])
                 ctx.strokePath()
@@ -311,6 +313,9 @@ final class DrawController {
     private var penStep = 5
     private var eraserStep = 5
     private var pen: PenKind = .normal
+    // 마우스를 누른 순간의 펜 종류를 잠근다. 긋는 도중 키로 pen을 바꿔도 이번 획은 끝까지
+    // activePen대로 그려지고(hues·points 길이가 어긋나 죽는 일이 없다), 새 pen은 다음 획부터 적용된다.
+    private var activePen: PenKind = .normal
     private var rainbowHue: CGFloat = 0
     private var board = 0 // 0 = 투명(Q), 1~3 = W/E/R
 
@@ -484,6 +489,7 @@ final class DrawController {
     func down(_ p: CGPoint, _ e: NSEvent, right: Bool) {
         mouse = p
         start = p; lastPoint = p
+        activePen = pen
         if right { rightDown = true }
         if right || e.modifierFlags.contains(.option) {
             // 지우개: 오른쪽 버튼으로 문지르기 (트랙패드에서는 ⌥ Option을 누른 채 끌기)
@@ -495,7 +501,7 @@ final class DrawController {
             return
         }
         mode = currentShape(e.modifierFlags)
-        if pen == .laser {
+        if activePen == .laser {
             if mode == .free {
                 laserLive = [LaserPt(p: p, t: Date.timeIntervalSinceReferenceDate, hue: nil)]
                 startLaserTimer()
@@ -506,7 +512,7 @@ final class DrawController {
         }
         let w = penPx(penStep)
         live = InkItem(kind: .stroke, points: [p], width: w, rgb: rgb, alpha: alpha,
-                       hues: pen == .rainbow ? [rainbowHue] : nil)
+                       hues: activePen == .rainbow ? [rainbowHue] : nil)
         liveBounds = live!.bounds
         invalidate(liveBounds)
     }
@@ -520,7 +526,7 @@ final class DrawController {
             lastPoint = p
             return
         }
-        if pen == .laser, laserLive != nil {
+        if activePen == .laser, laserLive != nil {
             let now = Date.timeIntervalSinceReferenceDate
             if mode == .free {
                 laserLive!.append(LaserPt(p: p, t: now, hue: nil))
@@ -533,7 +539,7 @@ final class DrawController {
         }
         guard var item = live else { return }
         if mode == .free {
-            if pen == .rainbow {
+            if activePen == .rainbow {
                 rainbowHue = (rainbowHue + hypot(p.x - lastPoint.x, p.y - lastPoint.y) * 360 / RAINBOW_CYCLE_PX)
                     .truncatingRemainder(dividingBy: 360)
                 item.hues?.append(rainbowHue)
@@ -541,7 +547,7 @@ final class DrawController {
             item.points.append(p)
             live = item
             // 반투명 획은 획 전체를 한 겹으로 다시 얹으므로 지나온 자리 전체를, 불투명하면 새 토막만 다시 그린다
-            invalidate(item.alpha < 1 || pen == .rainbow ? item.bounds : segmentBounds(lastPoint, p, item.width))
+            invalidate(item.alpha < 1 || activePen == .rainbow ? item.bounds : segmentBounds(lastPoint, p, item.width))
         } else {
             refreshShape(end: shapeEnd(p, e.modifierFlags))
         }
@@ -552,12 +558,14 @@ final class DrawController {
         rightDown = false
         if erasing {
             erasing = false
-            if let item = live { commit(item) }
+            // 움직이지 않은 오른쪽 클릭·⌥ 클릭(트랙패드 두 손가락 탭 포함)은 아무것도 지우지 않고
+            // 실행 취소 단계도 남기지 않는다
+            if let item = live, item.points.count > 1 { commit(item) }
             live = nil
             updateCursor()
             return
         }
-        if pen == .laser, let pts = laserLive {
+        if activePen == .laser, let pts = laserLive {
             // 도형은 손을 뗀 순간부터 함께 사라진다
             let now = Date.timeIntervalSinceReferenceDate
             if !pts.isEmpty { laser.append(mode == .free ? pts : pts.map { LaserPt(p: $0.p, t: now, hue: $0.hue) }) }
@@ -566,7 +574,7 @@ final class DrawController {
             return
         }
         guard let item = live else { return }
-        if pen == .rainbow, mode != .free, let h = item.hues?.last { rainbowHue = h }
+        if activePen == .rainbow, mode != .free, let h = item.hues?.last { rainbowHue = h }
         commit(item)
         live = nil
         updateCursor()
@@ -590,7 +598,7 @@ final class DrawController {
     private func refreshShape(end: CGPoint) {
         guard var item = live else { return }
         item.points = shapePoints(mode, start, end, width: item.width)
-        if pen == .rainbow {
+        if activePen == .rainbow {
             // 테두리를 따라 색이 돈다. 미리보기는 매번 획을 시작한 색에서 다시 출발한다.
             var h = item.hues?.first ?? rainbowHue
             var hues: [CGFloat] = [h]
@@ -662,7 +670,8 @@ final class DrawController {
     func keyDown(_ e: NSEvent) {
         let k = e.keyCode
         let f = e.modifierFlags
-        if (f.contains(.command) || f.contains(.control)) && k == 6 { undo(); return } // ⌘Z / Ctrl+Z
+        // ⌘Z / Ctrl+Z만 실행 취소로 쓴다. ⌘⇧Z(다시 실행이 아니다, 그냥 무시)는 걸러낸다.
+        if !f.contains(.shift), f.contains(.command) || f.contains(.control), k == 6 { undo(); return }
         if f.contains(.command) { return }
         switch k {
         case 53: turnOff(clear: true)                              // Esc
