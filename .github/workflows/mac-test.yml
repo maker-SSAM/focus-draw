@@ -1,0 +1,32 @@
+# 맥용 Focus & Draw 자동 점검: mac/ 아래가 바뀐 push마다 macOS 15·26·인텔에서 그림 기준 점검과 글 점검을 돈다.
+# 화면이 없는 컴퓨터에서 도므로 창이 필요한 --selftest는 건너뛴다 (FD_HEADLESS=1).
+# 실패하면 차이 그림과 축소 모음(mac/build/test-out)을 결과물로 남긴다.
+name: mac-test
+
+on:
+  push:
+    paths:
+      - 'mac/**'
+      - '.github/workflows/mac-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-26, macos-15-intel]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        env:
+          FD_HEADLESS: '1'
+        run: mac/build.sh --test
+      - name: Keep the diff pictures when a check fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-out-${{ matrix.os }}
+          path: mac/build/test-out

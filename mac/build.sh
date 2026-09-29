@@ -3,13 +3,16 @@
 # Xcode 없이 명령줄 도구(xcode-select --install)만 있으면 된다.
 #   build.sh            개발용: 애플 실리콘+인텔, "실험" 메뉴 포함, zip
 #   build.sh --quick    고치는 동안: 이 맥의 칩만, 실험 메뉴 포함, zip 없음
-#   build.sh --test     --quick으로 만든 뒤 자체 점검을 돌려 한 줄로 알려 준다 (커밋 전 한 번)
+#   build.sh --test     --quick으로 만든 뒤 그림 기준 점검(Tests/golden)과 자체 점검을 돌려 한 줄로 알려 준다 (커밋 전 한 번)
+#                       FD_HEADLESS=1이면 화면이 필요한 자체 점검(--selftest)은 건너뛴다 (GitHub 자동 점검용)
+#   build.sh --run      --quick으로 만든 뒤 켜져 있던 앱을 끄고 새 앱을 띄운다
+#   build.sh --update-goldens  --quick으로 만든 뒤 기준 그림을 새로 저장한다 (선생님이 새 그림을 승인한 뒤에만)
 #   build.sh --release  배포용: 애플 실리콘+인텔, 실험 메뉴 없음, zip + SHA-256
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT=".."
 MODE="${1:-dev}"
-case "$MODE" in dev|--quick|--test|--release) ;; *) echo "모르는 옵션: $MODE"; exit 2 ;; esac
+case "$MODE" in dev|--quick|--test|--run|--update-goldens|--release) ;; *) echo "모르는 옵션: $MODE"; exit 2 ;; esac
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.plist)
 # OneDrive·iCloud 폴더 안에서는 파일마다 꼬리표(확장 속성)가 붙어 서명이 거부되므로,
 # 임시 폴더에서 조립·서명한 뒤 결과만 build/로 옮겨 온다.
@@ -21,11 +24,11 @@ ZIP="Focus-Draw-mac-$VERSION.zip"
 ARCHS="arm64 x86_64"
 FLAGS=(-D EXPERIMENTS)
 case "$MODE" in
-  --quick|--test) ARCHS=$(uname -m) ;;
+  --quick|--test|--run|--update-goldens) ARCHS=$(uname -m) ;;
   --release) FLAGS=() ;;
 esac
 
-rm -rf build
+# 빌드가 끝까지 성공했을 때만 build/의 앱을 바꾼다 (실패해도 지난 앱과 점검 기록이 남는다)
 mkdir -p build "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 # 애플 실리콘(M1~)과 인텔 맥 둘 다에서 돌도록 두 번 만들어 하나로 합친다
@@ -37,6 +40,9 @@ done
 lipo -create -output "$APP/Contents/MacOS/FocusDraw" "${BINS[@]}"
 
 cp Info.plist "$APP/Contents/"
+for f in icon_spotlight_dark.png icon_draw_dark.png settings.png icon.png; do
+  [ -f "$ROOT/$f" ] || { echo "빌드 실패: 그림 파일이 없음: $ROOT/$f"; exit 1; }
+done
 cp "$ROOT/icon_spotlight_dark.png" "$ROOT/icon_draw_dark.png" "$ROOT/settings.png" "$APP/Contents/Resources/"
 
 # 앱 아이콘 (icon.png → AppIcon.icns)
@@ -53,10 +59,12 @@ rm -rf "$ICONSET"
 xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict "$APP"
+rm -rf "build/Focus & Draw.app"
 ditto "$APP" "build/Focus & Draw.app"
 
 if [ "$MODE" = dev ] || [ "$MODE" = --release ]; then
   ditto -c -k --keepParent "$APP" "$STAGE/$ZIP"
+  rm -f build/Focus-Draw-mac-*.zip build/Focus-Draw-mac-*.zip.sha256
   cp "$STAGE/$ZIP" build/
   echo "완료: build/Focus & Draw.app"
   echo "배포용: build/$ZIP"
@@ -67,8 +75,52 @@ elif [ "$MODE" = --quick ]; then
   echo "완료: build/Focus & Draw.app ($ARCHS, 실험 메뉴 포함)"
 fi
 
+# 실행 중인 앱을 끄고 새 앱을 띄운다 (SMAppService는 개발 실행에서 부르지 않으므로 로그인 항목은 그대로다)
+if [ "$MODE" = --run ]; then
+  pkill -x FocusDraw 2>/dev/null && sleep 0.5 || true
+  open -n "build/Focus & Draw.app"
+  echo "실행함: build/Focus & Draw.app"
+fi
+
+# 그림 기준 점검: Tests/golden의 기준 그림과 견주고 글 점검(단언)을 돈다. 창이 필요 없다.
+# 인자: 앱 경로, 결과 폴더, (선택) --update-goldens
+run_golden() {
+  "$1/Contents/MacOS/FocusDraw" --golden "$2" --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" ${3:+"$3"}
+}
+if [ "$MODE" = --update-goldens ]; then
+  run_golden "build/Focus & Draw.app" build/test-out --update-goldens
+  echo "기준 그림을 Tests/golden에 저장함. 축소 모음: build/test-out/contact-sheet.png (선생님께 보이고 승인받은 뒤 커밋)"
+fi
+
 # 자체 점검: 가짜 입력으로 한 바퀴 돌고 log.txt의 OK/FAIL 줄을 센다. 60초 넘게 걸리면 멈춘 것으로 본다.
 if [ "$MODE" = --test ]; then
+  set +e
+  GOLDEN_OUT=$(run_golden "build/Focus & Draw.app" build/test-out 2>&1)
+  GOLDEN_RC=$?
+  set -e
+  if [ $GOLDEN_RC -ne 0 ]; then echo "$GOLDEN_OUT"; exit 1; fi
+
+  # 인텔 조각은 Rosetta가 이미 깔려 있을 때만 (Rosetta 설치는 선생님 결정)
+  INTEL="건너뜀"
+  if [ -z "${FD_HEADLESS:-}" ] && [ "$(uname -m)" = arm64 ] && arch -x86_64 /usr/bin/true 2>/dev/null; then
+    swiftc -O -swift-version 5 -target "x86_64-apple-macos13.0" -D EXPERIMENTS Sources/*.swift -o "$STAGE/FocusDraw-intel"
+    IAPP="$STAGE/intel/Focus & Draw.app"
+    mkdir -p "$STAGE/intel" && ditto "$APP" "$IAPP"
+    cp "$STAGE/FocusDraw-intel" "$IAPP/Contents/MacOS/FocusDraw"
+    codesign --force --deep --sign - "$IAPP"
+    set +e
+    IOUT=$(arch -x86_64 "$IAPP/Contents/MacOS/FocusDraw" --golden build/test-out-intel --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" 2>&1)
+    IRC=$?
+    set -e
+    if [ $IRC -ne 0 ]; then echo "인텔(Rosetta) 그림 점검 실패:"; echo "$IOUT"; exit 1; fi
+    INTEL="통과"
+  fi
+
+  if [ -n "${FD_HEADLESS:-}" ]; then
+    echo "$GOLDEN_OUT (자체 점검 --selftest는 화면이 없어 건너뜀)"
+    exit 0
+  fi
+
   OUT="$STAGE/selftest"
   mkdir -p "$OUT"
   "build/Focus & Draw.app/Contents/MacOS/FocusDraw" --selftest "$OUT" >/dev/null 2>&1 &
@@ -86,5 +138,5 @@ if [ "$MODE" = --test ]; then
     exit 1
   fi
   mkdir -p build/selftest && cp "$OUT"/* build/selftest/
-  echo "자체 점검 통과: $PASS개 (기록·그림: build/selftest/)"
+  echo "$GOLDEN_OUT · 자체 점검 통과: $PASS개 · 인텔(Rosetta) $INTEL (기록: build/test-out/, build/selftest/)"
 fi

@@ -186,19 +186,14 @@ final class ClickEffect {
         guard let w = side.window else { return }
         let thickness = CGFloat(right ? s.rclickThickness : s.clickThickness)
         let size = w.frame.width
-        // 처음엔 빠르게 줄다가 가운데 근처에서 천천히 멈추는 감속 곡선
-        let t = CGFloat(side.frame) / CGFloat(ClickEffect.frames)
-        let eased = 1 - pow(1 - t, 3)
-        let radius = (size / 2 - thickness / 2 - 1) * (1 - eased)
-        if side.frame >= ClickEffect.frames || radius < 1 {
+        guard let ring = clickRingFrame(side.frame, size: size, thickness: thickness) else {
             side.timer?.invalidate(); side.timer = nil
             w.orderOut(nil)
             return
         }
-        // 테두리가 반지름보다 두꺼워지면 찌그러진 덩어리로 보이므로, 끝까지 속이 빈 고리로 남게 가늘어진다
-        side.view.width = min(thickness, radius)
-        side.view.radius = radius
-        side.view.alphaValue = min(1, radius / (thickness * 1.5))
+        side.view.width = ring.width
+        side.view.radius = ring.radius
+        side.view.alphaValue = ring.alpha
         side.view.needsDisplay = true
         let m = NSEvent.mouseLocation
         w.setFrameOrigin(NSPoint(x: (m.x - size / 2).rounded(), y: (m.y - size / 2).rounded()))

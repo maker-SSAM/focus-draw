@@ -256,18 +256,11 @@ final class InkView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        if let b = ctl.boardColor {
-            ctx.setFillColor(b)
-            ctx.fill(dirtyRect)
+        paintInkLayer(in: ctx, fill: dirtyRect, board: ctl.boardColor, opacity: Settings.shared.drawOpacity) {
+            if let img = cacheImage { ctx.draw(img, in: bounds) }
+            ctx.translateBy(x: -origin.x, y: -origin.y)
+            if let live = ctl.live { renderInk(live, in: ctx) } // 긋는 중인 획 / 도형 미리보기 / 문지르는 중인 지우개
         }
-        ctx.saveGState()
-        ctx.setAlpha(CGFloat(Settings.shared.drawOpacity) / 100)
-        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-        if let img = cacheImage { ctx.draw(img, in: bounds) }
-        ctx.translateBy(x: -origin.x, y: -origin.y)
-        if let live = ctl.live { renderInk(live, in: ctx) } // 긋는 중인 획 / 도형 미리보기 / 문지르는 중인 지우개
-        ctx.endTransparencyLayer()
-        ctx.restoreGState()
 
         ctx.saveGState()
         ctx.translateBy(x: -origin.x, y: -origin.y)
@@ -325,8 +318,9 @@ final class DrawController {
 
     // 그린 것
     private(set) var items: [InkItem] = []
-    private var undoFloor = 0 // 이보다 앞은 되돌리지 않는다 (최대 30단계, 끈 뒤 30초)
+    private var undoFloor = 0 // 이보다 앞은 되돌리지 않는다 (최대 UNDO_MAX단계, 끈 뒤 UNDO_KEEP_S초)
     private var offSince: Date?
+    var clock: () -> Date = Date.init // 자체 점검이 가짜 시계를 넣는다
 
     // 지금 펜
     private var rgb: UInt32 = 0xFF0000
@@ -398,13 +392,8 @@ final class DrawController {
 
     func turnOn() {
         guard !isOn else { return }
-        let s = Settings.shared
-        // 숫자키로 바꾼 색·굵기는 임시값 — 켤 때마다 설정 창의 값으로 돌아온다
-        rgb = s.drawColor; alpha = 1
-        penStep = Int(s.drawStep); eraserStep = Int(s.eraserStep)
-        pen = .normal
-        if let off = offSince, Date().timeIntervalSince(off) > 30 { setUndoFloor(items.count) }
-        offSince = nil
+        resetTemporaries()
+        expireUndoIfNeeded()
         keyMode = Experiments.keyMode
         boardCursor = Experiments.boardCursor
         // 한 번 숨긴 판은 지금 데스크톱(다른 앱의 전체 화면)에 다시 뜨지 않을 수 있다 → 그때는 새로 만든다
@@ -438,19 +427,43 @@ final class DrawController {
         onStateChange(true)
     }
 
-    // clear: Esc·위젯 버튼(그린 것과 칠판을 정리하고 나감) / F9(그대로 남겨 두고 나감)
-    func turnOff(clear: Bool) {
-        guard isOn else { return }
+    // 숫자키로 바꾼 색·굵기는 임시값 — 켤 때마다 설정 창의 값으로 돌아온다
+    func resetTemporaries() {
+        let s = Settings.shared
+        rgb = s.drawColor; alpha = 1
+        penStep = Int(s.drawStep); eraserStep = Int(s.eraserStep)
+        pen = .normal
+    }
+
+    // 끈 지 UNDO_KEEP_S초가 넘었으면 그 앞 그림은 되돌리지 않는다 (켤 때 확인)
+    func expireUndoIfNeeded() {
+        if let off = offSince, clock().timeIntervalSince(off) > UNDO_KEEP_S { setUndoFloor(items.count) }
+        offSince = nil
+    }
+
+    // 끄는 순간의 그림·칠판 정리. clear: Esc·위젯 버튼은 다 지우고 나가고, F9는 그대로 남긴다
+    func finishSession(clear: Bool) {
         if clear {
             clearAll()
             board = 0
         }
         cancelLive()
         laser = []; laserLive = nil
+        offSince = clock()
+    }
+
+    // 지금 펜 상태 (자체 점검용)
+    var penState: (rgb: UInt32, alpha: CGFloat, penStep: Int, eraserStep: Int, pen: PenKind, board: Int) {
+        (rgb, alpha, penStep, eraserStep, pen, board)
+    }
+
+    // clear: Esc·위젯 버튼(그린 것과 칠판을 정리하고 나감) / F9(그대로 남겨 두고 나감)
+    func turnOff(clear: Bool) {
+        guard isOn else { return }
+        finishSession(clear: clear)
         // C안: 드로잉 키 단축키를 반드시 푼다 (안 풀리면 시스템 전체에서 그 글자를 못 친다)
         let freed = carbonKeys.unregisterAll()
         isOn = false
-        offSince = Date()
         for w in windows { w.orderOut(nil) }
         SystemCursor.show("board")
         NSCursor.arrow.set()
@@ -548,9 +561,8 @@ final class DrawController {
     }
 
     // 지우개 테두리는 칠판의 보색 — 어느 칠판 위에서도 묻히지 않는다 (칠판이 없으면 검정)
-    private var eraserRingColor: NSColor {
-        guard board > 0 else { return .black }
-        return color(~Settings.shared.boardColors[board - 1] & 0xFFFFFF)
+    private var currentEraserRing: NSColor {
+        eraserRingColor(boardRGB: board > 0 ? Settings.shared.boardColors[board - 1] : nil)
     }
 
     // ---------- 커서: 지금 그어질 선과 똑같은 동그라미 ----------
@@ -559,34 +571,14 @@ final class DrawController {
         let img: NSImage
         if erasing || rightDown {
             d = eraserPx(eraserStep)
-            let side = ceil(d + 4)
-            img = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
-                let p = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: d, height: d))
-                p.lineWidth = 1.5
-                self.eraserRingColor.setStroke()
-                p.stroke()
-                return true
-            }
+            img = eraserRingImage(diameter: d, ring: currentEraserRing)
         } else if pen == .laser {
             d = max(penPx(penStep), LASER_MIN_WIDTH) * 3
-            let c = color(rgb)
-            img = NSImage(size: NSSize(width: d, height: d), flipped: false) { _ in
-                for (mul, a, mix) in LASER_LAYERS {
-                    let dd = d / 3 * mul * 1.1
-                    NSColor(cgColor: tint(c.cgColor, mix))!.withAlphaComponent(a).setFill()
-                    NSBezierPath(ovalIn: NSRect(x: (d - dd) / 2, y: (d - dd) / 2, width: dd, height: dd)).fill()
-                }
-                return true
-            }
+            img = laserCursorImage(side: d, base: color(rgb))
         } else {
             d = penPx(penStep)
-            let side = max(ceil(d) + 2, 4)
             let fill = pen == .rainbow ? NSColor(cgColor: hueColor(rainbowHue))!.withAlphaComponent(alpha) : color(rgb, alpha)
-            img = NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
-                fill.setFill()
-                NSBezierPath(ovalIn: NSRect(x: (side - d) / 2, y: (side - d) / 2, width: d, height: d)).fill()
-                return true
-            }
+            img = brushCursorImage(diameter: d, fill: fill)
         }
         cursor = NSCursor(image: img, hotSpot: NSPoint(x: img.size.width / 2, y: img.size.height / 2))
         if boardCursor {
@@ -777,7 +769,7 @@ final class DrawController {
     private func commit(_ item: InkItem) {
         items.append(item)
         for v in views { v.commit(item) }
-        setUndoFloor(max(undoFloor, items.count - 30))
+        setUndoFloor(max(undoFloor, items.count - UNDO_MAX))
     }
 
     private func setUndoFloor(_ f: Int) {

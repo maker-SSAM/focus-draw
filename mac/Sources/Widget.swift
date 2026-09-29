@@ -7,14 +7,18 @@ let ON_COLOR: UInt32 = 0x0A84FF
 
 func tintedIcon(_ name: String, _ tint: NSColor) -> NSImage? {
     guard let url = Bundle.main.url(forResource: name, withExtension: "png"),
-          let src = NSImage(contentsOf: url) else { return nil }
-    let img = NSImage(size: src.size)
-    img.lockFocus()
-    src.draw(in: NSRect(origin: .zero, size: src.size))
-    tint.set()
-    NSRect(origin: .zero, size: src.size).fill(using: .sourceAtop) // 모양(알파)은 두고 색만 바꾼다
-    img.unlockFocus()
-    return img
+          let src = NSImage(contentsOf: url),
+          let cg = src.cgImage(forProposedRect: nil, context: nil, hints: nil),
+          let ctx = CGContext(data: nil, width: cg.width, height: cg.height, bitsPerComponent: 8, bytesPerRow: 0,
+                              space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+    // 원본 그림 크기 그대로 색만 입힌다 — 화면 배율(Retina 여부)에 따라 결과가 달라지지 않게 화면 그림을 거치지 않는다
+    let r = CGRect(x: 0, y: 0, width: cg.width, height: cg.height)
+    ctx.draw(cg, in: r)
+    ctx.setBlendMode(.sourceAtop) // 모양(알파)은 두고 색만 바꾼다
+    ctx.setFillColor(tint.cgColor)
+    ctx.fill(r)
+    return ctx.makeImage().map { NSImage(cgImage: $0, size: src.size) }
 }
 
 final class WidgetView: NSView {

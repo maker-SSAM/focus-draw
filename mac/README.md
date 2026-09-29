@@ -45,10 +45,14 @@ mac/build.sh
 `mac/build/Focus & Draw.app`과 `mac/build/Focus-Draw-mac-0.1.zip`이 생깁니다. 이 개발용 빌드에는 시험용 "실험" 메뉴가 들어 있습니다.
 
 - `mac/build.sh --quick`: 이 맥의 칩용으로만 빨리 (고치는 동안)
-- `mac/build.sh --test`: 빨리 만든 뒤 자체 점검까지 돌려 결과를 한 줄로
+- `mac/build.sh --test`: 빨리 만든 뒤 그림 기준 점검(`Tests/golden/`)과 자체 점검을 돌려 결과를 한 줄로. 그림이 달라지면 `build/test-out/`에 차이 그림과 축소 모음이 남습니다
+- `mac/build.sh --run`: 빨리 만든 뒤 켜져 있던 앱을 끄고 새 앱을 띄움
+- `mac/build.sh --update-goldens`: 기준 그림을 새로 저장 (그림이 일부러 바뀌었을 때, 선생님이 새 그림을 확인한 뒤에만)
 - `mac/build.sh --release`: 배포용 (실험 메뉴 없음, zip과 SHA-256)
 
 문제가 생기면 메뉴 막대(또는 위젯 오른쪽 클릭) › **진단 기록**을 켜 두세요. `~/Library/Logs/Focus & Draw/diag.log`에 창·키·화면 상태가 남습니다(입력한 글자는 남지 않음).
+
+Windows 판과 무엇이 같고 다른지는 **[PARITY.md](PARITY.md)** (기능 144개 차이표)에 있습니다.
 
 ## 다른 맥에 나눠줄 때
 

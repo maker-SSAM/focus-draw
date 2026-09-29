@@ -66,7 +66,8 @@ final class Settings: ObservableObject {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Focus & Draw", isDirectory: true)
     }
-    static var path: URL { folder.appendingPathComponent("settings.ini") }
+    static var overridePath: URL? // --settings <파일>: 자체 점검이 고정 파일만 읽게
+    static var path: URL { overridePath ?? folder.appendingPathComponent("settings.ini") }
 
     // ---------- 읽기 ----------
     func load() {

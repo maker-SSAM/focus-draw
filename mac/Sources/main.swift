@@ -35,7 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Experiments.onChange = { [weak self] in self?.experimentsChanged() }
 
-        Settings.shared.load()
+        // 자체 점검·속도 측정은 사용자 settings.ini를 읽지 않는다 (기본값, 또는 --settings <고정 파일>)
+        if let f = arg("--settings") { Settings.overridePath = URL(fileURLWithPath: f); Settings.shared.load() }
+        else if selftest == nil && bench == nil { Settings.shared.load() }
         widget = Widget()
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
         widget.view.contextMenu = { [weak self] in
@@ -212,6 +214,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Diag.log("SESSION", "quit")
         Diag.stop()
     }
+}
+
+// 그림 기준 점검(--golden)은 창도 앱 실행 고리도 없이 한 번 돌고 끝난다 (화면 없는 컴퓨터에서도 돈다)
+if CommandLine.arguments.contains("--golden") {
+    _ = NSApplication.shared
+    exit(Golden.run(CommandLine.arguments))
 }
 
 let app = NSApplication.shared
