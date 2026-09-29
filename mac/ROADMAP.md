@@ -20,10 +20,10 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **S2a 안전망** (기준 그림 점검, `build.sh --test`, 차이표 PARITY.md) | Sonnet · 기본 | 결정 5 (GitHub 자동 점검을 켤지) |
+| **S2b 설정 보존 + 동료 알파** (무손실 설정 파일, 저장 실패 안내, 첫 실행 안내, 진단 정보 복사, 맥용 읽어주세요) | Sonnet · 기본 | 결정 4 (동료 알파 1~2명 — 세션 끝에 전달할 때) |
 
-**S1이 끝났다.** 결정 D1~D5와 선생님 결정 ①~③은 [design/SPIKES.md](design/SPIKES.md), 설계도는 [design/architecture.md](design/architecture.md).
-S2a는 stages.md의 S2a 절과 architecture.md 2·7·10절만 읽는다. PARITY.md에는 "일부러 다름" 세 가지(드로잉 중 나머지 키 막기, 앱·데스크톱 전환과 잠자기 때 끄기, 되살리기 10분)를 적는다.
+**S2a가 끝났다.** 기준 그림 33장과 글 점검 32개가 `build.sh --test`에서 돈다. 그림이 일부러 바뀌면 `build.sh --update-goldens`로 새로 저장하되, 선생님이 축소 모음(`build/test-out/contact-sheet.png`)을 보고 승인한 뒤에만 한다.
+S2b는 stages.md의 S2b 절과 architecture.md 9절만 읽는다. 차이표는 [PARITY.md](PARITY.md) — 단계를 끝낼 때 해당 줄을 고친다.
 
 ---
 
@@ -37,7 +37,7 @@ S2a는 stages.md의 S2a 절과 architecture.md 2·7·10절만 읽는다. PARITY.
 | 2 | S1a | 맥 작업 폴더: 지금 OneDrive 폴더 그대로 / OneDrive 밖 맥 전용 복제본 | **OneDrive 폴더 유지** (사용자 결정, 2026-09-28) — 대신 아래 "OneDrive에서 작업할 때" 규칙을 지킨다 |
 | 3 | S1a | 줄바꿈만 다른 Windows 파일 3개(`build.ps1`, `읽어주세요.txt`, `터치펜-확인.ahk`)는 맥에서 손대지 않는다 | **동의** (사용자 결정, 2026-09-28) |
 | 4 | S2b | 동료 알파 테스터 1~2명 (맥을 쓰는 선생님) | — |
-| 5 | S2a | GitHub에서 자동 점검 돌리기 (macOS 15·26·인텔, 공개 저장소는 무료) | 켠다 |
+| 5 | S2a | GitHub에서 자동 점검 돌리기 (macOS 15·26·인텔, 공개 저장소는 무료) | **켠다** (사용자 결정, 2026-09-29) |
 | 6 | S6 | 드로잉 중 **움직이지 않고 한 번 클릭**하면 점이 남는가 (Windows 코드는 안 남김, README 153행은 남는다고 읽힘) | Windows 코드대로 안 남김 |
 | 7 | S6 | 트랙패드 스크롤로 진하기를 바꿀 때 방향 | 마우스 휠과 같게 |
 | 8 | S7 | 동료 의견 받는 곳: GitHub 이슈 양식 / 설문지 | 설문지 (선생님들께 쉬움) |
@@ -166,3 +166,4 @@ S2a는 stages.md의 S2a 절과 architecture.md 2·7·10절만 읽는다. PARITY.
 형식: 날짜 · 세션 · 모델 · 맥/macOS · 결과 · 커밋. 끝난 단계는 [HISTORY.md](HISTORY.md)로 옮긴다.
 
 - 2026-09-29 · S1c-2 · Opus 5.5 높음 · 맥북 프로 M4/15.7.3 · **S1 끝.** 재시험(C안 42번 켬, 단축키 해제 실패·STRAY 0)으로 D1(C안 판, 창 동작 유지)·D2(C안)·D5(커서 숨기기 제공 + 다시 숨기기) 확정. 선생님 결정 13~15: 드로잉 중 나머지 키 막기, 앱·데스크톱 전환·잠자기 때 Esc처럼 끄기, 되살리기 10분(끄면 그림은 버리고 선 목록만). 새로 찾은 것: ⌥만 눌러선 지우개 링이 안 보임(S4), 앞 앱이 바뀌면 커서 숨김이 풀림(S4·S9). 설계도 [design/architecture.md](design/architecture.md), stages.md S3~S5·S9 갱신. 코드 변경 없음 · `1b02c14`. S1a~S1c-1 기록은 [HISTORY.md](HISTORY.md)로 옮김
+- 2026-09-29 · S2a · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **그림 기준 점검과 차이표.** `Render.swift`(`renderScene`, 커서 그림, 클릭 링 한 칸)를 화면과 점검이 같이 쓰게 뺐다. `--golden` 모드: 창·화면·사용자 설정 없이 640×400(일부 @2x)로 33장면을 그려 `Tests/golden/`과 견줌(채널 ±2, 다른 픽셀 0.1%), 실패하면 차이 그림과 축소 모음. 글 점검 32개(실행 취소 30단계·가짜 시계, 켜고 끄기, 키, 펜·지우개 표, ahk 상수 대조 등). `build.sh --test`(그림+자체 점검+Rosetta 인텔, 28초), `--run`, `--update-goldens`. GitHub 자동 점검 `.github/workflows/mac-test.yml`(결정 5, 아직 돌려 보지 못함). `PARITY.md` 144개 + 맥 전용 차이. 위젯 아이콘 색입히기는 화면 배율과 무관하게 원본 크기에서 하도록 바꿈. 알게 된 것: 되살리기는 아직 30초(S5에서 10분), 창을 지나는 키·마우스 경로는 `--selftest`만 본다(화면 필요) · `0345689`
