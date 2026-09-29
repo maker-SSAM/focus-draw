@@ -237,7 +237,51 @@
   #og .title { font-size:80px; font-weight:800; letter-spacing:-3px; margin-top:20px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
   #og .kor { font-size:19px; color:var(--soft); margin-top:12px; font-weight:700; letter-spacing:3px; }
   #og .tag { font-size:30px; font-weight:800; margin-top:16px; letter-spacing:-1px; }
-  #og .meta { font-size:15px; color:var(--muted); margin-top:8px; }</style>
+  #og .meta { font-size:15px; color:var(--muted); margin-top:8px; }
+  /* ---------- 한 장 요약 (세로로 긴 그림, 메신저로 한 장만 보낼 때) ---------- */
+  html.sum, html.sum body { width:1080px; height:auto; overflow:visible; }
+  #sum { width:1080px; height:auto; padding:56px 52px 44px; overflow:visible; }
+  #sum .hd { display:flex; align-items:center; gap:28px; }
+  #sum .hd img { width:132px; height:132px; border-radius:32px; box-shadow:0 18px 40px -14px rgba(60,40,200,.45); }
+  #sum .hd .title { font-size:68px; font-weight:800; letter-spacing:-2.5px; line-height:1; font-family:"Segoe UI","Malgun Gothic"; }
+  #sum .hd .kor { font-size:18px; color:var(--soft); font-weight:700; letter-spacing:2px; margin-top:8px; }
+  #sum .hd .tag { font-size:27px; font-weight:800; margin-top:12px; letter-spacing:-.5px; }
+  #sum .intro { margin-top:26px; font-size:19px; color:var(--muted); line-height:1.65; }
+  #sum .intro b { color:var(--ink); }
+  #sum .hero { margin-top:24px; border-radius:18px; overflow:hidden; border:8px solid #16181f; box-shadow:0 24px 50px -24px rgba(20,24,60,.55); background:#1e1e1e; }
+  #sum .hero img { display:block; width:100%; }
+  #sum .herocap { text-align:center; font-size:14px; color:var(--soft); margin-top:10px; }
+  #sum .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:30px; }
+  #sum .box { padding:22px 24px; }
+  #sum .box h3 { display:flex; align-items:center; gap:12px; font-size:22px; font-weight:800; }
+  #sum .box h3 .n { width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--purple)); color:#fff; font-size:17px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  #sum .box p { font-size:16px; color:var(--muted); line-height:1.6; margin-top:10px; }
+  #sum .box p b { color:var(--ink); }
+  #sum .box ul { list-style:none; margin-top:10px; display:flex; flex-direction:column; gap:7px; }
+  #sum .box li { font-size:15.5px; color:var(--muted); line-height:1.45; padding-left:16px; position:relative; }
+  #sum .box li::before { content:""; position:absolute; left:2px; top:8px; width:6px; height:6px; border-radius:50%; background:#b9b2f3; }
+  #sum .box li b { color:var(--ink); }
+  #sum .facts { display:flex; gap:10px; margin-top:14px; }
+  #sum .fact { flex:1; text-align:center; padding:8px 6px; border-radius:12px; background:var(--lav2); border:1px solid var(--line); }
+  #sum .fact b { display:block; font-size:21px; font-weight:800; font-family:"Segoe UI","Malgun Gothic"; }
+  #sum .fact span { font-size:12.5px; color:var(--muted); }
+  #sum .wide { margin-top:18px; padding:22px 24px; }
+  #sum .keys { display:grid; grid-template-columns:1fr 1fr; gap:8px 18px; margin-top:14px; }
+  #sum .kr { display:flex; align-items:center; gap:12px; padding:7px 12px; border-radius:12px; border:1px solid var(--line); background:#fff; }
+  #sum .kr .ks { display:flex; gap:3px; flex-shrink:0; width:178px; }
+  #sum .kr .key { min-width:30px; height:30px; font-size:14px; padding:0 7px; border-radius:7px; border-bottom-width:3px; }
+  #sum .kr span.w { font-size:15px; color:var(--muted); }
+  #sum .kr span.w b { color:var(--ink); }
+  #sum .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:14px; }
+  #sum .st { padding:14px 16px; border-radius:14px; background:var(--lav2); border:1px solid var(--line); font-size:15px; color:var(--muted); line-height:1.5; }
+  #sum .st b { color:var(--ink); }
+  #sum .st .n { display:inline-flex; width:24px; height:24px; border-radius:50%; background:linear-gradient(135deg,var(--blue),var(--purple)); color:#fff; font-size:13px; font-weight:800; align-items:center; justify-content:center; margin-right:6px; }
+  #sum .dl { margin-top:16px; padding:18px 22px; border-radius:16px; border:2px solid transparent;
+    background-image:linear-gradient(#fff,#fff),linear-gradient(90deg,var(--blue),var(--purple)); background-origin:border-box; background-clip:padding-box,border-box; }
+  #sum .dl .lab { font-size:15px; font-weight:800; color:var(--blue); }
+  #sum .dl .url { font-size:25px; font-weight:800; margin-top:4px; font-family:"Segoe UI","Malgun Gothic"; letter-spacing:-.4px; }
+  #sum .dl .sub { font-size:14.5px; color:var(--muted); margin-top:4px; }
+  #sum .ft { margin-top:22px; display:flex; justify-content:space-between; font-size:14.5px; color:var(--soft); }</style>
 </head>
 <body>
 
@@ -616,9 +660,86 @@
     <div class="meta">무료 · Windows · 설치 없이 exe 파일 하나</div>
   </div>
 </section>
+<!-- ======================= 한 장 요약 ======================= -->
+<section class="slide" id="sum">
+  <div class="hd">
+    <img src="{{icon.png}}">
+    <div>
+      <div class="title"><span class="grad">Focus &amp; Draw</span></div>
+      <div class="kor">포커스 앤 드로우</div>
+      <div class="tag">수업용 화면 강조 · 드로잉 도구</div>
+    </div>
+  </div>
+  <div class="intro">화면에 그리는 <b>줌잇</b>과 마우스를 강조하는 <b>스팟마우스</b>를 잘 쓰면서도, 두 기능을 <b>'합치면'</b>, 좀 더 <b>'편하면'</b>, 개인화가 <b>'강력하면'</b> 좋겠다고 생각했습니다. 그래서 AI의 도움을 받아 직접 만들었고, 다른 선생님들께도 도움이 될 것 같아 공유합니다.</div>
+
+  <div class="hero"><img src="{{?1번-화면.png}}" onerror="this.parentNode.remove()"></div>
+  <div class="herocap">Focus &amp; Draw로 직접 그려 본 화면</div>
+
+  <div class="grid">
+    <div class="card box">
+      <h3><span class="n">1</span>두 프로그램을 하나로</h3>
+      <p>하이라이트와 드로잉을 한 프로그램에서. 설치 없이 <b>exe 파일 하나</b>로 바로 실행, 관리자 권한도 필요 없어요.</p>
+      <div class="facts"><div class="fact"><b>1.6MB</b><span>파일 하나</span></div><div class="fact"><b>0%</b><span>켜 둘 때 CPU</span></div><div class="fact"><b>14MB</b><span>켜 둘 때 메모리</span></div></div>
+    </div>
+    <div class="card box">
+      <h3><span class="n">2</span>작은 위젯, 클릭 한 번</h3>
+      <p>하이라이트가 필요한 순간은 아주 잠깐. 화면 구석 위젯을 <b>한 번 누르면 바로</b> 켜지고 꺼집니다.</p>
+      <div style="display:flex;justify-content:center;margin-top:14px"><div class="widget" style="transform:scale(1.2)"><div class="nar">⋮</div><div class="chip"><div class="ico ico-spot on"></div></div><div class="chip"><div class="ico ico-draw"></div></div><div class="chip"><div class="ico ico-set"></div></div><div class="nar">✕</div></div></div>
+      <ul style="margin-top:16px"><li>위치 · 크기 · 투명도 · 배경색 조절</li><li>거슬리면 <b>작업표시줄 아이콘</b>으로, 그마저 싫으면 <b>단축키만</b></li></ul>
+    </div>
+    <div class="card box">
+      <h3><span class="n">3</span>강력한 개인화</h3>
+      <ul>
+        <li>하이라이트의 <b>색 · 크기 · 투명도</b>, 커서 숨기기, 클릭 효과</li>
+        <li><b>기본 펜</b>의 색 · 굵기 · 투명도, <b>숫자키 1~9 펜</b>마다 색과 투명도 (낮추면 형광펜)</li>
+        <li>수업 중에도 <b>+ −</b>로 굵기, <b>마우스 휠</b>로 진하기</li>
+        <li><b>'저장' 한 번</b> → 폴더째 옮기면 다른 PC에서도 그대로</li>
+      </ul>
+    </div>
+    <div class="card box">
+      <h3><span class="n">4</span>전자칠판에도 친화적으로</h3>
+      <p>칠판마다 다른 필기 기능을 익힐 필요 없이, <b>PC에서 동작</b>하므로 미러링된 화면 위에 <b>어느 교실 칠판이든 같은 방법</b>으로 그립니다.</p>
+      <ul><li>닿는 순간 바로 그려짐 (특수 펜 · 도형도)</li><li><b>손날로 문지르기</b> = 지우개 · <b>두 손가락 톡</b> = 실행 취소</li><li>앞뒤 구분 펜이면 <b>펜 뒤쪽</b>으로 지우기</li></ul>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <div class="box" style="padding:0"><h3><span class="n">5</span>드로잉 중에는 키 하나로 — 키보드 자리대로</h3></div>
+    <div class="keys">
+      <div class="kr"><div class="ks"><span class="key">1</span><span class="plus">~</span><span class="key">9</span><span class="key">0</span></div><span class="w"><b>펜 색</b> · 0은 기본 색</span></div>
+      <div class="kr"><div class="ks"><span class="key">Q</span><span class="key">W</span><span class="key">E</span><span class="key">R</span></div><span class="w"><b>칠판</b> 투명/흰/초록/검정</span></div>
+      <div class="kr"><div class="ks"><span class="key">A</span><span class="key">S</span></div><span class="w"><b>특수 펜</b> 레이저 / 무지개</span></div>
+      <div class="kr"><div class="ks"><span class="key">Z</span><span class="key">X</span><span class="key">C</span></div><span class="w"><b>직선 · 물결 · 화살표</b></span></div>
+      <div class="kr"><div class="ks"><span class="key">Shift</span><span class="key">Ctrl</span></div><span class="w">+ 드래그 <b>사각형 / 원</b></span></div>
+      <div class="kr"><div class="ks"><span class="key">우클릭</span></div><span class="w"><b>지우개</b></span></div>
+      <div class="kr"><div class="ks"><span class="key">+</span><span class="key">−</span><span class="key">휠</span></div><span class="w"><b>굵기 · 투명도</b></span></div>
+      <div class="kr"><div class="ks"><span class="key">Ctrl</span><span class="plus">+</span><span class="key">Z</span><span class="key">Del</span><span class="key">Esc</span></div><span class="w"><b>취소 · 모두 지움 · 끝내기</b></span></div>
+      <div class="kr" style="grid-column:1 / -1"><div class="ks"><span class="key">F8</span><span class="key">F9</span></div><span class="w"><b>포커스 · 드로잉</b> 켜고 끄기 — 설정 창에서 원하는 키로 바꿀 수 있어요</span></div>
+    </div>
+  </div>
+
+  <div class="card wide">
+    <div class="box" style="padding:0"><h3><span class="n">6</span>시작하기</h3></div>
+    <div class="steps">
+      <div class="st"><span class="n">1</span><b>내려받아 압축 풀기</b><br>바탕화면 · 문서 같은 평범한 폴더에 (압축 안이나 Program Files는 설정이 저장되지 않아요)</div>
+      <div class="st"><span class="n">2</span><b>focus-draw.exe 실행</b><br>파란 "PC 보호" 창이 뜨면 <b>추가 정보 → 실행</b> (처음 한 번만)</div>
+      <div class="st"><span class="n">3</span><b>위젯으로 켜고 끄기</b><br>화면 오른쪽 아래 위젯, 또는 <b>F8 · F9</b></div>
+    </div>
+    <div class="dl">
+      <div class="lab">내려받기 (항상 최신 버전)</div>
+      <div class="url">github.com/maker-SSAM/focus-draw/releases/latest</div>
+      <div class="sub">Windows 10 / 11 · 무료 · MIT 라이선스 — 누구나 자유롭게 쓰고, 고치고, 나눌 수 있어요</div>
+    </div>
+  </div>
+
+  <div class="ft"><span>Focus &amp; Draw 1.0.0</span><span>제작 maker_SSAM</span></div>
+</section>
 <script>
   var h = (location.hash || '#1').slice(1);
-  if (h === 'og') {
+  if (h === 'sum') {
+    document.documentElement.classList.add('sum');
+    document.getElementById('sum').classList.add('show');
+  } else if (h === 'og') {
     document.documentElement.classList.add('og');
     document.getElementById('og').classList.add('show');
     drawOgInk();  } else {
