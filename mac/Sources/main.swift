@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var widget: Widget!
     var statusItem: NSStatusItem!
     var changes: AnyCancellable?
+    var statusVisibility: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         let args = CommandLine.arguments
@@ -19,7 +20,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         let selftest = arg("--selftest"), bench = arg("--bench")
         // 자체 점검·속도 측정은 사용자가 고른 실험 스위치와 진단 기록을 건드리지 않는다
-        if selftest != nil || bench != nil {
+        let normalRun = selftest == nil && bench == nil
+        if !normalRun {
+            AppLog.folder = nil // 사용자 기록에는 적지 않는다
             Experiments.memoryOnly = [:]
         } else if Diag.wanted || args.contains("--diag") {
             Diag.start(reason: args.contains("--diag") ? "--diag" : "menu")
@@ -36,8 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Experiments.onChange = { [weak self] in self?.experimentsChanged() }
 
         // 자체 점검·속도 측정은 사용자 settings.ini를 읽지 않는다 (기본값, 또는 --settings <고정 파일>)
-        if let f = arg("--settings") { Settings.overridePath = URL(fileURLWithPath: f); Settings.shared.load() }
-        else if selftest == nil && bench == nil { Settings.shared.load() }
+        var loadResult = Settings.LoadResult.missing
+        if let f = arg("--settings") { Settings.overridePath = URL(fileURLWithPath: f); loadResult = Settings.shared.load() }
+        else if normalRun { loadResult = Settings.shared.load() }
+        AppLog.write("SESSION", "start version=\(AppInfo.version) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString)")
         widget = Widget()
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
         widget.view.contextMenu = { [weak self] in
@@ -62,7 +67,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             Diag.setActive(on || self.spotlight.isOn)
         }
 
-        settingsWindow.onSave = { Settings.shared.save() }
+        settingsWindow.onSave = {
+            if let e = Settings.shared.save() {
+                Notice.show(Notice.saveFailed(e))
+                return false
+            }
+            return true
+        }
         settingsWindow.onResetWidget = { [weak self] in
             self?.widget.moveToDefault()
             if let o = self?.widget.window.frame.origin { Settings.shared.saveWidgetPosition(o) }
@@ -87,9 +98,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkey(kVK_ANSI_2, controlKey | optionKey, "⌃⌥2") { [weak self] in self?.draw.toggle() }
 
         setupStatusItem()
+        if normalRun { showStartupNotices(loadResult) }
 
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
         if let out = bench { DispatchQueue.main.async { Bench.run(self, out: out) } }
+    }
+
+    // 처음 열었을 때·문제가 있을 때만 안내 창을 띄운다 (자체 점검·측정 실행에서는 부르지 않는다)
+    func showStartupNotices(_ load: Settings.LoadResult) {
+        if case .unreadable(let reason, let backup) = load {
+            Notice.show(Notice.unreadable(reason: reason, backup: backup))
+        }
+        if Notice.isTranslocated() {
+            AppLog.write("SESSION", "translocated")
+            Notice.show(Notice.translocated())
+        }
+        if !UserDefaults.standard.bool(forKey: "firstRunNoticeShown") {
+            UserDefaults.standard.set(true, forKey: "firstRunNoticeShown")
+            Notice.show(Notice.firstRun())
+        }
+    }
+
+    // 앱을 Finder·Spotlight·Launchpad로 다시 열면: 위젯이 숨겨져 있으면 위젯을 보이고, 이미 보이면 설정을 연다
+    // (메뉴 막대 아이콘을 치웠거나 위젯을 숨겨 둔 채 앱을 잊었을 때 다시 찾는 길)
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        AppLog.write("REOPEN", "widget=\(Settings.shared.showWidget ? "shown" : "hidden")")
+        if Settings.shared.showWidget {
+            openSettings()
+        } else {
+            Settings.shared.showWidget = true
+            widget.setVisible(true)
+        }
+        return false
     }
 
     // 진단 기록 1초마다 한 줄에 들어가는 앱 상태
@@ -148,6 +188,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // ---------- 메뉴 막대 아이콘 ----------
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // ⌘를 누른 채 끌어서 아이콘을 치울 수 있게 두되(막으면 메뉴 막대가 좁은 맥북에서 곤란하다), 빠졌는지는 기록해 둔다
+        statusItem.autosaveName = "FocusDrawStatusItem"
+        statusItem.behavior = .removalAllowed
+        statusVisibility = statusItem.observe(\.isVisible, options: [.new]) { _, change in
+            AppLog.write("STATUSITEM", "visible=\(change.newValue ?? true)")
+        }
         if let url = Bundle.main.url(forResource: "icon_draw_dark", withExtension: "png"),
            let img = NSImage(contentsOf: url) {
             img.size = NSSize(width: 18, height: 18)
@@ -179,6 +225,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         add("진단 기록", #selector(menuDiag), on: Diag.isOn)
         add("진단 기록 폴더 열기", #selector(menuDiagFolder))
+        let help = NSMenuItem(title: "도움말", action: nil, keyEquivalent: "")
+        let sub = NSMenu()
+        let ver = NSMenuItem(title: "Focus & Draw \(AppInfo.displayVersion)", action: nil, keyEquivalent: "")
+        ver.isEnabled = false
+        sub.addItem(ver)
+        for (t, a) in [("진단 정보 복사", #selector(menuCopyDiag)), ("처음 안내 다시 보기", #selector(menuFirstRun))] {
+            let i = NSMenuItem(title: t, action: a, keyEquivalent: "")
+            i.target = self
+            sub.addItem(i)
+        }
+        help.submenu = sub
+        menu.addItem(help)
         Experiments.appendMenu(to: menu)
         menu.addItem(.separator())
         add("Focus & Draw 종료", #selector(menuQuit), key: "q")
@@ -187,6 +245,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func menuSpot() { toggleSpotlight() }
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
+    @objc func menuFirstRun() { Notice.show(Notice.firstRun()) }
+
+    // 문제가 생겼을 때 붙여 보낼 글을 클립보드에 복사한다 (이름·컴퓨터 이름은 들어 있지 않다)
+    @objc func menuCopyDiag() {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(DiagReport.build(), forType: .string)
+        Notice.show(NoticeContent(
+            title: "진단 정보를 복사했습니다",
+            body: ["메모나 메신저에 붙여 넣어(⌘V) 보내 주세요.",
+                   "버전, macOS, 맥 모델, 화면 크기, 기본값과 다른 설정, 최근 기록이 들어 있습니다. 사용자·컴퓨터 이름과 입력한 글자는 들어 있지 않습니다."]))
+    }
+
     @objc func menuQuit() { NSApp.terminate(nil) }
 
     // 켜 두면 앱을 다시 열어도 이어서 기록한다
@@ -211,6 +282,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ n: Notification) {
         draw.turnOff(clear: false)
         SystemCursor.showAll()
+        AppLog.write("SESSION", "quit")
         Diag.log("SESSION", "quit")
         Diag.stop()
     }

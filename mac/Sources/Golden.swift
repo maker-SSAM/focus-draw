@@ -528,6 +528,7 @@ enum Golden {
             guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
             return args[i + 1]
         }
+        AppLog.folder = nil // 그림·글 점검은 사용자 기록을 건드리지 않는다
         guard let outPath = arg("--golden") else { print("사용법: --golden <결과 폴더> [--goldens <기준 폴더>] [--ahk <파일>] [--update-goldens]"); return 2 }
         let out = URL(fileURLWithPath: outPath), fm = FileManager.default
         let goldenDir = arg("--goldens").map { URL(fileURLWithPath: $0) }
@@ -611,6 +612,7 @@ enum Golden {
         }
 
         assertions(check, ahk: arg("--ahk"))
+        SettingsTests.run(check, fixtures: arg("--fixtures"))
 
         contactSheet(sheet, to: out.appendingPathComponent("contact-sheet.png"))
         log.append("INFO 장면 통과 \(sceneOK) 실패 \(sceneFail) · 글 점검 통과 \(passed) 실패 \(failed)")

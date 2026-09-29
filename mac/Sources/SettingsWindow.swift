@@ -89,7 +89,7 @@ struct SettingsView: View {
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Section("정보") {
-                        Text("Focus & Draw \(APP_VERSION) · 제작 maker_SSAM · MIT 라이선스")
+                        Text("Focus & Draw \(AppInfo.displayVersion) · 제작 maker_SSAM · MIT 라이선스")
                         Text("설정 파일: \(Settings.path.path)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                 }

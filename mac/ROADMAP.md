@@ -20,10 +20,10 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **S2b 설정 보존 + 동료 알파** (무손실 설정 파일, 저장 실패 안내, 첫 실행 안내, 진단 정보 복사, 맥용 읽어주세요) | Sonnet · 기본 | 결정 4 (동료 알파 1~2명 — 세션 끝에 전달할 때) |
+| **S3a 기초 공사 1** (큰 파일 나누기, 앱 상태 한곳에 모으기, 그림 변화 0) | Sonnet · 기본 | 없음 (S2b 선생님 확인 결과가 오면 먼저 반영) |
 
-**S2a가 끝났다.** 기준 그림 33장과 글 점검 32개가 `build.sh --test`에서 돈다. 그림이 일부러 바뀌면 `build.sh --update-goldens`로 새로 저장하되, 선생님이 축소 모음(`build/test-out/contact-sheet.png`)을 보고 승인한 뒤에만 한다.
-S2b는 stages.md의 S2b 절과 architecture.md 9절만 읽는다. 차이표는 [PARITY.md](PARITY.md) — 단계를 끝낼 때 해당 줄을 고친다.
+**S2b가 끝났다.** 동료 알파(결정 4)는 선생님이 zip(`mac/build/Focus-Draw-0.2.0-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 선생님 확인 5개(stages.md S2b 절 "선생님 확인")의 결과와 알파 답이 오면 그에 맞춰 고친다.
+S3a는 stages.md의 S3a 절과 architecture.md 2·3절만 읽는다. 설정 코드는 `Settings.swift`·`IniFile.swift`·`Notice.swift`·`AppLog.swift`·`DiagReport.swift`(S2b)로 나뉘어 있다.
 
 ---
 
@@ -164,6 +164,5 @@ S2b는 stages.md의 S2b 절과 architecture.md 9절만 읽는다. 차이표는 [
 ## 진행 기록
 
 형식: 날짜 · 세션 · 모델 · 맥/macOS · 결과 · 커밋. 끝난 단계는 [HISTORY.md](HISTORY.md)로 옮긴다.
+- 2026-09-29 · S2b · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **설정 보존 + 동료 알파 준비.** `IniFile`(UTF-8·BOM·UTF-16 읽고 같은 형식으로 쓰기, 모르는 항목·주석·순서·CRLF 보존), 읽을 수 없는 파일은 `.bak` 복사본을 남기고 원본은 "저장"을 누르기 전까지 안 건드림, 000000~FFFFFF 밖의 색·nan은 기본값, 위젯 자리는 움직였을 때만 WidgetX/Y 두 줄. 저장 실패 안내 창(원인→할 일→안심→경로·오류), 첫 실행 안내, 다운로드 폴더 실행(AppTranslocation) 안내, 앱을 다시 열면 위젯 복귀(이미 보이면 설정), 메뉴 막대 아이콘 `removalAllowed`+기록, `app.log`(2×256KB), 메뉴 막대 › 도움말(버전·진단 정보 복사·처음 안내 다시 보기; 이름 가림). 버전 0.2.0을 Info.plist 한 곳에서. 배포 zip `Focus-Draw-0.2.0-mac.zip`(앱+맥용 읽어주세요+LICENSE, 풀어서 서명 검증, settings*.ini 없음 확인), `beta/alpha-questions.md`. 글 점검 33개 추가(`SettingsTests.swift`, 고정 파일 `Tests/fixtures/windows-settings.ini.txt`). 알림창은 모달이 아니라 작은 창으로(안내가 떠 있어도 단축키·드로잉 동작). 결정: 다시 열기는 "숨김→위젯 복귀, 보임→설정", 위젯 이동 저장 실패는 기록만(안내 창 안 띄움) · 아래 커밋 참고
 
-- 2026-09-29 · S1c-2 · Opus 5.5 높음 · 맥북 프로 M4/15.7.3 · **S1 끝.** 재시험(C안 42번 켬, 단축키 해제 실패·STRAY 0)으로 D1(C안 판, 창 동작 유지)·D2(C안)·D5(커서 숨기기 제공 + 다시 숨기기) 확정. 선생님 결정 13~15: 드로잉 중 나머지 키 막기, 앱·데스크톱 전환·잠자기 때 Esc처럼 끄기, 되살리기 10분(끄면 그림은 버리고 선 목록만). 새로 찾은 것: ⌥만 눌러선 지우개 링이 안 보임(S4), 앞 앱이 바뀌면 커서 숨김이 풀림(S4·S9). 설계도 [design/architecture.md](design/architecture.md), stages.md S3~S5·S9 갱신. 코드 변경 없음 · `1b02c14`. S1a~S1c-1 기록은 [HISTORY.md](HISTORY.md)로 옮김
-- 2026-09-29 · S2a · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **그림 기준 점검과 차이표.** `Render.swift`(`renderScene`, 커서 그림, 클릭 링 한 칸)를 화면과 점검이 같이 쓰게 뺐다. `--golden` 모드: 창·화면·사용자 설정 없이 640×400(일부 @2x)로 33장면을 그려 `Tests/golden/`과 견줌(채널 ±2, 다른 픽셀 0.1%), 실패하면 차이 그림과 축소 모음. 글 점검 32개(실행 취소 30단계·가짜 시계, 켜고 끄기, 키, 펜·지우개 표, ahk 상수 대조 등). `build.sh --test`(그림+자체 점검+Rosetta 인텔, 28초), `--run`, `--update-goldens`. GitHub 자동 점검 `.github/workflows/mac-test.yml`(결정 5, 아직 돌려 보지 못함). `PARITY.md` 144개 + 맥 전용 차이. 위젯 아이콘 색입히기는 화면 배율과 무관하게 원본 크기에서 하도록 바꿈. 알게 된 것: 되살리기는 아직 30초(S5에서 10분), 창을 지나는 키·마우스 경로는 `--selftest`만 본다(화면 필요) · `0345689`

@@ -1,7 +1,7 @@
 #!/bin/bash
 # 맥용 Focus & Draw를 만든다: build/Focus & Draw.app (과 배포용 zip)
 # Xcode 없이 명령줄 도구(xcode-select --install)만 있으면 된다.
-#   build.sh            개발용: 애플 실리콘+인텔, "실험" 메뉴 포함, zip
+#   build.sh            개발용: 애플 실리콘+인텔, "실험" 메뉴 포함, zip (Focus-Draw-<버전>-mac.zip: 앱·맥용 읽어주세요·LICENSE)
 #   build.sh --quick    고치는 동안: 이 맥의 칩만, 실험 메뉴 포함, zip 없음
 #   build.sh --test     --quick으로 만든 뒤 그림 기준 점검(Tests/golden)과 자체 점검을 돌려 한 줄로 알려 준다 (커밋 전 한 번)
 #                       FD_HEADLESS=1이면 화면이 필요한 자체 점검(--selftest)은 건너뛴다 (GitHub 자동 점검용)
@@ -19,7 +19,7 @@ VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.pli
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP="$STAGE/Focus & Draw.app"
-ZIP="Focus-Draw-mac-$VERSION.zip"
+ZIP="Focus-Draw-$VERSION-mac.zip"
 
 ARCHS="arm64 x86_64"
 FLAGS=(-D EXPERIMENTS)
@@ -63,8 +63,27 @@ rm -rf "build/Focus & Draw.app"
 ditto "$APP" "build/Focus & Draw.app"
 
 if [ "$MODE" = dev ] || [ "$MODE" = --release ]; then
-  ditto -c -k --keepParent "$APP" "$STAGE/$ZIP"
-  rm -f build/Focus-Draw-mac-*.zip build/Focus-Draw-mac-*.zip.sha256
+  # 배포 폴더: 앱 + 맥용 읽어주세요 + LICENSE 만. 서명이 끝난 앱을 ditto로 묶는다(서명·확장 속성 보존).
+  for f in "맥용 읽어주세요.txt" "$ROOT/LICENSE"; do
+    [ -f "$f" ] || { echo "빌드 실패: 배포 파일이 없음: $f"; exit 1; }
+  done
+  PKGNAME="Focus-Draw-$VERSION-mac"
+  mkdir -p "$STAGE/pkg/$PKGNAME"
+  ditto "$APP" "$STAGE/pkg/$PKGNAME/Focus & Draw.app"
+  cp "맥용 읽어주세요.txt" "$STAGE/pkg/$PKGNAME/"
+  cp "$ROOT/LICENSE" "$STAGE/pkg/$PKGNAME/"
+  ditto -c -k --norsrc --keepParent "$STAGE/pkg/$PKGNAME" "$STAGE/$ZIP"
+  # 점검: 담긴 것이 앱·읽어주세요·LICENSE뿐인지(settings*.ini 없음), 풀어낸 앱의 서명이 살아 있는지
+  LISTING=$(LC_ALL=en_US.UTF-8 unzip -Z1 "$STAGE/$ZIP")
+  if echo "$LISTING" | grep -qi 'settings.*\.ini'; then echo "빌드 실패: zip에 settings*.ini가 들어 있음"; exit 1; fi
+  if echo "$LISTING" | grep -v -e "^$PKGNAME/Focus & Draw.app/" -e "^$PKGNAME/[^/]*\.txt$" -e "^$PKGNAME/LICENSE$" -e "^$PKGNAME/$" | grep -q .; then
+    echo "빌드 실패: zip에 예상 밖의 파일이 있음"; echo "$LISTING" | head -20; exit 1
+  fi
+  [ "$(echo "$LISTING" | grep -c "^$PKGNAME/[^/]*\.txt$")" = 1 ] || { echo "빌드 실패: zip에 읽어주세요 한 개가 있어야 함"; exit 1; }
+  mkdir -p "$STAGE/unzipped"
+  ditto -x -k "$STAGE/$ZIP" "$STAGE/unzipped"
+  codesign --verify --deep --strict "$STAGE/unzipped/$PKGNAME/Focus & Draw.app"
+  rm -f build/Focus-Draw-*.zip build/Focus-Draw-*.zip.sha256
   cp "$STAGE/$ZIP" build/
   echo "완료: build/Focus & Draw.app"
   echo "배포용: build/$ZIP"
@@ -85,7 +104,7 @@ fi
 # 그림 기준 점검: Tests/golden의 기준 그림과 견주고 글 점검(단언)을 돈다. 창이 필요 없다.
 # 인자: 앱 경로, 결과 폴더, (선택) --update-goldens
 run_golden() {
-  "$1/Contents/MacOS/FocusDraw" --golden "$2" --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" ${3:+"$3"}
+  "$1/Contents/MacOS/FocusDraw" --golden "$2" --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" --fixtures Tests/fixtures ${3:+"$3"}
 }
 if [ "$MODE" = --update-goldens ]; then
   run_golden "build/Focus & Draw.app" build/test-out --update-goldens
@@ -109,7 +128,7 @@ if [ "$MODE" = --test ]; then
     cp "$STAGE/FocusDraw-intel" "$IAPP/Contents/MacOS/FocusDraw"
     codesign --force --deep --sign - "$IAPP"
     set +e
-    IOUT=$(arch -x86_64 "$IAPP/Contents/MacOS/FocusDraw" --golden build/test-out-intel --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" 2>&1)
+    IOUT=$(arch -x86_64 "$IAPP/Contents/MacOS/FocusDraw" --golden build/test-out-intel --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" --fixtures Tests/fixtures 2>&1)
     IRC=$?
     set -e
     if [ $IRC -ne 0 ]; then echo "인텔(Rosetta) 그림 점검 실패:"; echo "$IOUT"; exit 1; fi
