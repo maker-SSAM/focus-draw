@@ -68,13 +68,18 @@ func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, b
 // 네 손가락 제스처(Mission Control·데스크톱 넘기기)는 앱 전환·데스크톱 바뀜 알림이 늦게(끝난 뒤에) 온다.
 // 그 사이에 보이는 신호로 바로 끈다 (S4 확인에서 발견, 진단 기록의 표본에서 찾음):
 //  - 데스크톱을 넘기는 중에는 판 창의 자리가 화면에서 밀려난다 (ink 자리 x=-1575 등)
-//  - Mission Control이 뜨면 Dock 소유의 창이 판과 같거나 높은 레벨(1000·1001)에 나타난다
+//  - Mission Control이 뜨면 Dock 소유의 큰 창이 레벨 18·20에 생기고, 넘기는 중에는 판과 같거나 높은 레벨(1000·1001)에도 나타난다
 func boardMovedAway(boardFrames: [CGRect], screenFrames: [CGRect]) -> Bool {
     boardFrames.contains { b in !screenFrames.contains { $0.equalTo(b) } }
 }
 
 func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int) -> Bool {
-    windows.contains { !$0.ownedByUs && $0.owner == "Dock" && $0.layer >= boardLayer && $0.alpha > 0.05 }
+    windows.contains { w in
+        guard !w.ownedByUs, w.owner == "Dock", w.alpha > 0.05 else { return false }
+        // 데스크톱을 넘기는 중: Dock 창이 판과 같거나 높은 레벨. Mission Control이 뜬 뒤: 화면만 한 Dock 창이 레벨 18·20에 생긴다
+        // (평소의 Dock 창은 레벨 -2147483624 하나뿐 — 이 맥에서 open -a "Mission Control" 중에 창 목록을 떠서 확인).
+        return w.layer >= boardLayer || (w.layer > 0 && w.frame.width >= 500 && w.frame.height >= 300)
+    }
 }
 
 @MainActor func currentWindowInfos() -> [WindowInfo] {

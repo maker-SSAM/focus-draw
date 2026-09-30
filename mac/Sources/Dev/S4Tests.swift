@@ -135,8 +135,10 @@ import Carbon
             func dock(_ layer: Int, ours: Bool = false, owner: String = "Dock") -> WindowInfo {
                 WindowInfo(number: 5, layer: layer, alpha: 1, ownedByUs: ours, frame: scr, owner: owner)
             }
-            check("제스처: Dock의 높은 창(1000·1001)이 뜨면 Mission Control, 평소 Dock 창(20)이나 다른 앱은 아님",
-                  missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && !missionControlShowing([dock(20), dock(-2147483624)], boardLayer: L)
+            let small = WindowInfo(number: 6, layer: 20, alpha: 1, ownedByUs: false, frame: CGRect(x: 500, y: 900, width: 400, height: 80), owner: "Dock")
+            check("제스처: Dock의 높은 창(1000·1001)이나 화면만 한 창(레벨 18·20)이 뜨면 Mission Control, 평소 Dock 창이나 다른 앱은 아님",
+                  missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && missionControlShowing([dock(20)], boardLayer: L)
+                  && !missionControlShowing([dock(-2147483624), small], boardLayer: L)
                   && !missionControlShowing([dock(L + 1, owner: "Keynote")], boardLayer: L))
         }
 
