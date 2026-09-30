@@ -125,7 +125,7 @@ enum PenKind { case normal, laser, rainbow }
         pen = .normal
     }
 
-    func expireUndoIfNeeded() { model.expireIfNeeded() }
+    func expireUndoIfNeeded() { cancelExpiry(); model.expireIfNeeded() }
 
     // 끄는 순간의 그림·칠판 정리. clear: Esc·위젯 버튼은 다 지우고 나가고, F9는 그대로 남긴다
     func finishSession(clear: Bool) {
@@ -135,8 +135,26 @@ enum PenKind { case normal, laser, rainbow }
         }
         cancelLive()
         laser = []; laserLive = nil
+        stopLaserTimer()
         model.noteOff()
+        scheduleExpiry()
     }
+
+    // ---------- 끈 뒤 10분 (선생님 결정 ③) ----------
+    // 끌 때 한 번 깨는 작업을 예약하고, 켜면 취소한다. 잠자기로 밀리면 켤 때 expireIfNeeded가 한 번 더 본다.
+    private var expiryWork: DispatchWorkItem?
+    var hasExpiryScheduled: Bool { expiryWork != nil }
+    func scheduleExpiry() {
+        expiryWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.expiryWork = nil
+            self.model.expireIfNeeded()
+        }
+        expiryWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + UNDO_KEEP_S + 1, execute: w)
+    }
+    func cancelExpiry() { expiryWork?.cancel(); expiryWork = nil }
 
     // 지금 펜 상태 (자체 점검용)
     var penState: (rgb: UInt32, alpha: CGFloat, penStep: Int, eraserStep: Int, pen: PenKind, board: Int) {
@@ -200,6 +218,7 @@ enum PenKind { case normal, laser, rainbow }
         live = InkItem(kind: .stroke, points: [p], width: w, rgb: rgb, alpha: alpha,
                        hues: activePen == .rainbow ? [rainbowHue] : nil)
         liveBounds = live!.bounds
+        if mode == .free { surface.strokeAdd(live!) } // 처음 점 (도형은 끌 때 미리보기로 그린다)
         surface.invalidate(liveBounds)
     }
 
@@ -232,8 +251,9 @@ enum PenKind { case normal, laser, rainbow }
             }
             item.points.append(p)
             live = item
-            // 반투명 획은 획 전체를 한 겹으로 다시 얹으므로 지나온 자리 전체를, 불투명하면 새 토막만 다시 그린다
-            surface.invalidate(item.alpha < 1 || activePen == .rainbow ? item.bounds : segmentBounds(lastPoint, p, item.width))
+            // 긋는 획은 전용 그림에 불투명하게 쌓는다 — 새 토막만 더하고 그 자리만 다시 합친다 (반투명·무지개도 같다)
+            surface.strokeAdd(lastSegment(of: item))
+            surface.invalidate(segmentBounds(lastPoint, p, item.width))
         } else {
             refreshShape(end: shapeEnd(p, e.modifierFlags))
         }
@@ -295,6 +315,7 @@ enum PenKind { case normal, laser, rainbow }
             item.hues = hues
         }
         let nb = item.bounds
+        surface.strokeReplace(clear: liveBounds, with: item)
         surface.invalidate(liveBounds.union(nb))
         liveBounds = nb
         live = item
@@ -304,8 +325,27 @@ enum PenKind { case normal, laser, rainbow }
         CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y)).insetBy(dx: -w - 2, dy: -w - 2)
     }
 
+    // 방금 더한 한 토막만 든 획 (전용 그림에 더할 때 쓴다). 무지개는 두 점의 색만 넘긴다.
+    private func lastSegment(of item: InkItem) -> InkItem {
+        let n = item.points.count
+        var seg = item
+        seg.points = Array(item.points[max(0, n - 2)...])
+        if let h = item.hues, h.count == n { seg.hues = Array(h[max(0, n - 2)...]) }
+        return seg
+    }
+
+    // 화면 구성이 바뀔 때: 긋던 획·지우던 획을 손을 뗀 것처럼 깔끔히 끝내 매달린 획이 남지 않게 한다
+    func endStroke() {
+        if live != nil || laserLive != nil { up(lastPoint) }
+        rightDown = false; erasing = false; held = []
+    }
+
     private func cancelLive() {
-        if live != nil { surface.invalidate(liveBounds.union(live!.bounds)) }
+        if let l = live {
+            let r = liveBounds.union(l.bounds)
+            surface.strokeClear(r)
+            surface.invalidate(r)
+        }
         live = nil; erasing = false; rightDown = false; held = []
     }
 

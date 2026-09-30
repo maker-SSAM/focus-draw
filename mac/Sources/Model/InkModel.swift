@@ -25,17 +25,28 @@ struct InkItem {
 
 final class InkModel {
     private(set) var items: [InkItem] = []
-    private var undoFloor = 0 // 이보다 앞은 되돌리지 않는다 (최대 UNDO_MAX단계, 끈 뒤 UNDO_KEEP_S초)
+    private(set) var removed = 0   // 앞에서 버린 항목 수. 항목의 "절대 번호" = removed + items 안의 자리 (화면의 바닥 그림이 어디까지 구웠는지 적는 데 쓴다)
+    private(set) var undoFloor = 0 // 이보다 앞은 되돌리지 않는다 (최대 UNDO_MAX단계, 끈 뒤 UNDO_KEEP_S초)
     private var offSince: Date?
     var clock: () -> Date = Date.init // 자체 점검이 가짜 시계를 넣는다
 
-    // 끈 지 UNDO_KEEP_S초가 넘었으면 그 앞 그림은 되돌리지 않는다 (켤 때 확인)
+    // 되돌릴 수 없게 된 곳까지의 절대 번호: 이 앞은 바닥 그림에 구워도 된다
+    var floorAbs: Int { removed + undoFloor }
+
+    // 절대 번호 [from, to) 항목 (버려진 앞부분은 건너뛴다)
+    func slice(from: Int, to: Int) -> ArraySlice<InkItem> {
+        let a = max(0, from - removed), b = min(items.count, to - removed)
+        return a < b ? items[a..<b] : []
+    }
+
+    // 끈 지 UNDO_KEEP_S초가 넘었으면 그 앞 그림은 되돌리지 않는다 (켤 때, 그리고 끌 때 예약한 작업이 부른다)
     func expireIfNeeded() {
         if let off = offSince, clock().timeIntervalSince(off) > UNDO_KEEP_S { setUndoFloor(items.count) }
         offSince = nil
     }
 
     func noteOff() { offSince = clock() }
+    var isOffTimed: Bool { offSince != nil }
 
     func commit(_ item: InkItem) {
         items.append(item)
@@ -45,9 +56,11 @@ final class InkModel {
     private func setUndoFloor(_ f: Int) {
         undoFloor = f
         // 되돌릴 수 없는 곳에 "전부 지우기"가 있으면 그 앞은 더 들고 있을 이유가 없다
+        // (화면이 비어 있는 채로 10분이 지나면 이 길로 목록까지 빈다)
         if let idx = items[..<undoFloor].lastIndex(where: { $0.kind == .clear }) {
             items.removeSubrange(0...idx)
             undoFloor -= idx + 1
+            removed += idx + 1
         }
     }
 
@@ -64,6 +77,17 @@ final class InkModel {
         let c = InkItem(kind: .clear)
         commit(c)
         return c
+    }
+
+    // 주 화면이 바뀌어 전역 좌표의 원점이 옮겨 가면 잉크도 같이 옮겨 원래 화면 자리에 있게 한다
+    func translate(dx: CGFloat, dy: CGFloat) {
+        guard dx != 0 || dy != 0 else { return }
+        for i in items.indices {
+            for j in items[i].points.indices {
+                items[i].points[j].x += dx
+                items[i].points[j].y += dy
+            }
+        }
     }
 }
 

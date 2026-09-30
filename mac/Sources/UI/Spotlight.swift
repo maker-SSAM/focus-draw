@@ -15,6 +15,7 @@ final class SpotView: NSView {
     // 보일지 말지는 AppState가 정한다 (강조 켬 && 드로잉 꺼짐). 여기서는 그대로 따른다.
     var visible = false { didSet { if visible != oldValue { refresh() } } }
     var windowNumber: Int? { window?.windowNumber }
+    var isRunning: Bool { timer != nil }
 
     init() {
         // 켜 둔 채 다른 데스크톱으로 넘어갔는데 원이 따라오지 않았으면 그 자리에서 새로 만든다

@@ -191,6 +191,7 @@ import AppKit
 
         offReasons(d, check)
         cursors(d, check)
+        longClass(d, check)
 
         HotKeyTests.realBackend(check)
 
@@ -294,6 +295,114 @@ import AppKit
         check("캡처 화면·시스템 창 위에서도 화살표를 보임", !c.mouseInside && !SystemCursor.hidden, "")
         d.draw.turnOff(.hotkey)
         check("끄면 시스템 커서가 돌아오고 Hide·Show 호출 수가 짝", !SystemCursor.hidden && SystemCursor.balanced, SystemCursor.callSummary)
+    }
+
+    // ---- S5: 긴 수업 — 바닥 굽기·실행 취소·화면 바뀜·끈 뒤 정리 ----
+    static func longClass(_ d: AppDelegate, _ check: (String, Bool, String) -> Void) {
+        let c = d.draw.controller
+        func view() -> InkView? { d.draw.surface.views.first }
+        func pixels(_ img: CGImage, _ w: Int, _ h: Int) -> [UInt8] {
+            var buf = [UInt8](repeating: 0, count: w * h * 4)
+            buf.withUnsafeMutableBytes { raw in
+                if let ctx = CGContext(data: raw.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                    ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+                }
+            }
+            return buf
+        }
+        // 화면의 그림(바닥 그림 + 최근 획)과 기준 경로(renderScene: 목록 전체를 처음부터)가 같은가 — 다른 픽셀 수를 돌려준다
+        func differing() -> Int {
+            guard let v = view(), let snap = v.cacheSnapshot, let win = v.window else { return -1 }
+            let scale = win.backingScaleFactor
+            guard let ref = renderScene(items: c.model.items, size: v.bounds.size, scale: scale) else { return -1 }
+            let w = snap.width, h = snap.height
+            guard ref.width == w, ref.height == h else { return -1 }
+            let a = pixels(snap, w, h), b = pixels(ref, w, h)
+            var n = 0
+            for i in stride(from: 0, to: a.count, by: 4) where abs(Int(a[i]) - Int(b[i])) > 4 || abs(Int(a[i + 1]) - Int(b[i + 1])) > 4
+                || abs(Int(a[i + 2]) - Int(b[i + 2])) > 4 || abs(Int(a[i + 3]) - Int(b[i + 3])) > 4 { n += 1 }
+            return n
+        }
+        let screen = NSScreen.screens[0].frame
+        func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: screen.minX + x, y: screen.minY + y) }
+        func mouse(_ t: NSEvent.EventType, _ p: CGPoint) -> NSEvent {
+            NSEvent.mouseEvent(with: t, location: p, modifierFlags: [], timestamp: 0, windowNumber: 0, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+        }
+        func line(_ i: Int) {
+            let x = 100 + CGFloat((i * 37) % 700), y = 100 + CGFloat((i * 53) % 500)
+            let erase = i % 20 == 19
+            c.alpha = i % 4 == 3 ? 0.5 : 1
+            let pts = (0..<12).map { P(x + CGFloat($0) * 9, y + sin(CGFloat($0) + CGFloat(i)) * 25) }
+            c.down(pts[0], mouse(erase ? .rightMouseDown : .leftMouseDown, pts[0]), right: erase)
+            for p in pts.dropFirst() { c.drag(p, mouse(erase ? .rightMouseDragged : .leftMouseDragged, p)) }
+            c.up(pts.last!)
+        }
+
+        d.draw.turnOn()
+        guard d.draw.isOn else { check("긴 수업 점검: 드로잉 켜짐", false, "켜지지 않음"); return }
+        c.handleKey(18, [], isRepeat: false, source: "hk") // 1번 색 (빨강) 일반 펜
+        for i in 0..<120 { line(i) }
+        let baked = view()?.bakedUpTo ?? -1
+        check("긴 수업: 120획 뒤 오래된 획이 바닥 그림에 구워짐", baked >= 70 && baked <= c.model.floorAbs, "구운 곳=\(baked) 되돌릴 수 없는 곳=\(c.model.floorAbs)")
+        check("긴 수업: 바닥 그림을 쓴 화면이 목록 전체를 처음부터 그린 것과 같음", differing() == 0, "다른 픽셀 \(differing())")
+        for _ in 0..<30 { c.undo() }
+        check("긴 수업: ⌘Z 30번 뒤에도 같음 (바닥 그림 + 최근 획만 다시 그림)", differing() == 0 && c.items.count == 90, "다른 픽셀 \(differing()) 획 \(c.items.count)")
+        c.clearAll()
+        check("긴 수업: 바닥 굽기를 넘은 뒤 전부 지우기 → 빈 화면", differing() == 0, "다른 픽셀 \(differing())")
+        c.undo()
+        check("긴 수업: 전부 지우기를 취소하면 그림이 돌아옴", differing() == 0 && c.items.last?.kind != .clear, "다른 픽셀 \(differing())")
+
+        // 긋는 도중 화면 구성이 바뀌면 획을 깔끔히 끝낸다
+        let before = c.items.count, boards = d.draw.inkWindowNumbers
+        c.down(P(300, 300), mouse(.leftMouseDown, P(300, 300)), right: false)
+        c.drag(P(340, 330), mouse(.leftMouseDragged, P(340, 330)))
+        c.drag(P(380, 330), mouse(.leftMouseDragged, P(380, 330)))
+        d.draw.surface.checkScreens(forced: true)
+        check("화면이 바뀌면 긋던 획이 끝남 (매달린 획·지우개 없음, 획은 목록에 남음)",
+              c.live == nil && !c.erasing && !c.rightDown && c.items.count == before + 1, "live=\(c.live != nil) 획 \(before)→\(c.items.count)")
+        check("화면이 바뀌면 판을 새로 만들고 그림을 다시 그림", d.draw.inkWindowNumbers != boards && d.draw.surface.views.allSatisfy(\.hasCache)
+              && differing() == 0, "다른 픽셀 \(differing())")
+        check("화면이 바뀐 뒤에도 위젯이 화면 안에 있음", NSScreen.screens.contains { $0.frame.intersects(d.widget.window.frame) }, "")
+
+        // 레이저를 쓴 뒤 끄면 타이머가 모두 멈추고 그림이 버려짐
+        c.handleKey(0, [], isRepeat: false, source: "hk") // 레이저 펜
+        c.down(P(200, 200), mouse(.leftMouseDown, P(200, 200)), right: false)
+        c.drag(P(260, 220), mouse(.leftMouseDragged, P(260, 220)))
+        c.up(P(260, 220))
+        check("레이저를 쓰는 동안은 레이저 타이머가 돎", c.laserTimer != nil, "")
+        c.handleKey(18, [], isRepeat: false, source: "hk")
+        d.draw.turnOff(.hotkey)
+        check("끄면 그림(바닥·획·화면)이 모두 버려지고 타이머가 없음 (잉크 목록만 남음)",
+              !d.draw.surface.hasImages && c.laserTimer == nil && !c.watch.isRunning && !d.draw.isWatching && !c.items.isEmpty,
+              "그림=\(d.draw.surface.hasImages) 레이저타이머=\(c.laserTimer != nil) 살핌=\(c.watch.isRunning)")
+        check("끄면 10분 뒤 정리 작업이 한 번만 예약됨", c.hasExpiryScheduled, "")
+        d.draw.surface.checkScreens(forced: true)
+        check("꺼진 채 화면이 바뀌면 판을 닫고 그림을 만들지 않음", d.draw.surface.windows.isEmpty && !d.draw.surface.hasImages, "판 \(d.draw.surface.windows.count)개")
+
+        // 다시 켜면 목록에서 한 번 다시 그림
+        d.draw.turnOn()
+        let redraw = d.draw.surface.lastRebuildMS
+        check("다시 켜면 남은 잉크가 목록에서 다시 그려짐, 정리 예약은 취소됨",
+              d.draw.isOn && differing() == 0 && !c.hasExpiryScheduled, "다른 픽셀 \(differing()) \(String(format: "%.0f", redraw))ms")
+
+        // 2,000획 뒤: 다시 그리기 시간과 실행 취소 시간 (SPIKES D4)
+        for i in 0..<2000 { line(200 + i) }
+        d.draw.turnOff(.hotkey)
+        d.draw.turnOn()
+        let redraw2000 = d.draw.surface.lastRebuildMS
+        check("2,000획: 켤 때 다시 그리기 2초 이내 (선생님 판에서는 훨씬 빠르다)", redraw2000 < 2000, "\(String(format: "%.0f", redraw2000))ms, 획 \(c.items.count)개")
+        var worst = 0.0
+        for _ in 0..<30 {
+            let t = DispatchTime.now().uptimeNanoseconds
+            c.undo()
+            worst = max(worst, Double(DispatchTime.now().uptimeNanoseconds - t) / 1_000_000)
+        }
+        check("2,000획 뒤 실행 취소 한 번이 50ms 이내", worst <= 50, "가장 느린 \(String(format: "%.1f", worst))ms")
+        d.draw.turnOff(.hotkey)
+        d.toggleSpotlightOffIfOn()
+        check("드로잉·강조가 모두 꺼지면 도는 타이머가 없음", !c.watch.isRunning && c.laserTimer == nil && !d.spotlight.isRunning, "")
+        check("깨어난 뒤 앱 단축키가 그대로이고 진단 한 줄을 남김", d.checkAfterWake(), "")
     }
 
     static func snapshot(_ v: NSView, to url: URL) {

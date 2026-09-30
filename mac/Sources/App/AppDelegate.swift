@@ -101,12 +101,41 @@ import Combine
         }
         draw.onKeysFailed = { r in Notice.show(Notice.drawKeysFailed(r)) }
         registerAppHotkeys()
+        appHotkeyCount = HotKeyRegistry.shared.count(.app)
+
+        // 화면 구성이 바뀌면 잉크는 InkSurface가 옮기고, 위젯은 여기서 같이 옮긴 뒤 화면 안으로 들인다
+        draw.surface.onScreensChanged = { [weak self] shift in
+            self?.widget.shift(by: shift)
+            self?.widget.clampIntoScreen()
+        }
+        // 잠자기에서 깨면 앱 단축키(F8·F9 등)가 살아 있는지 보고, 풀렸으면 다시 잡는다 (진단 기록에 한 줄)
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { _ = self?.checkAfterWake() }
+        }
 
         setupStatusItem()
         if normalRun { showStartupNotices(loadResult) }
 
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
         if let out = bench { DispatchQueue.main.async { Bench.run(self, out: out) } }
+    }
+
+    var appHotkeyCount = 0
+
+    // 깨어난 뒤: 앱 단축키가 그대로인지 확인한다. 드로잉·강조는 잠자기 때 꺼졌으므로 쉬는 상태여야 한다.
+    @discardableResult
+    func checkAfterWake() -> Bool {
+        var have = HotKeyRegistry.shared.count(.app)
+        var redone = false
+        if have < appHotkeyCount {
+            HotKeyRegistry.shared.unregisterGroup(.app)
+            registerAppHotkeys()
+            have = HotKeyRegistry.shared.count(.app)
+            redone = true
+        }
+        Log.log("WAKE", "appkeys=\(have)/\(appHotkeyCount)\(redone ? " reregistered" : "") draw=\(state.drawOn ? 1 : 0) spot=\(state.spotOn ? 1 : 0) "
+                + "drawkeys=\(draw.keys.ids.count) blockkeys=\(draw.keys.blockIDs.count)")
+        return have >= appHotkeyCount
     }
 
     func registerAppHotkeys() {
@@ -189,6 +218,8 @@ import Combine
         applied = now
         state.widgetVisible = Settings.shared.showWidget
     }
+
+    func toggleSpotlightOffIfOn() { if state.spotOn { toggleSpotlight() } }
 
     func toggleSpotlight() {
         state.spotOn.toggle()

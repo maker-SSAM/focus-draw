@@ -45,6 +45,11 @@ extension DrawController {
         }
     }
 
+    func stopLaserTimer() {
+        laserTimer?.invalidate()
+        laserTimer = nil
+    }
+
     func startLaserTimer() {
         guard laserTimer == nil else { return }
         var lastBox: CGRect = .null

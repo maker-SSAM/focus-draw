@@ -24,6 +24,27 @@ func screenSignature() -> String {
     }.joined(separator: " ")
 }
 
+// 화면 번호와 자리. 주 화면이 바뀌면 AppKit의 전역 좌표 원점이 다른 화면으로 옮겨 가므로(프로젝터를 주 화면으로 고른 경우 등),
+// 그 전후에 같은 화면이 얼마나 움직였는지로 잉크를 옮긴다.
+struct ScreenSnap: Equatable { var id: UInt32; var frame: CGRect }
+
+@MainActor func screenSnapshots() -> [ScreenSnap] {
+    NSScreen.screens.map { s in
+        ScreenSnap(id: (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value ?? 0, frame: s.frame)
+    }
+}
+
+// 잉크를 옮길 양. 예전 화면 중 지금도 있는 첫 화면(주 화면 먼저)이 전역 좌표에서 움직인 만큼 — 그 화면의 잉크가 제자리에 있게.
+// 같은 화면이 하나도 없으면 옮기지 않는다.
+func inkShift(old: [ScreenSnap], new: [ScreenSnap]) -> CGVector {
+    for o in old {
+        if let n = new.first(where: { $0.id == o.id }) {
+            return CGVector(dx: n.frame.minX - o.frame.minX, dy: n.frame.minY - o.frame.minY)
+        }
+    }
+    return .zero
+}
+
 final class GlassPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }

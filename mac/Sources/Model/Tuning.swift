@@ -36,6 +36,8 @@ let LASER_LAYERS: [(CGFloat, CGFloat, CGFloat)] = [(3.0, 0.16, 0), (1.7, 0.40, 0
 // ---------- 무지개 펜 ----------
 let RAINBOW_CYCLE_PX: CGFloat = 700     // 이만큼 그으면 색이 한 바퀴
 
-// ---------- 실행 취소 (선생님 결정 ③은 10분 — S5에서 600으로 바꾼다) ----------
+// ---------- 실행 취소 (선생님 결정 ③: 끈 뒤 10분) ----------
 let UNDO_MAX = 30
-let UNDO_KEEP_S: TimeInterval = 30
+let UNDO_KEEP_S: TimeInterval = 600
+// 30단계보다 오래된 획은 바닥 그림에 굽는다. 획마다 굽지 않고 이만큼 쌓였을 때 한꺼번에 (실행 취소 때 다시 그리는 획은 최대 UNDO_MAX + 이 값)
+let FLOOR_CHUNK = 10

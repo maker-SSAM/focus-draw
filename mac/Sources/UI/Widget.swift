@@ -150,7 +150,7 @@ final class WidgetView: NSView {
         let m = NSEvent.mouseLocation
         var o = NSPoint(x: windowStart.x + m.x - start.x, y: windowStart.y + m.y - start.y)
         // 화면 밖으로는 나가지 않게. 모니터가 여럿이면 커서가 있는 화면을 따른다.
-        let screen = NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.main
+        let screen = NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.screens.first
         if let f = screen?.frame {
             o.x = min(max(o.x, f.minX), f.maxX - w.frame.width)
             o.y = min(max(o.y, f.minY), f.maxY - w.frame.height)
@@ -237,11 +237,19 @@ final class WidgetView: NSView {
         window.orderFrontRegardless()
     }
 
-    // 늘 주 화면 오른쪽 아래(Dock 위)로
+    // 늘 주 화면(메뉴 막대가 있는 화면) 오른쪽 아래(Dock 위)로. NSScreen.main은 "지금 포커스가 있는 화면"이라 쓰지 않는다.
     func moveToDefault() {
-        guard let f = NSScreen.main?.visibleFrame else { return }
+        guard let f = NSScreen.screens.first?.visibleFrame else { return }
         let sz = WidgetView.size
         window.setFrameOrigin(NSPoint(x: f.maxX - sz.width - 20, y: f.minY + 20))
+    }
+
+    // 주 화면이 바뀌어 전역 좌표 원점이 옮겨 갔으면 위젯도 같은 화면의 같은 자리에 있게 옮긴다 (잉크와 같은 까닭)
+    func shift(by v: CGVector) {
+        guard v != .zero else { return }
+        let o = window.frame.origin
+        window.setFrameOrigin(NSPoint(x: o.x + v.dx, y: o.y + v.dy))
+        view.onMoved(window.frame.origin)
     }
 
     // 모니터 구성이 바뀌어 저장된 자리가 화면 밖이면 들여놓는다

@@ -21,6 +21,12 @@ import Darwin
         say("# Focus & Draw --bench  \(Date())")
         say("machine=\(Log.sysctlString("hw.model")) cpu=\(Log.sysctlString("machdep.cpu.brand_string")) "
             + "macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) arch=\(Log.machineArch)")
+        var failures: [String] = []
+        func assertBench(_ name: String, _ value: Double, max limit: Double) {
+            let ok = value <= limit
+            say("  \(ok ? "OK  " : "FAIL") \(name): \(f(value))ms (기준 \(f(limit))ms 이하)")
+            if !ok { failures.append(name) }
+        }
         say("단위: ms. 형광펜 = 노랑 50%, 굵기 8단계(\(String(format: "%.1f", penPx(8)))pt), 점 간격 약 5pt, 배율 2")
 
         for (pw, ph) in [(3024, 1964), (5120, 2880)] {
@@ -38,8 +44,9 @@ import Darwin
                 let a = eventsCurrent(pts, cacheImage: cacheImage, target: target, size: size)
                 let b = eventsLiveLayer(pts, cacheImage: cacheImage, target: target, pw: pw, ph: ph, scale: scale, size: size)
                 say("긋는 중 · \(shapeName)")
-                say("  지금 방식        p50=\(f(pct(a, 0.5))) p95=\(f(pct(a, 0.95))) max=\(f(a.max() ?? 0))  (300개 표본)")
-                say("  획 전용 그림 방식 p50=\(f(pct(b, 0.5))) p95=\(f(pct(b, 0.95))) max=\(f(b.max() ?? 0))  (3,000개 전부)")
+                say("  옛 방식(지나온 자리 전체 다시 그림) p50=\(f(pct(a, 0.5))) p95=\(f(pct(a, 0.95))) max=\(f(a.max() ?? 0))  (300개 표본)")
+                say("  획 전용 그림 방식(지금 코드의 StrokeLayer) p50=\(f(pct(b, 0.5))) p95=\(f(pct(b, 0.95))) max=\(f(b.max() ?? 0))  (3,000개 전부)")
+                if pw == 5120 { assertBench("5K 긋는 중 \(shapeName.split(separator: " ").first ?? "") p95", pct(b, 0.95), max: 8) }
             }
 
             // 확정: 캐시에 한 획 더 굽고 새 그림을 만든다 (앞 그림을 들고 있으므로 쓰기 전에 통째 복사가 일어난다)
@@ -53,14 +60,28 @@ import Darwin
             }
             say("확정 (3,000점 50% 획)  p50=\(f(pct(commits, 0.5))) max=\(f(commits.max() ?? 0))")
 
-            // 실행 취소: 목록 전체를 새 그림에 다시 굽는다 (InkView.rebuildCache와 같은 일)
+            // 실행 취소: 옛 방식은 목록 전체를 다시 굽는다. 지금은 바닥 그림을 그대로 쓰고 최근 40개(30 + 굽기 묶음 10)만 다시 그린다
             for n in [500, 2000, 5000] {
                 let items = sampleItems(n, in: size, seed: UInt64(n))
                 let t = now()
                 let c = context(pw, ph, scale)
                 for item in items { renderInk(item, in: c) }
                 _ = c.makeImage()
-                say("실행 취소 재구성 \(n)개  \(f(now() - t))")
+                say("실행 취소 재구성 \(n)개 (옛 방식, 전부)  \(f(now() - t))")
+                let floorCtx = context(pw, ph, scale)
+                for item in items.dropLast(40) { renderInk(item, in: floorCtx) }
+                let cacheCtx = context(pw, ph, scale)
+                var worst = 0.0
+                for _ in 0..<5 {
+                    let t2 = now()
+                    cacheCtx.clear(CGRect(origin: .zero, size: size))
+                    cacheCtx.draw(floorCtx.makeImage()!, in: CGRect(origin: .zero, size: size))
+                    for item in items.suffix(40) { renderInk(item, in: cacheCtx) }
+                    _ = cacheCtx.makeImage()
+                    worst = max(worst, now() - t2)
+                }
+                say("실행 취소 \(n)개 (바닥 그림 + 최근 40개)  가장 느린 \(f(worst))")
+                if n == 2000 && pw == 5120 { assertBench("5K 2,000개 실행 취소", worst, max: 50) }
             }
             _ = cacheImage
         }
@@ -103,6 +124,7 @@ import Darwin
                         let w3 = usage()
                         say("레이저를 쓴 뒤 쉴 때 " + usageText(w2, w3))
                         say("(깨어남은 초당 횟수. 두 줄이 비슷하면 레이저 타이머가 제대로 멈춘 것)")
+                        say(failures.isEmpty ? "BENCH 기준 통과" : "BENCH 기준 실패: \(failures.joined(separator: ", "))")
                         finish()
                     }
                 }
@@ -138,32 +160,22 @@ import Darwin
     // 획 전용 그림 방식: 긋는 중인 획을 불투명하게 따로 쌓고, 화면에는 새 토막 자리만 50%로 얹는다
     static func eventsLiveLayer(_ pts: [CGPoint], cacheImage: CGImage, target: CGContext,
                                 pw: Int, ph: Int, scale: CGFloat, size: CGSize) -> [Double] {
-        let live = context(pw, ph, scale)
-        let provider = CGDataProvider(dataInfo: nil, data: live.data!, size: live.bytesPerRow * ph, releaseData: { _, _, _ in })!
-        let liveImage = CGImage(width: pw, height: ph, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: live.bytesPerRow,
-                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
-                                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        let layer = StrokeLayer(size: size, scale: scale, origin: .zero)!
         let w = penPx(8)
-        live.setLineCap(.round)
-        live.setLineWidth(w)
-        live.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 0, alpha: 1))
         var times: [Double] = []
         let full = CGRect(origin: .zero, size: size)
         for i in 1..<pts.count {
             let t = now()
             let a = pts[i - 1], b = pts[i]
+            layer.add(InkItem(kind: .stroke, points: [a, b], width: w, rgb: 0xFFFF00, alpha: 0.5))
             let seg = CGRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
                 .insetBy(dx: -w - 2, dy: -w - 2).intersection(full)
-            live.move(to: a)
-            live.addLine(to: b)
-            live.strokePath()
             target.saveGState()
             target.clip(to: seg)
             target.clear(seg)
             target.draw(cacheImage, in: full)
             target.setAlpha(0.5)
-            target.draw(liveImage, in: full)
+            target.draw(layer.image, in: full)
             target.restoreGState()
             target.flush()
             times.append(now() - t)
