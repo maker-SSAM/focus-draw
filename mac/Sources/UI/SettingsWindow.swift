@@ -144,12 +144,18 @@ struct SettingsView: View {
     }
 
     // 드로잉 판이 설정 창을 덮는 동안 창을 치워 둔다. 보이던 창이었으면 true.
+    // 색 고르는 패널도 함께 치운다 — 판 아래에 갇혀 눌리지 않기 때문이다.
+    private var colorPanelHidden = false
     func hideForDraw() -> Bool {
-        guard let w = window, w.isVisible else { return false }
-        w.orderOut(nil)
-        return true
+        if NSColorPanel.shared.isVisible { colorPanelHidden = true; NSColorPanel.shared.orderOut(nil) }
+        var hid = colorPanelHidden
+        if let w = window, w.isVisible { w.orderOut(nil); hid = true }
+        return hid
     }
 
     // 드로잉이 끝나면 앱을 앞으로 부르지 않고 창만 되돌린다
-    func restoreAfterDraw() { window?.orderFront(nil) }
+    func restoreAfterDraw() {
+        window?.orderFront(nil)
+        if colorPanelHidden { NSColorPanel.shared.orderFront(nil); colorPanelHidden = false }
+    }
 }

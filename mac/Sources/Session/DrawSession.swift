@@ -1,17 +1,20 @@
 import AppKit
 
 // 드로잉을 끄는 이유. 끄는 길은 모두 DrawSession.turnOff(_:) 하나를 지난다.
-// 지금은 실제로 쓰이는 이유만 있다. 나머지(다른 앱·데스크톱으로 넘어감, 잠자기, 화면 잠금)는 S4가 채운다.
 // (설계도 3절 표: architecture.md)
 enum OffReason: String {
     case esc            // Esc: 그린 것과 칠판을 지우고 나간다 (⌘Z로 되살릴 수 있다)
     case widgetButton   // 위젯의 드로잉 버튼: Esc와 같다 (Windows와 같음)
     case hotkey         // F9·⌃⌥2: 그린 것을 그대로 남긴다 (Windows와 같음)
+    case appSwitch      // 다른 앱이 앞으로 나옴 (⌘Tab 등): Esc처럼 끈다 (선생님 결정 ②)
+    case spaceChange    // 다른 데스크톱으로 넘어감: Esc처럼 끈다 (결정 ②)
+    case sleep          // 잠자기·화면 꺼짐: Esc처럼 끈다 (D7)
+    case lock           // 화면 잠금·사용자 전환: Esc처럼 끈다 (D7)
     case settings       // 설정 창 열기: 남긴다 (우리 앱이 앞으로 나오므로 끈다)
     case quit           // 종료: 남긴다 (의미 없음)
 
     // 그린 것과 칠판을 지우고 나가는가
-    var clearsInk: Bool { self == .esc || self == .widgetButton }
+    var clearsInk: Bool { self != .hotkey && self != .settings && self != .quit }
 }
 
 // 드로잉 켜기·끄기의 순서를 지킨다. 그림·펜 상태는 DrawController가, 판(창)은 InkSurface가,
@@ -26,6 +29,7 @@ enum OffReason: String {
     var onKeysFailed: (HotKeyGroupResult) -> Void = { _ in } // 드로잉 키를 못 잡아 켜지 못했을 때 (안내 창은 AppDelegate가)
 
     var isOn: Bool { state.drawOn }
+    private var observers: [NSObjectProtocol] = []   // 드로잉 중에만 걸어 두는 시스템 알림 (앱·데스크톱·잠자기·잠금)
     var inkWindowNumbers: [Int] { surface.windowNumbers }
 
     init(state: AppState) {
@@ -55,21 +59,55 @@ enum OffReason: String {
         state.drawOn = true
         surface.show() // 앱을 앞으로 부르지 않는다 — 발표 앱이 앞에 그대로 있다
         controller.begin()
+        startWatching()
         Log.log("DRAW", "on front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-") windows=\(surface.windows.count)")
     }
 
     func turnOff(_ reason: OffReason) {
         guard isOn else { return }
+        stopWatching()
         controller.finishSession(clear: reason.clearsInk)
-        // 드로잉 키 단축키를 반드시 푼다 (안 풀리면 시스템 전체에서 그 글자를 못 친다)
-        let freed = keys.unregisterAll()
+        // 드로잉·막기 키 단축키를 반드시 푼다 (안 풀리면 시스템 전체에서 그 글자를 못 친다)
+        let freed = keys.unregisterAll(lingerEsc: reason == .esc)
         state.drawOn = false
         surface.hide()
+        controller.end()
         SystemCursor.show(.board)
         NSCursor.arrow.set()
-        Log.log("DRAW", "off reason=\(reason.rawValue) drawkeysFreed=\(freed.removed) errors=\(freed.errors) "
-                 + "left=\(keys.ids.count) cursorHidden=\(SystemCursor.hidden)")
+        Log.log("DRAW", "off reason=\(reason.rawValue) keysFreed=\(freed.removed) errors=\(freed.errors) "
+                 + "left=\(keys.left) cursorHidden=\(SystemCursor.hidden) calls=\(SystemCursor.callSummary)")
     }
+
+    // ---------- 끄는 이유를 지켜본다 (드로잉 중에만) ----------
+    // 다른 앱이 앞으로 나오거나, 데스크톱이 바뀌거나, 잠자기·잠금이면 Esc처럼 끈다(선생님 결정 ②·D7).
+    // 캡처(⌘⇧4·5)는 앞 앱이 바뀌지 않으므로 꺼지지 않는다.
+    private func startWatching() {
+        stopWatching()
+        let nc = NSWorkspace.shared.notificationCenter
+        func watch(_ name: Notification.Name, _ handler: @escaping (Notification) -> Void) {
+            observers.append(nc.addObserver(forName: name, object: nil, queue: .main) { n in
+                MainActor.assumeIsolated { handler(n) }
+            })
+        }
+        watch(NSWorkspace.didActivateApplicationNotification) { [weak self] n in
+            guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return } // 우리 앱(설정 창 등)은 제외
+            Log.log("DRAW", "activated \(app.bundleIdentifier ?? "-")")
+            self?.turnOff(.appSwitch)
+        }
+        watch(NSWorkspace.activeSpaceDidChangeNotification) { [weak self] _ in self?.turnOff(.spaceChange) }
+        watch(NSWorkspace.willSleepNotification) { [weak self] _ in self?.turnOff(.sleep) }
+        watch(NSWorkspace.screensDidSleepNotification) { [weak self] _ in self?.turnOff(.sleep) }
+        watch(NSWorkspace.sessionDidResignActiveNotification) { [weak self] _ in self?.turnOff(.lock) }
+    }
+
+    private func stopWatching() {
+        let nc = NSWorkspace.shared.notificationCenter
+        for o in observers { nc.removeObserver(o) }
+        observers = []
+    }
+
+    var isWatching: Bool { !observers.isEmpty }
 
     // 설정이 바뀌면: 새 복사본을 넘기고 다시 그린다
     func applySettings() {

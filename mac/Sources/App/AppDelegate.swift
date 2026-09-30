@@ -96,6 +96,9 @@ import Combine
 
         // 앱이 도는 동안 늘 있는 단축키 (묶음 app): settings.ini [Hotkeys]의 Spotlight·Draw(기본 F8·F9)와,
         // fn 없이 누를 수 있는 맥 전용 SpotlightAlt·DrawAlt(기본 ⌃⌥1·⌃⌥2). 못 잡은 것은 기록에만 남긴다.
+        draw.keys.blockExcluding = {
+            Set(SettingsSchema.hotkeys.compactMap { HotkeyNotation.parse(Settings.shared.hotkeys[$0.name] ?? $0.def) })
+        }
         draw.onKeysFailed = { r in Notice.show(Notice.drawKeysFailed(r)) }
         registerAppHotkeys()
 
@@ -149,7 +152,7 @@ import Combine
     // 진단 기록 1초마다 한 줄에 들어가는 앱 상태
     var diagState: String {
         "draw=\(state.drawOn ? 1 : 0) spot=\(state.spotOn ? 1 : 0) "
-            + "hidden=\(SystemCursor.hidden ? 1 : 0) drawkeys=\(draw.keys.ids.count)"
+            + "hidden=\(SystemCursor.hidden ? 1 : 0) drawkeys=\(draw.keys.ids.count) blockkeys=\(draw.keys.blockIDs.count)"
     }
 
     // ---------- 상태가 바뀌면 보임을 한 곳에서 다시 정한다 ----------

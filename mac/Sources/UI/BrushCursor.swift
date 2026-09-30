@@ -8,7 +8,7 @@ extension DrawController {
     func updateCursor() {
         let d: CGFloat
         let img: NSImage
-        if erasing || rightDown {
+        if erasing || rightDown || optionHeld {
             d = eraserPx(eraserStep)
             img = eraserRingImage(diameter: d, ring: currentEraserRing)
         } else if pen == .laser {
@@ -16,7 +16,9 @@ extension DrawController {
             img = laserCursorImage(side: d, base: color(rgb))
         } else {
             d = penPx(penStep)
-            let fill = pen == .rainbow ? NSColor(cgColor: hueColor(rainbowHue))!.withAlphaComponent(alpha) : color(rgb, alpha)
+            // 붓 동그라미의 진하기 = 색별 진하기 × 전체 진하기: 지금 그으면 나올 선과 같은 모양
+            let a = alpha * CGFloat(config.drawOpacity) / 100
+            let fill = pen == .rainbow ? NSColor(cgColor: hueColor(rainbowHue))!.withAlphaComponent(a) : color(rgb, a)
             img = brushCursorImage(diameter: d, fill: fill)
         }
         surface.invalidate(cursorRect)
@@ -33,6 +35,8 @@ extension DrawController {
 
     func moveMouse(_ p: CGPoint) {
         guard isOn else { mouse = p; return }
+        refreshOption()
+        if mouseInside { SystemCursor.reassert() }
         surface.invalidate(cursorRect)
         mouse = p
         surface.invalidate(cursorRect)

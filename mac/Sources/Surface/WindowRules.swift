@@ -43,3 +43,40 @@ func makeClickThroughWindow(size: CGFloat, level: NSWindow.Level) -> GlassPanel 
     w.isReleasedWhenClosed = false
     return w
 }
+
+// ================= 포인터 아래에 무엇이 있는가 =================
+// 붓 동그라미를 그릴지(판 위), 화살표를 보일지(위젯·캡처 화면·시스템 창 위)를 "저장해 둔 표시"가 아니라
+// 지금 포인터 아래 창으로 정한다 (CGWindowListCopyWindowInfo — 권한 불필요, 설계도 6절).
+enum PointerTarget: Equatable { case board, widget, other }
+
+struct WindowInfo { var number: Int; var layer: Int; var alpha: Double; var ownedByUs: Bool; var frame: CGRect } // frame: 화면 왼쪽 위 기준(CG)
+
+// windows: 앞에서 뒤 순서. point: 화면 왼쪽 위 기준(CG) 좌표.
+func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, boardLayer: Int, widgetLayer: Int) -> PointerTarget {
+    for w in windows where w.frame.contains(point) {
+        if boards.contains(w.number) { return .board }
+        if w.ownedByUs {
+            if w.layer == widgetLayer { return .widget }
+            continue // 클릭이 통과하는 강조 원·클릭 링 등
+        }
+        if w.alpha < 0.05 { continue }
+        return w.layer > boardLayer ? .other : .board // 판보다 위에 뜬 다른 창(캡처 화면·시스템 창)
+    }
+    return .board
+}
+
+@MainActor func currentPointerTarget(boards: Set<Int>) -> PointerTarget {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]],
+          let primary = NSScreen.screens.first else { return .board }
+    let mouse = NSEvent.mouseLocation
+    let pt = CGPoint(x: mouse.x, y: primary.frame.height - mouse.y)
+    let me = Int(ProcessInfo.processInfo.processIdentifier)
+    let infos: [WindowInfo] = list.compactMap { d in
+        guard let n = d[kCGWindowNumber as String] as? Int,
+              let b = d[kCGWindowBounds as String] as? NSDictionary,
+              let r = CGRect(dictionaryRepresentation: b) else { return nil }
+        return WindowInfo(number: n, layer: d[kCGWindowLayer as String] as? Int ?? 0, alpha: d[kCGWindowAlpha as String] as? Double ?? 1,
+                          ownedByUs: (d[kCGWindowOwnerPID as String] as? Int) == me, frame: r)
+    }
+    return pointerTarget(at: pt, windows: infos, boards: boards, boardLayer: OVERLAY_LEVEL.rawValue, widgetLayer: WIDGET_LEVEL.rawValue)
+}

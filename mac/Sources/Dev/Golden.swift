@@ -220,6 +220,7 @@ import AppKit
         SettingsTests.run(check, fixtures: arg("--fixtures"))
         SettingsSchemaTests.run(check, ahk: arg("--ahk"))
         HotKeyTests.run(check)
+        S4Tests.run(check)
 
         contactSheet(sheet, to: out.appendingPathComponent("contact-sheet.png"))
         log.append("INFO 장면 통과 \(sceneOK) 실패 \(sceneFail) · 글 점검 통과 \(passed) 실패 \(failed)")

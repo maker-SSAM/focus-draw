@@ -140,9 +140,12 @@ import AppKit
         let panels = inkWindows()
         check("판은 키 창이 못 되는 비활성 패널",
               !panels.isEmpty && panels.allSatisfy { !$0.canBecomeKey && $0.styleMask.contains(.nonactivatingPanel) }, "")
-        let registered = d.draw.keys.ids.count
-        check("드로잉 키 단축키 등록 (실패 없음)", registered >= 40 && HotKeyRegistry.shared.count == globalKeys + registered,
-              "등록=\(registered) 전체=\(HotKeyRegistry.shared.count)")
+        let registered = d.draw.keys.ids.count, blocked = d.draw.keys.blockIDs.count
+        check("드로잉 키·막기 키 단축키 등록 (드로잉 실패 없음)", registered >= 40 && blocked >= 200
+              && HotKeyRegistry.shared.count == globalKeys + registered + blocked,
+              "드로잉=\(registered) 막기=\(blocked) 전체=\(HotKeyRegistry.shared.count) 켜는 데 \(Int(d.draw.keys.lastOnMs.rounded()))ms")
+        check("드로잉 켜는 데 걸린 시간이 100ms 이하", d.draw.keys.lastOnMs <= 100, "\(Int(d.draw.keys.lastOnMs.rounded()))ms")
+        check("드로잉 중에만 20Hz 살핌이 돎", d.draw.controller.watch.isRunning && d.draw.isWatching, "")
         check("판 커서: 시스템 커서 숨김", SystemCursor.hidden, "")
         // 전역 단축키로 들어온 키도 같은 길을 탄다: 그은 뒤 delete → 전부 지우기
         let p = NSEvent.mouseLocation
@@ -158,8 +161,13 @@ import AppKit
               "판 \(inkCount)개 / 화면 \(NSScreen.screens.count)개, 옛 판 객체 \(oldView == nil ? "풀림" : "남음(캐시는 버림)")")
         Log.sample()
         d.draw.controller.handleKey(53, [], isRepeat: false, source: "hk")   // Esc
-        check("Esc로 끄면 드로잉 키 단축키가 모두 풀림", !d.draw.isOn && d.draw.keys.ids.isEmpty && HotKeyRegistry.shared.count == globalKeys,
-              "남음=\(d.draw.keys.ids.count) 전체=\(HotKeyRegistry.shared.count)")
+        check("Esc로 끄면 드로잉·막기 키가 풀리고 Esc 하나만 뗄 때까지 남음", !d.draw.isOn && d.draw.keys.left == 0
+              && HotKeyRegistry.shared.count == globalKeys + 1 && d.draw.keys.escLingerID != nil,
+              "남음=\(d.draw.keys.left) 전체=\(HotKeyRegistry.shared.count)")
+        if let esc = d.draw.keys.escLingerID { HotKeyRegistry.shared.simulate(esc, pressed: false) }  // Esc를 뗌
+        check("Esc를 떼면 남은 등록이 0", HotKeyRegistry.shared.count == globalKeys && d.draw.keys.escLingerID == nil,
+              "전체=\(HotKeyRegistry.shared.count)")
+        check("끄면 20Hz 살핌이 멈춤 (쉬는 동안 타이머 0)", !d.draw.controller.watch.isRunning && !d.draw.isWatching, "")
         check("Esc로 끄면 시스템 커서 돌아옴", !SystemCursor.hidden, "")
         check("AppState: 끄면 드로잉 꺼짐, 강조 원은 그대로 켬 상태", !d.state.drawOn && d.state.spotOn, "")
 
@@ -181,6 +189,9 @@ import AppKit
         d.toggleSpotlight()
         check("강조를 끄면 보이지 않음", !d.state.spotOn && !d.state.highlightVisible, "")
 
+        offReasons(d, check)
+        cursors(d, check)
+
         HotKeyTests.realBackend(check)
 
         check("비공개 커서 API를 찾음 (강조 중 커서 숨기기용)", SystemCursor.privateAPIFound, "")
@@ -193,6 +204,96 @@ import AppKit
         check("진단 기록: 판을 새로 만든 까닭과 위젯이 지금 데스크톱에 있는지가 남음",
               text.contains("DRAW rebuilt reason=") && text.contains("widget=[on=1 space=1]"), "")
         check("진단 기록: 샘플에 판이 화면에 있다고 나옴", text.contains(" on=1 L=\(OVERLAY_LEVEL.rawValue)"), "")
+    }
+
+    // ---- S4: 끄는 이유마다 잉크를 남기거나 지운다 (가짜 시스템 알림) ----
+    static func offReasons(_ d: AppDelegate, _ check: (String, Bool, String) -> Void) {
+        let nc = NSWorkspace.shared.notificationCenter
+        let finder = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first
+        let c = d.draw.controller
+        func drawOneLine() {
+            let p = NSEvent.mouseLocation
+            let e = NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                                       context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            c.handleKey(18, [], isRepeat: false, source: "hk")
+            c.down(p, e, right: false); c.drag(CGPoint(x: p.x + 60, y: p.y + 10), e); c.up(CGPoint(x: p.x + 60, y: p.y + 10))
+        }
+        func off(_ label: String, clears: Bool, _ trigger: () -> Void) {
+            d.draw.turnOn()
+            guard d.draw.isOn else { check(label, false, "켜지지 않음"); return }
+            drawOneLine()
+            let n = c.items.count
+            trigger()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            let last = c.items.last?.kind
+            let inkOK = clears ? last == .clear : (last == .stroke && c.items.count == n)
+            check(label, !d.draw.isOn && inkOK && d.draw.keys.left == 0 && !d.draw.isWatching && !SystemCursor.hidden,
+                  "켜짐=\(d.draw.isOn) 잉크=\(clears ? "지움" : "남김")\(inkOK ? "✓" : "✗") 남은 등록=\(d.draw.keys.left)")
+            if let esc = d.draw.keys.escLingerID { HotKeyRegistry.shared.simulate(esc, pressed: false) }
+        }
+        func post(_ name: Notification.Name, _ info: [AnyHashable: Any]? = nil) { nc.post(name: name, object: NSWorkspace.shared, userInfo: info) }
+        if let f = finder {
+            off("끄는 이유 다른 앱이 앞으로: 끄고 그림·칠판 지움", clears: true) { post(NSWorkspace.didActivateApplicationNotification, [NSWorkspace.applicationUserInfoKey: f]) }
+        } else {
+            check("끄는 이유 다른 앱이 앞으로: 끄고 그림·칠판 지움", true, "Finder를 찾지 못해 건너뜀")
+        }
+        off("끄는 이유 데스크톱 바뀜: 끄고 지움", clears: true) { post(NSWorkspace.activeSpaceDidChangeNotification) }
+        off("끄는 이유 잠자기: 끄고 지움", clears: true) { post(NSWorkspace.willSleepNotification) }
+        off("끄는 이유 화면 꺼짐: 끄고 지움", clears: true) { post(NSWorkspace.screensDidSleepNotification) }
+        off("끄는 이유 화면 잠금: 끄고 지움", clears: true) { post(NSWorkspace.sessionDidResignActiveNotification) }
+        off("끄는 이유 F9·단축키: 끄고 그림은 남김", clears: false) { d.draw.turnOff(.hotkey) }
+        off("끄는 이유 설정 열기: 끄고 그림은 남김", clears: false) { d.draw.turnOff(.settings) }
+        off("끄는 이유 위젯 버튼: 끄고 지움", clears: true) { d.draw.turnOff(.widgetButton) }
+        // 우리 앱이 앞으로 나오는 것(설정 창)은 끄는 이유가 아니다
+        d.draw.turnOn()
+        post(NSWorkspace.didActivateApplicationNotification, [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        check("우리 앱이 앞으로 나와도 드로잉은 꺼지지 않음", d.draw.isOn, "")
+        d.draw.turnOff(.hotkey)
+        // 꺼진 뒤의 알림에는 반응하지 않음 (감시가 풀려 있음)
+        post(NSWorkspace.activeSpaceDidChangeNotification)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        check("꺼진 뒤에는 시스템 알림을 지켜보지 않음", !d.draw.isWatching && !d.draw.isOn, "")
+    }
+
+    // ---- S4: 붓 동그라미·⌥ 지우개 링·포인터 아래 창 ----
+    static func cursors(_ d: AppDelegate, _ check: (String, Bool, String) -> Void) {
+        let c = d.draw.controller
+        func centerAlpha(_ img: NSImage?) -> Int {
+            guard let img, let cg = img.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let ctx = CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return -1 }
+            ctx.draw(cg, in: CGRect(x: -CGFloat(cg.width) / 2 + 0.5, y: -CGFloat(cg.height) / 2 + 0.5, width: CGFloat(cg.width), height: CGFloat(cg.height)))
+            return Int(ctx.data!.load(fromByteOffset: 3, as: UInt8.self))
+        }
+        d.draw.turnOn()
+        c.handleKey(18, [], isRepeat: false, source: "hk")   // 빨강 펜 (진하기 100%)
+        let expectBrush = max(ceil(penPx(c.penStep)) + 2, 4), expectRing = ceil(eraserPx(c.eraserStep) + 4)
+        check("붓 동그라미는 지금 그어질 선의 굵기와 같음 (판에 그림)", c.cursorImage?.size.width == expectBrush && !c.optionHeld,
+              "그림 \(c.cursorImage?.size.width ?? -1) 기대 \(expectBrush)")
+        c.refreshOption(true)
+        check("⌥만 눌러도 지우개 링 (클릭 없이)", c.optionHeld && c.cursorImage?.size.width == expectRing, "그림 \(c.cursorImage?.size.width ?? -1) 기대 \(expectRing)")
+        c.refreshOption(false)
+        check("⌥를 떼면 붓 동그라미로 돌아옴", !c.optionHeld && c.cursorImage?.size.width == expectBrush, "")
+        c.handleKey(24, .option, isRepeat: false, source: "hk")   // ⌥= : 바로 링과 새 크기
+        check("⌥= 단축키가 오면 바로 지우개 링과 새 크기", c.optionHeld && c.eraserStep == 6 && c.cursorImage?.size.width == ceil(eraserPx(6) + 4),
+              "지우개 단계 \(c.eraserStep)")
+        c.refreshOption(false)
+        c.config.drawOpacity = 50
+        c.handleKey(18, [], isRepeat: false, source: "hk")
+        let a50 = centerAlpha(c.cursorImage)
+        c.config.drawOpacity = 100
+        c.updateCursor()
+        let a100 = centerAlpha(c.cursorImage)
+        check("붓 동그라미 진하기 = 색별 진하기 × 전체 진하기", abs(a50 - 128) <= 3 && a100 >= 252, "전체 50% → \(a50), 100% → \(a100)")
+        c.syncPointer(.widget)
+        check("위젯 위(포인터 아래가 위젯)에서는 화살표를 보임", !c.mouseInside && !SystemCursor.hidden, "")
+        c.syncPointer(.board)
+        check("판 위로 돌아오면 다시 붓 동그라미와 숨긴 커서", c.mouseInside && SystemCursor.hidden, "")
+        c.syncPointer(.other)
+        check("캡처 화면·시스템 창 위에서도 화살표를 보임", !c.mouseInside && !SystemCursor.hidden, "")
+        d.draw.turnOff(.hotkey)
+        check("끄면 시스템 커서가 돌아오고 Hide·Show 호출 수가 짝", !SystemCursor.hidden && SystemCursor.balanced, SystemCursor.callSummary)
     }
 
     static func snapshot(_ v: NSView, to url: URL) {

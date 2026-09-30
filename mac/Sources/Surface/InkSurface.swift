@@ -116,12 +116,6 @@ final class InkView: NSView {
             self.screenCheck = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: work)
         }
-        // 드로잉 중에 다른 데스크톱으로 넘어갔는데 판이 따라오지 않았으면 새로 만든다
-        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
-                                                          object: nil, queue: .main) { [weak self] _ in
-            guard let self, self.isShown, self.windows.contains(where: isOffActiveSpace) else { return }
-            self.rebuild(reason: "spaceChanged")
-        }
     }
 
     // 켜기 전에: 한 번 숨긴 판은 지금 데스크톱(다른 앱의 전체 화면)에 다시 뜨지 않을 수 있다 → 그때는 새로 만든다

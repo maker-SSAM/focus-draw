@@ -41,7 +41,10 @@ enum PenKind { case normal, laser, rainbow }
     var held: Set<UInt16> = [] // 누르고 있는 Z/X/C
     var scrollAccum: CGFloat = 0
     var mouse: CGPoint = .zero
-    var mouseInside = true
+    var mouseInside = true      // 포인터 아래가 판인가 (위젯·캡처 화면 위면 false → 화살표를 보인다)
+    var optionHeld = false      // ⌥를 누르고 있는가 → 지우개 링 (ModifierWatch가 읽는다)
+    let watch = ModifierWatch()
+    private var lastCheckedMouse = CGPoint(x: -1e9, y: -1e9)
 
     // 레이저 (UI/Overlays.swift)
     var laser: [[LaserPt]] = []
@@ -63,9 +66,47 @@ enum PenKind { case normal, laser, rainbow }
     func begin() {
         mouse = NSEvent.mouseLocation
         mouseInside = true
+        optionHeld = ModifierWatch.optionDown()
         SystemCursor.hide(.board)
         surface.invalidateAll() // 지난번 자리에 남은 동그라미까지 지운다
         updateCursor()
+        watch.onTick = { [weak self] in self?.tick() }
+        watch.start()
+    }
+
+    // 끄는 자리: 살핌을 멈추고 커서 상태를 되돌린다
+    func end() {
+        watch.stop()
+        optionHeld = false
+        mouseInside = true
+        lastCheckedMouse = CGPoint(x: -1e9, y: -1e9)
+    }
+
+    // 20Hz (드로잉 중에만): ⌥ 상태, 포인터 아래 창, 커서 숨김이 풀렸는지
+    func tick() {
+        guard isOn else { return }
+        refreshOption()
+        let m = NSEvent.mouseLocation
+        if m != lastCheckedMouse { lastCheckedMouse = m; syncPointer() }
+        if mouseInside { SystemCursor.reassert() }
+    }
+
+    // ⌥만 눌러도 지우개 링, 떼면 붓 동그라미 (판이 키 창이 아니라 flagsChanged가 오지 않으므로 직접 읽는다)
+    func refreshOption(_ held: Bool = ModifierWatch.optionDown()) {
+        guard held != optionHeld else { return }
+        optionHeld = held
+        updateCursor()
+    }
+
+    // 실제 포인터 아래 창으로 판단한다: 판이면 붓 동그라미와 숨긴 커서, 위젯·캡처 화면·시스템 창이면 화살표
+    func syncPointer(_ target: PointerTarget? = nil) {
+        guard isOn else { return }
+        let t = target ?? currentPointerTarget(boards: Set(surface.windowNumbers))
+        let over = t == .board
+        guard over != mouseInside else { return }
+        mouseInside = over
+        surface.invalidate(cursorRect)
+        if over { SystemCursor.hide(.board) } else { SystemCursor.show(.board) }
     }
 
     // 숫자키로 바꾼 색·굵기는 임시값 — 켤 때마다 설정 창의 값으로 돌아온다
@@ -112,19 +153,14 @@ enum PenKind { case normal, laser, rainbow }
 
     func mouseEntered(_ p: CGPoint) {
         guard isOn else { return }
-        mouseInside = true
-        SystemCursor.hide(.board)
         moveMouse(p)
+        syncPointer()
     }
 
-    // 판 밖(위젯 위, 판이 없는 곳)으로 나가면 평소 화살표를 돌려준다
+    // 판 밖(위젯 위, 판이 없는 곳)으로 나가면 평소 화살표를 돌려준다 — 지금 포인터 아래 창을 보고 정한다
     func mouseExited() {
         guard isOn else { return }
-        let top = NSWindow.windowNumber(at: NSEvent.mouseLocation, belowWindowWithWindowNumber: 0)
-        if surface.windowNumbers.contains(top) { return } // 다른 화면의 판으로 옮겨 간 것
-        mouseInside = false
-        surface.invalidate(cursorRect)
-        SystemCursor.show(.board)
+        syncPointer()
     }
 
     func down(_ p: CGPoint, _ e: NSEvent, right: Bool) {

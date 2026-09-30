@@ -57,6 +57,7 @@ extension DrawController {
 
     private func adjustSize(_ delta: Int, eraser: Bool) {
         if eraser {
+            optionHeld = true // ⌥= 단축키가 오면 바로 지우개 링과 새 크기를 보인다 (20Hz 살핌을 기다리지 않는다)
             eraserStep = max(1, min(STEP_MAX, eraserStep + delta))
             showBadge("\(eraserStep)")
         } else {
