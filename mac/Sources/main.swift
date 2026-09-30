@@ -42,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var loadResult = Settings.LoadResult.missing
         if let f = arg("--settings") { Settings.overridePath = URL(fileURLWithPath: f); loadResult = Settings.shared.load() }
         else if normalRun { loadResult = Settings.shared.load() }
-        AppLog.write("SESSION", "start version=\(AppInfo.version) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString)")
+        AppLog.write("SESSION", "start version=\(AppInfo.version) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) app=\((Bundle.main.bundlePath as NSString).abbreviatingWithTildeInPath)")
         widget = Widget()
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
         widget.view.contextMenu = { [weak self] in
