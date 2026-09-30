@@ -42,7 +42,7 @@ Xcode 없이 명령줄 도구만 있으면 됩니다 (`xcode-select --install`).
 mac/build.sh
 ```
 
-`mac/build/Focus & Draw.app`과 `mac/build/Focus-Draw-0.2.0-mac.zip`이 생깁니다. 이 개발용 빌드에는 시험용 "실험" 메뉴가 들어 있습니다.
+`mac/build/Focus & Draw.app`과 `mac/build/Focus-Draw-0.2.0-test-mac.zip`이 생깁니다. 이 개발용 빌드에는 시험용 "실험" 메뉴가 들어 있습니다.
 
 - `mac/build.sh --quick`: 이 맥의 칩용으로만 빨리 (고치는 동안)
 - `mac/build.sh --test`: 빨리 만든 뒤 그림 기준 점검(`Tests/golden/`)과 자체 점검을 돌려 결과를 한 줄로. 그림이 달라지면 `build/test-out/`에 차이 그림과 축소 모음이 남습니다

@@ -1,7 +1,7 @@
 #!/bin/bash
 # 맥용 Focus & Draw를 만든다: build/Focus & Draw.app (과 배포용 zip)
 # Xcode 없이 명령줄 도구(xcode-select --install)만 있으면 된다.
-#   build.sh            개발용: 애플 실리콘+인텔, "실험" 메뉴 포함, zip (Focus-Draw-<버전>-mac.zip: 앱·맥용 읽어주세요·LICENSE)
+#   build.sh            개발용: 애플 실리콘+인텔, "실험" 메뉴 포함, zip (Focus-Draw-<버전>[-test]-mac.zip, 0.x.x는 -test: 앱·맥용 읽어주세요·LICENSE)
 #   build.sh --quick    고치는 동안: 이 맥의 칩만, 실험 메뉴 포함, zip 없음
 #   build.sh --test     --quick으로 만든 뒤 그림 기준 점검(Tests/golden)과 자체 점검을 돌려 한 줄로 알려 준다 (커밋 전 한 번)
 #                       FD_HEADLESS=1이면 화면이 필요한 자체 점검(--selftest)은 건너뛴다 (GitHub 자동 점검용)
@@ -19,7 +19,10 @@ VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Info.pli
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 APP="$STAGE/Focus & Draw.app"
-ZIP="Focus-Draw-$VERSION-mac.zip"
+# 1.0.0 전(0.x.x)은 시험 단계라 파일 이름에 test를 넣는다: Focus-Draw-0.2.0-test-mac.zip. 1.0.0부터는 test가 빠진다.
+TAG=""
+case "$VERSION" in 0.*) TAG="-test" ;; esac
+ZIP="Focus-Draw-$VERSION$TAG-mac.zip"
 
 ARCHS="arm64 x86_64"
 FLAGS=(-D EXPERIMENTS)
@@ -67,7 +70,7 @@ if [ "$MODE" = dev ] || [ "$MODE" = --release ]; then
   for f in "맥용 읽어주세요.txt" "$ROOT/LICENSE"; do
     [ -f "$f" ] || { echo "빌드 실패: 배포 파일이 없음: $f"; exit 1; }
   done
-  PKGNAME="Focus-Draw-$VERSION-mac"
+  PKGNAME="Focus-Draw-$VERSION$TAG-mac"
   mkdir -p "$STAGE/pkg/$PKGNAME"
   ditto "$APP" "$STAGE/pkg/$PKGNAME/Focus & Draw.app"
   cp "맥용 읽어주세요.txt" "$STAGE/pkg/$PKGNAME/"
