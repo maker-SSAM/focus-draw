@@ -12,22 +12,6 @@ enum AppInfo {
     static var displayVersion: String { "\(version) (시험판)" }
 }
 
-// 펜·지우개 굵기 단계 (Windows 판과 같은 표)
-let STEP_MAX = 10
-func penPx(_ step: Int) -> CGFloat { 3.0 * pow(1.3, CGFloat(max(1, min(STEP_MAX, step)) - 1)) }
-func eraserPx(_ step: Int) -> CGFloat { 10.0 * pow(1.5, CGFloat(max(1, min(STEP_MAX, step)) - 1)) }
-
-func color(_ rgb: UInt32, _ alpha: CGFloat = 1) -> NSColor {
-    NSColor(srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255, green: CGFloat((rgb >> 8) & 0xFF) / 255,
-            blue: CGFloat(rgb & 0xFF) / 255, alpha: alpha)
-}
-
-func rgbOf(_ c: NSColor) -> UInt32 {
-    guard let s = c.usingColorSpace(.sRGB) else { return 0 }
-    func b(_ v: CGFloat) -> UInt32 { UInt32(max(0, min(255, (v * 255).rounded()))) }
-    return (b(s.redComponent) << 16) | (b(s.greenComponent) << 8) | b(s.blueComponent)
-}
-
 final class Settings: ObservableObject {
     static let shared = Settings()
 
@@ -63,9 +47,8 @@ final class Settings: ObservableObject {
     var boardColors: [UInt32] = Settings.defaultBoardColors
     var boardAlphas: [Double] = [100, 100, 100]
 
-    static let defaultBoardColors: [UInt32] = [0xFFFFFF, 0x14472F, 0x000000]
-    static let defaultDrawKeys: [UInt32] = [0xFF0000, 0xFF7F00, 0xFFFF00, 0x00FF00, 0x0000FF,
-                                            0x4B0082, 0x9400D3, 0x000000, 0xFFFFFF]
+    static let defaultBoardColors: [UInt32] = BOARD_COLORS
+    static let defaultDrawKeys: [UInt32] = DRAW_COLORS
 
     static var folder: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -244,5 +227,14 @@ final class Settings: ObservableObject {
         var f = Settings.readIni(url).ini ?? IniFile()
         f.set("Common", "WidgetX", String(Int(x.rounded()))); f.set("Common", "WidgetY", String(Int(y.rounded())))
         _ = Settings.write(f, to: url) // 실패는 기록만 남긴다 (드래그할 때마다 안내 창을 띄우지 않는다)
+    }
+}
+
+// 그리기 코드에 넘기는 복사본 (그리기 코드는 Settings.shared를 읽지 않는다)
+extension DrawConfig {
+    init(_ s: Settings) {
+        self.init(drawOpacity: s.drawOpacity, drawColor: s.drawColor, drawStep: Int(s.drawStep), eraserStep: Int(s.eraserStep),
+                  drawKeyColors: s.drawKeyColors, drawKeyAlphas: s.drawKeyAlphas,
+                  boardColors: s.boardColors, boardAlphas: s.boardAlphas)
     }
 }

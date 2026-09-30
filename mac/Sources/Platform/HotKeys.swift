@@ -26,7 +26,7 @@ enum HotKeys {
         let st = RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), EventHotKeyID(signature: OSType(0x4644_5257), id: id),
                                      GetApplicationEventTarget(), 0, &ref)
         if st == noErr { entries[id] = Entry(ref: ref, name: name, press: press, release: onRelease) }
-        if !quiet || st != noErr { Diag.log("HK", "reg \(name) status=\(st)") }
+        if !quiet || st != noErr { Log.log("HK", "reg \(name) status=\(st)") }
         return (id, st)
     }
 

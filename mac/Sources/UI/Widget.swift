@@ -24,12 +24,20 @@ func tintedIcon(_ name: String, _ tint: NSColor) -> NSImage? {
 final class WidgetView: NSView {
     enum Part { case grip, spot, draw, settings, close }
 
-    var spotOn = false { didSet { needsDisplay = true } }
-    var drawOn = false { didSet { needsDisplay = true } }
+    // 강조·드로잉이 켜져 있는지는 AppState가 든다 (위젯이 따로 기억하지 않는다). 바뀌면 AppDelegate가 다시 그리게 한다.
+    let state: AppState
+    var spotOn: Bool { state.spotOn }
+    var drawOn: Bool { state.drawOn }
     var onAction: (Part) -> Void = { _ in }
     var onMoved: (NSPoint) -> Void = { _ in }
     // 오른쪽 클릭(⌃ 클릭)하면 메뉴 막대 아이콘과 같은 메뉴 — 노치 뒤로 아이콘이 숨었을 때를 위해
     var contextMenu: () -> NSMenu? = { nil }
+
+    init(state: AppState) {
+        self.state = state
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { fatalError() }
 
     override func rightMouseDown(with event: NSEvent) {
         guard let m = contextMenu() else { return }
@@ -163,11 +171,14 @@ final class WidgetView: NSView {
     }
 }
 
-final class Widget {
-    let view = WidgetView()
+@MainActor final class Widget {
+    let view: WidgetView
+    let state: AppState
     private(set) var window: GlassPanel!
 
-    init() {
+    init(state: AppState) {
+        self.state = state
+        view = WidgetView(state: state)
         window = Widget.makeWindow(view)
         view.reloadIcons()
         view.onMoved = { Settings.shared.saveWidgetPosition($0) }
@@ -182,7 +193,7 @@ final class Widget {
         // 다른 데스크톱으로 넘어갔는데 위젯이 따라오지 않았으면 새로 만든다 (판·강조 원과 같은 까닭)
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification,
                                                           object: nil, queue: .main) { [weak self] _ in
-            guard let self, Settings.shared.showWidget, isOffActiveSpace(self.window) else { return }
+            guard let self, self.state.widgetVisible, isOffActiveSpace(self.window) else { return }
             self.setVisible(true)
         }
     }
@@ -209,7 +220,6 @@ final class Widget {
         window.alphaValue = CGFloat(s.widgetOpacity) / 100
         view.needsDisplay = true
         clampIntoScreen()
-        setVisible(s.showWidget)
     }
 
     func setVisible(_ on: Bool) {
@@ -222,7 +232,7 @@ final class Widget {
             w.alphaValue = old.alphaValue
             old.orderOut(nil); old.close()
             window = w
-            Diag.log("WIDGET", "rebuilt reason=offSpace")
+            Log.log("WIDGET", "rebuilt reason=offSpace")
         }
         window.orderFrontRegardless()
     }

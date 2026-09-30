@@ -20,11 +20,11 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **S3a 기초 공사 1** (큰 파일 나누기, 앱 상태 한곳에 모으기, 그림 변화 0) | Sonnet · 기본 | 없음 (S2b 선생님 확인 결과가 오면 먼저 반영) |
+| **S3b 기초 공사 2** (설정 항목표, 단축키 등록부, 배포용 빌드) | Sonnet · 기본 (+선택 Opus · 중간 검토) | 없음 |
 
-**S2b가 끝났다.** (2026-09-30 선생님이 종료 선언. 확인 1~4번 통과, 5번 동료 전달은 아직 안 함 — **미룬 일**: 기회가 될 때 선생님이 전달하고 답이 오면 이 칸에 반영.) 동료 알파(결정 4)는 선생님이 zip(`mac/build/Focus-Draw-0.2.0-test-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 선생님 확인 5개(stages.md S2b 절 "선생님 확인")의 결과와 알파 답이 오면 그에 맞춰 고친다.
-알파에서 알게 된 것(2026-09-30): 맥의 "포인터 크기"를 키워 두면 드로잉 커서가 그만큼 커 보인다(이 맥은 약 2배). S4의 판 직접 그리기(D3)로 해결하며, 지금은 읽어주세요에 한계로 적어 두었다. 폴더째 응용 프로그램으로 옮기면 격리가 안 풀려 "옮겨 주세요" 안내가 계속 뜨므로 안내 문구를 "앱 아이콘만"으로 고쳤다.
-S3a는 stages.md의 S3a 절과 architecture.md 2·3절만 읽는다. 설정 코드는 `Settings.swift`·`IniFile.swift`·`Notice.swift`·`AppLog.swift`·`DiagReport.swift`(S2b)로 나뉘어 있다.
+**S3a가 끝났다.** 선생님 확인 10분(stages.md S3a "선생님 확인" 1~3번)은 아직 안 함 — **미룬 일**: 앱을 실제로 켜 보고 결과를 이 칸에 반영. 특히 확인 1번에 "F9로 켤 때 열려 있던 설정 창이 숨었다가 끄면 돌아온다"를 더해서 본다(S3a에서 새로 넣은 동작).
+S3b는 stages.md의 S3b 절과 architecture.md 2·4절만 읽는다. 코드 자리: `Platform/`(Settings·IniFile·HotKeys·Log), `Input/DrawKeys.swift`(지금 드로잉 키 등록·해제 — S3b가 `HotKeyRegistry`로 옮긴다).
+동료 알파(S2b 미룬 일)는 그대로 미뤄 둔 상태다: 선생님이 zip(`mac/build/Focus-Draw-0.2.0-test-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 알파에서 알게 된 것: 맥의 "포인터 크기"를 키우면 드로잉 커서가 커 보인다(S4의 D3로 해결, 읽어주세요에 한계로 적어 둠).
 
 ---
 
@@ -165,5 +165,4 @@ S3a는 stages.md의 S3a 절과 architecture.md 2·3절만 읽는다. 설정 코�
 ## 진행 기록
 
 형식: 날짜 · 세션 · 모델 · 맥/macOS · 결과 · 커밋. 끝난 단계는 [HISTORY.md](HISTORY.md)로 옮긴다.
-- 2026-09-29 · S2b · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **설정 보존 + 동료 알파 준비.** `IniFile`(UTF-8·BOM·UTF-16 읽고 같은 형식으로 쓰기, 모르는 항목·주석·순서·CRLF 보존), 읽을 수 없는 파일은 `.bak` 복사본을 남기고 원본은 "저장"을 누르기 전까지 안 건드림, 000000~FFFFFF 밖의 색·nan은 기본값, 위젯 자리는 움직였을 때만 WidgetX/Y 두 줄. 저장 실패 안내 창(원인→할 일→안심→경로·오류), 첫 실행 안내, 다운로드 폴더 실행(AppTranslocation) 안내, 앱을 다시 열면 위젯 복귀(이미 보이면 설정), 메뉴 막대 아이콘 `removalAllowed`+기록, `app.log`(2×256KB), 메뉴 막대 › 도움말(버전·진단 정보 복사·처음 안내 다시 보기; 이름 가림). 버전 0.2.0을 Info.plist 한 곳에서. 배포 zip `Focus-Draw-0.2.0-test-mac.zip`(앱+맥용 읽어주세요+LICENSE, 풀어서 서명 검증, settings*.ini 없음 확인), `beta/alpha-questions.md`. 글 점검 33개 추가(`SettingsTests.swift`, 고정 파일 `Tests/fixtures/windows-settings.ini.txt`). 알림창은 모달이 아니라 작은 창으로(안내가 떠 있어도 단축키·드로잉 동작). 결정: 다시 열기는 "숨김→위젯 복귀, 보임→설정", 위젯 이동 저장 실패는 기록만(안내 창 안 띄움) · 아래 커밋 참고
-
+- 2026-09-30 · S3a · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **기초 공사 1: 파일 나누기 + 앱 상태 한곳.** `Sources/`를 설계도 2절 폴더(App·Model·Render·Surface·Input·Session·UI·Platform·Dev)로 나누고 `build.sh`가 `find`로 모은다. `AppState`(강조·드로잉·위젯 보임·드로잉 때문에 숨긴 설정 창)가 유일한 출처, 바뀌면 `AppDelegate.applyState()` 하나가 강조·클릭 링·위젯·설정 창을 다시 정하고 `applySettings()`는 바뀐 묶음(강조·위젯·그리기)만 다시 적용. 위젯의 `spotOn`·`drawOn` 손 맞춤 제거. `Draw.swift`(946줄)를 `InkModel`(선 목록·실행 취소, AppKit 없음)·`Geometry`·`Renderer`·`InkSurface`(판)·`DrawController`(펜·마우스)·`DrawKeyboard`·`DrawSession`(켜기·끄기)·`BrushCursor`·`Overlays`로 분해. 그리기 코드는 `DrawConfig` 복사본만 읽는다(`Settings.shared` grep 0). 지운 것: A·B안, `InkWindow`, `noStationary`·`joinAllApps`, `NSCursor` 붓 커서, 재시험 항목 메뉴, 켤 때 실험 이름 표시 — 실험 메뉴에는 "강조 중 커서 숨기기" 하나만(기본 끔). `DrawSession.turnOff(_ reason: OffReason)`(.esc·.widgetButton·.hotkey·.settings·.quit). `Model/Tuning.swift`에 Windows 이름 상수 모음. `Diag`→`Log`(`Platform/Log.swift`). UI 타입 `@MainActor`(Swift 5 모드 유지, 경고 약 80개는 타이머·알림 콜백 — S3b 이후 정리). 새 동작 하나: F9로 켤 때 설정 창이 열려 있으면 숨겼다가 끄면 되돌림(설계도 3절). 그림 33장 0 변경, 글 점검 71개, 자체 점검 27개(A안·창 동작 점검 삭제, AppState 점검 추가) · 아래 커밋 참고

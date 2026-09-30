@@ -43,6 +43,12 @@
 
 **없애는 것 (S3a)**: `Experiments.swift`의 A·B안, 창 동작 세 가지 중 둘, `NSCursor` 붓 커서, 재시험 항목 메뉴. 개발용 빌드의 "실험" 메뉴는 비운다(나중에 새 실험이 생기면 다시 쓴다). `InkWindow`(B안용) 삭제.
 
+**S3a 구현 현황 (2026-09-30)**: 아래 표 중 실제로 나뉜 것과 아직 아닌 것. 이 문서와 코드가 다르면 이 메모를 먼저 고친다.
+- 나뉨: `InkModel`(+`DrawConfig`), `Geometry`, `Tuning`, `Renderer`, `InkSurface`(판 `InkPanel`·`InkView`·`InkSurface`), `WindowRules`, `AppState`, `DrawSession`(`OffReason`은 지금 쓰는 5개만), `DrawKeys`(옛 `CarbonDrawKeys`), `SystemCursor`(이유가 `CursorReason` enum), `Log`, `IniFile`, `Settings`, `HotKeys`, `Spotlight`·`ClickEffect`·`Widget`·`StatusMenu`·`SettingsWindow`.
+- 아직 아님 (S4·S5가 채운다): `StrokeSession`(상태 기계는 `DrawController.down/drag/up`에 있다), `KeyMap`(키 표는 `DrawController.handleKey`), `ModifierWatch`, `StrokeLayer`·`FloorImage`(D4), `Clock`(시계는 `InkModel.clock` 클로저), `SettingsSchema`·`HotKeyRegistry`(S3b).
+- 자리가 문서와 다른 것: 굵기·진하기 배지와 레이저는 `UI/Badge.swift`·`UI/Laser.swift`가 아니라 `UI/Overlays.swift`(`DrawController` 확장), 붓 동그라미·지우개 링은 `UI/BrushCursor.swift`, 키 처리는 `Input/DrawKeyboard.swift`, 앱 시작은 `App/main.swift` + `App/AppDelegate.swift`.
+- 앱 상태 흐름: `AppState` 값이 바뀌면 `AppDelegate.applyState()`가 강조·클릭 링(`highlightVisible`)·위젯·설정 창(드로잉 동안 숨김)을 한 번에 다시 정한다. 설정이 바뀌면 `applySettings()`가 강조·위젯·그리기 묶음 중 바뀐 것만 다시 적용한다.
+
 ## 3. 상태와 흐름
 
 `AppState`는 값만 든다: `spotOn`, `drawOn`, `widgetVisible`, `settingsHiddenByDraw`. 바뀌면 `AppDelegate`가 강조·위젯·클릭 링의 보임을 **함수 하나**(`AppState.apply`)로 다시 정한다.

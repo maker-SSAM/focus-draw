@@ -9,7 +9,7 @@ import Darwin
 //   2) 손을 뗄 때 확정하는 시간  3) 실행 취소 재구성 (500·2,000·5,000개)  4) 5K 화면 하나의 메모리
 //   5) 쉬는 동안 깨어남 횟수 (레이저를 쓴 뒤 타이머가 멈추는지)
 // 창이 화면에 합성되는 시간(WindowServer)은 여기 들어가지 않는다 — 실제로는 이보다 조금 더 걸린다.
-enum Bench {
+@MainActor enum Bench {
     static func run(_ d: AppDelegate, out: String) {
         var lines: [String] = []
         func say(_ s: String) { lines.append(s); print(s); fflush(stdout) }
@@ -19,8 +19,8 @@ enum Bench {
         }
 
         say("# Focus & Draw --bench  \(Date())")
-        say("machine=\(Diag.sysctlString("hw.model")) cpu=\(Diag.sysctlString("machdep.cpu.brand_string")) "
-            + "macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) arch=\(Diag.machineArch)")
+        say("machine=\(Log.sysctlString("hw.model")) cpu=\(Log.sysctlString("machdep.cpu.brand_string")) "
+            + "macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) arch=\(Log.machineArch)")
         say("단위: ms. 형광펜 = 노랑 50%, 굵기 8단계(\(String(format: "%.1f", penPx(8)))pt), 점 간격 약 5pt, 배율 2")
 
         for (pw, ph) in [(3024, 1964), (5120, 2880)] {
@@ -90,13 +90,13 @@ enum Bench {
                 let w1 = usage()
                 say("처음 쉴 때          " + usageText(w0, w1))
                 // 레이저: 판을 띄우지 않고 그리기 동작만 (타이머가 스스로 멈추는지 보려고)
-                d.draw.handleKey(0, [], isRepeat: false, source: "bench")
+                d.draw.controller.handleKey(0, [], isRepeat: false, source: "bench")
                 let p = NSEvent.mouseLocation
                 let e = NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: [], timestamp: 0, windowNumber: 0,
                                            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
-                d.draw.down(p, e, right: false)
-                for i in 1...30 { d.draw.drag(CGPoint(x: p.x + CGFloat(i * 5), y: p.y), e) }
-                d.draw.up(CGPoint(x: p.x + 150, y: p.y))
+                d.draw.controller.down(p, e, right: false)
+                for i in 1...30 { d.draw.controller.drag(CGPoint(x: p.x + CGFloat(i * 5), y: p.y), e) }
+                d.draw.controller.up(CGPoint(x: p.x + 150, y: p.y))
                 DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
                     let w2 = usage()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 10) {

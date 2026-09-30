@@ -7,7 +7,7 @@ import Carbon
 //   한 줄 = "시각 꼬리표 내용". 꼬리표: SESSION SYS SCREEN MARK EXP DRAW KEY HK CURSOR APP FRONT SPACE WIN POWER SAMPLE SPOT WIDGET
 //   키는 키 자리 번호(keyCode)만 적는다 — 무슨 글자를 쳤는지는 남기지 않는다.
 //   화면 기록 권한이 필요 없는 정보만 쓴다 (CGWindowList의 창 제목은 읽지 않는다).
-enum Diag {
+enum Log {
     static var folder: URL {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Logs/Focus & Draw", isDirectory: true)

@@ -2,11 +2,11 @@ import Foundation
 
 // 늘 켜져 있는 작은 기록: ~/Library/Logs/Focus & Draw/app.log (+ app.1.log). 각 256KB까지, 넘으면 한 번 밀어 둔다.
 // 시작·종료, 설정 읽기/저장 실패, 메뉴 막대 아이콘이 빠진 일처럼 "나중에 무슨 일이 있었는지" 볼 만한 것만 적는다.
-// (창·키·화면을 자세히 남기는 Diag와 다르다 — 그쪽은 메뉴에서 켰을 때만.) 입력한 글자·사용자 이름은 적지 않는다.
+// (창·키·화면을 자세히 남기는 Log와 다르다 — 그쪽은 메뉴에서 켰을 때만.) 입력한 글자·사용자 이름은 적지 않는다.
 enum AppLog {
     static let maxBytes = 256 * 1024
     // nil이면 기록하지 않는다 (자체 점검·그림 점검은 사용자 기록을 건드리지 않는다)
-    static var folder: URL? = Diag.folder
+    static var folder: URL? = Log.folder
     static var url: URL? { folder?.appendingPathComponent("app.log") }
     private static var oldURL: URL? { folder?.appendingPathComponent("app.1.log") }
 

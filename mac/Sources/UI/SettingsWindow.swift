@@ -121,7 +121,7 @@ struct SettingsView: View {
     """
 }
 
-final class SettingsWindowController {
+@MainActor final class SettingsWindowController {
     private var window: NSWindow?
     var onSave: () -> Bool = { true }
     var onResetWidget: () -> Void = {}
@@ -142,4 +142,14 @@ final class SettingsWindowController {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
+
+    // 드로잉 판이 설정 창을 덮는 동안 창을 치워 둔다. 보이던 창이었으면 true.
+    func hideForDraw() -> Bool {
+        guard let w = window, w.isVisible else { return false }
+        w.orderOut(nil)
+        return true
+    }
+
+    // 드로잉이 끝나면 앱을 앞으로 부르지 않고 창만 되돌린다
+    func restoreAfterDraw() { window?.orderFront(nil) }
 }

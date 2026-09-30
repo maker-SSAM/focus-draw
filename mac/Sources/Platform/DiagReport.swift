@@ -61,7 +61,7 @@ enum DiagReport {
         let diffs = nonDefaultSettings(settings)
         out.append("기본값과 다른 설정: \(diffs.isEmpty ? "없음" : diffs.joined(separator: ", "))")
         out.append("설정 파일: \((Settings.path.path as NSString).abbreviatingWithTildeInPath)")
-        out.append("상세 진단 기록: \(Diag.isOn ? "켜짐" : "꺼짐")")
+        out.append("상세 진단 기록: \(Log.isOn ? "켜짐" : "꺼짐")")
         out.append("--- 최근 기록 (app.log 마지막 30줄) ---")
         let tail = AppLog.tail(30)
         out += tail.isEmpty ? ["(기록 없음)"] : tail
