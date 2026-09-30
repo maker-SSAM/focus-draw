@@ -23,6 +23,7 @@
 | **S3a 기초 공사 1** (큰 파일 나누기, 앱 상태 한곳에 모으기, 그림 변화 0) | Sonnet · 기본 | 없음 (S2b 선생님 확인 결과가 오면 먼저 반영) |
 
 **S2b가 끝났다.** 동료 알파(결정 4)는 선생님이 zip(`mac/build/Focus-Draw-0.2.0-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 선생님 확인 5개(stages.md S2b 절 "선생님 확인")의 결과와 알파 답이 오면 그에 맞춰 고친다.
+알파에서 알게 된 것(2026-09-30): 맥의 "포인터 크기"를 키워 두면 드로잉 커서가 그만큼 커 보인다(이 맥은 약 2배). S4의 판 직접 그리기(D3)로 해결하며, 지금은 읽어주세요에 한계로 적어 두었다. 폴더째 응용 프로그램으로 옮기면 격리가 안 풀려 "옮겨 주세요" 안내가 계속 뜨므로 안내 문구를 "앱 아이콘만"으로 고쳤다.
 S3a는 stages.md의 S3a 절과 architecture.md 2·3절만 읽는다. 설정 코드는 `Settings.swift`·`IniFile.swift`·`Notice.swift`·`AppLog.swift`·`DiagReport.swift`(S2b)로 나뉘어 있다.
 
 ---
