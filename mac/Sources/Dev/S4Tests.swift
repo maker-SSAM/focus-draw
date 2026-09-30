@@ -126,6 +126,20 @@ import Carbon
                                                           boards: [1], boardLayer: boardL, widgetLayer: widgetL) == .board)
         }
 
+        // ---- 네 손가락 제스처 ----
+        do {
+            let scr = CGRect(x: 0, y: 0, width: 1512, height: 982)
+            check("제스처: 판이 화면 자리에 있으면 아님, 밀려났으면(데스크톱 넘기는 중) 감지",
+                  !boardMovedAway(boardFrames: [scr], screenFrames: [scr]) && boardMovedAway(boardFrames: [scr.offsetBy(dx: -1575, dy: 0)], screenFrames: [scr]))
+            let L = OVERLAY_LEVEL.rawValue
+            func dock(_ layer: Int, ours: Bool = false, owner: String = "Dock") -> WindowInfo {
+                WindowInfo(number: 5, layer: layer, alpha: 1, ownedByUs: ours, frame: scr, owner: owner)
+            }
+            check("제스처: Dock의 높은 창(1000·1001)이 뜨면 Mission Control, 평소 Dock 창(20)이나 다른 앱은 아님",
+                  missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && !missionControlShowing([dock(20), dock(-2147483624)], boardLayer: L)
+                  && !missionControlShowing([dock(L + 1, owner: "Keynote")], boardLayer: L))
+        }
+
         // ---- 시스템 커서 호출 수 ----
         do {
             var depth = 0, hides = 0, shows = 0

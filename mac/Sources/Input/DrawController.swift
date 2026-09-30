@@ -86,9 +86,18 @@ enum PenKind { case normal, laser, rainbow }
     func tick() {
         guard isOn else { return }
         refreshOption()
+        tickCount += 1
+        if tickCount % 2 == 0, gestureStarted() { requestOff(.gesture); return } // 10Hz
         let m = NSEvent.mouseLocation
         if m != lastCheckedMouse { lastCheckedMouse = m; syncPointer() }
         if mouseInside { SystemCursor.reassert() }
+    }
+
+    // 네 손가락 제스처가 시작됐는가: 판이 화면에서 밀려났거나 Mission Control(Dock의 높은 창)이 떴다
+    private var tickCount = 0
+    func gestureStarted() -> Bool {
+        if boardMovedAway(boardFrames: surface.windows.map(\.frame), screenFrames: NSScreen.screens.map(\.frame)) { return true }
+        return missionControlShowing(currentWindowInfos(), boardLayer: OVERLAY_LEVEL.rawValue)
     }
 
     // ⌥만 눌러도 지우개 링, 떼면 붓 동그라미 (판이 키 창이 아니라 flagsChanged가 오지 않으므로 직접 읽는다)

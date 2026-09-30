@@ -8,6 +8,7 @@ enum OffReason: String {
     case hotkey         // F9·⌃⌥2: 그린 것을 그대로 남긴다 (Windows와 같음)
     case appSwitch      // 다른 앱이 앞으로 나옴 (⌘Tab 등): Esc처럼 끈다 (선생님 결정 ②)
     case spaceChange    // 다른 데스크톱으로 넘어감: Esc처럼 끈다 (결정 ②)
+    case gesture        // 네 손가락 제스처(Mission Control·데스크톱 넘기기)가 시작됨: 알림보다 먼저 끈다
     case sleep          // 잠자기·화면 꺼짐: Esc처럼 끈다 (D7)
     case lock           // 화면 잠금·사용자 전환: Esc처럼 끈다 (D7)
     case settings       // 설정 창 열기: 남긴다 (우리 앱이 앞으로 나오므로 끈다)

@@ -49,7 +49,7 @@ func makeClickThroughWindow(size: CGFloat, level: NSWindow.Level) -> GlassPanel 
 // 지금 포인터 아래 창으로 정한다 (CGWindowListCopyWindowInfo — 권한 불필요, 설계도 6절).
 enum PointerTarget: Equatable { case board, widget, other }
 
-struct WindowInfo { var number: Int; var layer: Int; var alpha: Double; var ownedByUs: Bool; var frame: CGRect } // frame: 화면 왼쪽 위 기준(CG)
+struct WindowInfo { var number: Int; var layer: Int; var alpha: Double; var ownedByUs: Bool; var frame: CGRect; var owner = "" } // frame: 화면 왼쪽 위 기준(CG)
 
 // windows: 앞에서 뒤 순서. point: 화면 왼쪽 위 기준(CG) 좌표.
 func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, boardLayer: Int, widgetLayer: Int) -> PointerTarget {
@@ -65,18 +65,34 @@ func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, b
     return .board
 }
 
-@MainActor func currentPointerTarget(boards: Set<Int>) -> PointerTarget {
-    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]],
-          let primary = NSScreen.screens.first else { return .board }
-    let mouse = NSEvent.mouseLocation
-    let pt = CGPoint(x: mouse.x, y: primary.frame.height - mouse.y)
+// 네 손가락 제스처(Mission Control·데스크톱 넘기기)는 앱 전환·데스크톱 바뀜 알림이 늦게(끝난 뒤에) 온다.
+// 그 사이에 보이는 신호로 바로 끈다 (S4 확인에서 발견, 진단 기록의 표본에서 찾음):
+//  - 데스크톱을 넘기는 중에는 판 창의 자리가 화면에서 밀려난다 (ink 자리 x=-1575 등)
+//  - Mission Control이 뜨면 Dock 소유의 창이 판과 같거나 높은 레벨(1000·1001)에 나타난다
+func boardMovedAway(boardFrames: [CGRect], screenFrames: [CGRect]) -> Bool {
+    boardFrames.contains { b in !screenFrames.contains { $0.equalTo(b) } }
+}
+
+func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int) -> Bool {
+    windows.contains { !$0.ownedByUs && $0.owner == "Dock" && $0.layer >= boardLayer && $0.alpha > 0.05 }
+}
+
+@MainActor func currentWindowInfos() -> [WindowInfo] {
+    guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }
     let me = Int(ProcessInfo.processInfo.processIdentifier)
-    let infos: [WindowInfo] = list.compactMap { d in
+    return list.compactMap { d in
         guard let n = d[kCGWindowNumber as String] as? Int,
               let b = d[kCGWindowBounds as String] as? NSDictionary,
               let r = CGRect(dictionaryRepresentation: b) else { return nil }
         return WindowInfo(number: n, layer: d[kCGWindowLayer as String] as? Int ?? 0, alpha: d[kCGWindowAlpha as String] as? Double ?? 1,
-                          ownedByUs: (d[kCGWindowOwnerPID as String] as? Int) == me, frame: r)
+                          ownedByUs: (d[kCGWindowOwnerPID as String] as? Int) == me, frame: r, owner: d[kCGWindowOwnerName as String] as? String ?? "")
     }
+}
+
+@MainActor func currentPointerTarget(boards: Set<Int>) -> PointerTarget {
+    guard let primary = NSScreen.screens.first else { return .board }
+    let mouse = NSEvent.mouseLocation
+    let pt = CGPoint(x: mouse.x, y: primary.frame.height - mouse.y)
+    let infos = currentWindowInfos()
     return pointerTarget(at: pt, windows: infos, boards: boards, boardLayer: OVERLAY_LEVEL.rawValue, widgetLayer: WIDGET_LEVEL.rawValue)
 }
