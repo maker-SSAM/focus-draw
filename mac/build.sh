@@ -48,12 +48,13 @@ for f in icon_spotlight_dark.png icon_draw_dark.png settings.png icon.png; do
 done
 cp "$ROOT/icon_spotlight_dark.png" "$ROOT/icon_draw_dark.png" "$ROOT/settings.png" "$APP/Contents/Resources/"
 
-# 앱 아이콘 (icon.png → AppIcon.icns)
+# 앱 아이콘 (mac/icon-mac.png → AppIcon.icns). Windows용 icon.png는 가장자리까지 꽉 차서 맥 Dock·Launchpad에서 다른 앱보다 커 보이므로,
+# 맥 아이콘 규격대로 1024 캔버스에 824(약 80%)로 앉히고 둘레를 투명하게 둔 맥 전용 원본을 쓴다.
 ICONSET="$STAGE/AppIcon.iconset"
 mkdir -p "$ICONSET"
 for s in 16 32 128 256 512; do
-  sips -z $s $s "$ROOT/icon.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
-  sips -z $((s*2)) $((s*2)) "$ROOT/icon.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
+  sips -z $s $s "icon-mac.png" --out "$ICONSET/icon_${s}x${s}.png" >/dev/null
+  sips -z $((s*2)) $((s*2)) "icon-mac.png" --out "$ICONSET/icon_${s}x${s}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"

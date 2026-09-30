@@ -80,11 +80,13 @@ func eraserRingImage(diameter d: CGFloat, ring: NSColor) -> NSImage {
 }
 
 func laserCursorImage(side d: CGFloat, base: NSColor) -> NSImage {
-    NSImage(size: NSSize(width: d, height: d), flipped: false) { _ in
+    // d = 가장 바깥 번짐의 지름. 그림 크기는 그보다 2pt 크게 잡아야 바깥 원이 사각형으로 잘리지 않는다
+    let side = ceil(d) + 2
+    return NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
         for (mul, a, mix) in LASER_LAYERS {
-            let dd = d / 3 * mul * 1.1
+            let dd = d / 3 * mul
             NSColor(cgColor: tint(base.cgColor, mix))!.withAlphaComponent(a).setFill()
-            NSBezierPath(ovalIn: NSRect(x: (d - dd) / 2, y: (d - dd) / 2, width: dd, height: dd)).fill()
+            NSBezierPath(ovalIn: NSRect(x: (side - dd) / 2, y: (side - dd) / 2, width: dd, height: dd)).fill()
         }
         return true
     }
