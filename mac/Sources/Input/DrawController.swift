@@ -99,7 +99,13 @@ enum PenKind { case normal, laser, rainbow }
     private var tickCount = 0
     func gestureStarted() -> Bool {
         if boardMovedAway(boardFrames: surface.windows.map(\.frame), screenFrames: NSScreen.screens.map(\.frame)) { return true }
-        return missionControlShowing(currentWindowInfos(), boardLayer: OVERLAY_LEVEL.rawValue)
+        let near = pointerNearDockEdge(NSEvent.mouseLocation, screens: NSScreen.screens.map(\.frame))
+        let infos = currentWindowInfos()
+        let hit = missionControlShowing(infos, boardLayer: OVERLAY_LEVEL.rawValue, nearDockEdge: near)
+        if hit { // 무엇 때문에 꺼졌는지 진단에 남긴다 (Dock 창의 레벨·크기)
+            Log.log("GESTURE", "dock windows=" + infos.filter { $0.owner == "Dock" }.map { "L\($0.layer) \(Int($0.frame.width))x\(Int($0.frame.height))" }.joined(separator: ",") + " nearEdge=\(near)")
+        }
+        return hit
     }
 
     // ⌥만 눌러도 지우개 링, 떼면 붓 동그라미 (판이 키 창이 아니라 flagsChanged가 오지 않으므로 직접 읽는다)

@@ -90,16 +90,25 @@ func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, b
 // 그 사이에 보이는 신호로 바로 끈다 (S4 확인에서 발견, 진단 기록의 표본에서 찾음):
 //  - 데스크톱을 넘기는 중에는 판 창의 자리가 화면에서 밀려난다 (ink 자리 x=-1575 등)
 //  - Mission Control이 뜨면 Dock 소유의 큰 창이 레벨 18·20에 생기고, 넘기는 중에는 판과 같거나 높은 레벨(1000·1001)에도 나타난다
+// 포인터가 Dock이 나올 만한 가장자리 띠(아래·왼쪽·오른쪽 끝에서 160pt 안)에 있는가. mouse와 screens는 AppKit 좌표.
+func pointerNearDockEdge(_ mouse: CGPoint, screens: [CGRect], band: CGFloat = 160) -> Bool {
+    guard let s = screens.first(where: { $0.contains(mouse) }) else { return false }
+    return mouse.y - s.minY < band || mouse.x - s.minX < band || s.maxX - mouse.x < band
+}
+
 func boardMovedAway(boardFrames: [CGRect], screenFrames: [CGRect]) -> Bool {
     boardFrames.contains { b in !screenFrames.contains { $0.equalTo(b) } }
 }
 
-func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int) -> Bool {
+// nearDockEdge: 포인터가 화면 아래·왼쪽·오른쪽 가장자리 띠 안에 있는가. Dock을 자동 숨김으로 두면 포인터를 가장자리에 대는 것만으로
+// Dock 창이 판과 같거나 높은 레벨에 생기므로, 그때는 그 신호로 "넘기는 중"이라고 보지 않는다 (데스크톱 넘기기는 boardMovedAway가,
+// Mission Control은 아래 두 번째 조건이 잡는다).
+func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int, nearDockEdge: Bool = false) -> Bool {
     windows.contains { w in
         guard !w.ownedByUs, w.owner == "Dock", w.alpha > 0.05 else { return false }
         // 데스크톱을 넘기는 중: Dock 창이 판과 같거나 높은 레벨. Mission Control이 뜬 뒤: 화면만 한 Dock 창이 레벨 18·20에 생긴다
         // (평소의 Dock 창은 레벨 -2147483624 하나뿐 — 이 맥에서 open -a "Mission Control" 중에 창 목록을 떠서 확인).
-        return w.layer >= boardLayer || (w.layer > 0 && w.frame.width >= 500 && w.frame.height >= 300)
+        return (w.layer >= boardLayer && !nearDockEdge) || (w.layer > 0 && w.layer < boardLayer && w.frame.width >= 500 && w.frame.height >= 300)
     }
 }
 

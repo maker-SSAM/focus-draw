@@ -2,7 +2,7 @@ import AppKit
 
 // ================= 시험용 스위치 =================
 // S1의 실험(A·B안, 창 동작 조합, NSCursor 붓 커서, 재시험 항목)은 결론이 나서 모두 지웠다(S3a).
-// 남은 것은 "강조 중 커서 숨기기" 하나 — 기본값은 선생님 결정 10까지 지금처럼 끔.
+// "강조 중 커서 숨기기"는 더 이상 실험이 아니다 — 2026-10-01 선생님 결정으로 늘 켜져 있다(십자 모양 대신 그림과 함께).
 // 개발 빌드(build.sh 기본·--quick)에만 메뉴 막대 › "실험" 메뉴가 생긴다. 배포 빌드(--release)는 늘 기본값이다.
 // 새 실험이 생기면 여기에 다시 항목을 더한다.
 enum Experiments {
@@ -24,22 +24,13 @@ enum Experiments {
         if memoryOnly != nil { memoryOnly![k] = v } else { UserDefaults.standard.set(v, forKey: "exp." + k) }
     }
 
-    static var hideSpotCursor: Bool { value("spotHide") == "1" } // 강조 중 커서 숨기기 (비공개 API)
+    static var hideSpotCursor: Bool { true } // 강조 중 커서를 숨기고 십자를 그린다 (비공개 API, 선생님 결정: 켜고 끄는 옵션 없이 늘 함께)
 
     static var summary: String { "spotHide=\(hideSpotCursor ? 1 : 0)" }
 
     // ---------- 메뉴 ----------
     static func appendMenu(to menu: NSMenu) {
-        guard enabled else { return }
-        let sub = NSMenu()
-        sub.addItem(ActionItem("강조 중 커서 숨기기", on: hideSpotCursor) {
-            store("spotHide", hideSpotCursor ? "0" : "1")
-            Log.log("EXP", summary)
-            onChange()
-        })
-        let top = NSMenuItem(title: "실험", action: nil, keyEquivalent: "")
-        top.submenu = sub
-        menu.addItem(top)
+        // 지금은 실험 항목이 없다. 새 실험이 생기면 여기서 "실험" 메뉴를 만든다.
     }
 }
 

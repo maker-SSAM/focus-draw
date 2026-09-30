@@ -6,6 +6,16 @@ final class SpotView: NSView {
         let s = Settings.shared
         color(s.spotColor, CGFloat(s.spotOpacity) / 100).setFill()
         NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
+        // 시스템 커서는 숨겨져 있으므로 원 한가운데(= 포인터 자리)에 얇고 작은 검정 십자를 그린다.
+        // 크기는 드로잉 모드 굵기 5단계 동그라미의 지름만큼.
+        guard Experiments.hideSpotCursor else { return }
+        let c = CGPoint(x: bounds.midX, y: bounds.midY), r = penPx(5) / 2
+        let p = NSBezierPath()
+        p.move(to: CGPoint(x: c.x - r, y: c.y)); p.line(to: CGPoint(x: c.x + r, y: c.y))
+        p.move(to: CGPoint(x: c.x, y: c.y - r)); p.line(to: CGPoint(x: c.x, y: c.y + r))
+        p.lineWidth = 1
+        NSColor.black.setStroke()
+        p.stroke()
     }
 }
 
@@ -65,5 +75,6 @@ final class SpotView: NSView {
         let half = w.frame.width / 2
         let o = NSPoint(x: (m.x - half).rounded(), y: (m.y - half).rounded())
         if w.frame.origin != o { w.setFrameOrigin(o) }
+        SystemCursor.reassert() // 시스템이 커서를 다시 보이게 했으면(앞 앱이 바뀌거나 Dock을 지나면) 다시 숨긴다 (0.25초에 한 번까지)
     }
 }

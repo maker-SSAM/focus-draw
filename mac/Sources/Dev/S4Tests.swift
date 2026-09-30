@@ -136,9 +136,16 @@ import Carbon
                 WindowInfo(number: 5, layer: layer, alpha: 1, ownedByUs: ours, frame: scr, owner: owner)
             }
             let small = WindowInfo(number: 6, layer: 20, alpha: 1, ownedByUs: false, frame: CGRect(x: 500, y: 900, width: 400, height: 80), owner: "Dock")
+            let band = [scr]
+            check("Dock 띠: 아래·왼쪽·오른쪽 가장자리 160pt 안이면 가까움, 화면 가운데·위쪽은 아님",
+                  pointerNearDockEdge(CGPoint(x: scr.midX, y: scr.minY + 5), screens: band) && pointerNearDockEdge(CGPoint(x: scr.minX + 20, y: scr.midY), screens: band)
+                  && pointerNearDockEdge(CGPoint(x: scr.maxX - 20, y: scr.midY), screens: band)
+                  && !pointerNearDockEdge(CGPoint(x: scr.midX, y: scr.midY), screens: band) && !pointerNearDockEdge(CGPoint(x: scr.midX, y: scr.maxY - 5), screens: band))
             check("제스처: Dock의 높은 창(1000·1001)이나 화면만 한 창(레벨 18·20)이 뜨면 Mission Control, 평소 Dock 창이나 다른 앱은 아님",
                   missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && missionControlShowing([dock(20)], boardLayer: L)
                   && !missionControlShowing([dock(-2147483624), small], boardLayer: L)
+                  && !missionControlShowing([dock(L + 1), dock(L + 2)], boardLayer: L, nearDockEdge: true)
+                  && missionControlShowing([dock(20)], boardLayer: L, nearDockEdge: true)
                   && !missionControlShowing([dock(L + 1, owner: "Keynote")], boardLayer: L))
         }
 

@@ -168,7 +168,7 @@ import AppKit
         check("Esc를 떼면 남은 등록이 0", HotKeyRegistry.shared.count == globalKeys && d.draw.keys.escLingerID == nil,
               "전체=\(HotKeyRegistry.shared.count)")
         check("끄면 20Hz 살핌이 멈춤 (쉬는 동안 타이머 0)", !d.draw.controller.watch.isRunning && !d.draw.isWatching, "")
-        check("Esc로 끄면 시스템 커서 돌아옴", !SystemCursor.hidden, "")
+        check("Esc로 끄면 시스템 커서 돌아옴", SystemCursor.hidden == d.state.highlightVisible, "")
         check("AppState: 끄면 드로잉 꺼짐, 강조 원은 그대로 켬 상태", !d.state.drawOn && d.state.spotOn, "")
 
         // S1c: 키노트 쇼가 시작·끝날 때처럼 화면 알림이 쏟아져도, 화면 구성이 그대로면 판을 새로 만들지 않는다
@@ -188,6 +188,10 @@ import AppKit
         d.draw.turnOff(.hotkey)
         d.toggleSpotlight()
         check("강조를 끄면 보이지 않음", !d.state.spotOn && !d.state.highlightVisible, "")
+        check("강조를 끄면 시스템 커서가 돌아옴 (강조 중에는 숨기고 십자를 그림)", !SystemCursor.hidden && SystemCursor.balanced, SystemCursor.callSummary)
+        d.toggleSpotlight()
+        check("강조를 켜면 시스템 커서가 숨겨짐 (켜고 끄는 옵션 없이 늘)", SystemCursor.hidden, "")
+        d.toggleSpotlight()
 
         offReasons(d, check)
         cursors(d, check)
@@ -228,7 +232,7 @@ import AppKit
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
             let last = c.items.last?.kind
             let inkOK = clears ? last == .clear : (last == .stroke && c.items.count == n)
-            check(label, !d.draw.isOn && inkOK && d.draw.keys.left == 0 && !d.draw.isWatching && !SystemCursor.hidden,
+            check(label, !d.draw.isOn && inkOK && d.draw.keys.left == 0 && !d.draw.isWatching && SystemCursor.hidden == d.state.highlightVisible,
                   "켜짐=\(d.draw.isOn) 잉크=\(clears ? "지움" : "남김")\(inkOK ? "✓" : "✗") 남은 등록=\(d.draw.keys.left)")
             if let esc = d.draw.keys.escLingerID { HotKeyRegistry.shared.simulate(esc, pressed: false) }
         }
@@ -302,13 +306,13 @@ import AppKit
         let a100 = centerAlpha(c.cursorImage)
         check("붓 동그라미 진하기 = 색별 진하기 × 전체 진하기", abs(a50 - 128) <= 3 && a100 >= 252, "전체 50% → \(a50), 100% → \(a100)")
         c.syncPointer(.widget)
-        check("위젯 위(포인터 아래가 위젯)에서는 화살표를 보임", !c.mouseInside && !SystemCursor.hidden, "")
+        check("위젯 위(포인터 아래가 위젯)에서는 화살표를 보임", !c.mouseInside && SystemCursor.hidden == d.state.highlightVisible, "")
         c.syncPointer(.board)
         check("판 위로 돌아오면 다시 붓 동그라미와 숨긴 커서", c.mouseInside && SystemCursor.hidden, "")
         c.syncPointer(.other)
-        check("캡처 화면·시스템 창 위에서도 화살표를 보임", !c.mouseInside && !SystemCursor.hidden, "")
+        check("캡처 화면·시스템 창 위에서도 화살표를 보임", !c.mouseInside && SystemCursor.hidden == d.state.highlightVisible, "")
         d.draw.turnOff(.hotkey)
-        check("끄면 시스템 커서가 돌아오고 Hide·Show 호출 수가 짝", !SystemCursor.hidden && SystemCursor.balanced, SystemCursor.callSummary)
+        check("끄면 시스템 커서가 돌아오고 Hide·Show 호출 수가 짝", SystemCursor.hidden == d.state.highlightVisible && SystemCursor.balanced, SystemCursor.callSummary)
     }
 
     // ---- S5: 긴 수업 — 바닥 굽기·실행 취소·화면 바뀜·끈 뒤 정리 ----
