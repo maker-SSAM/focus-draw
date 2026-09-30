@@ -245,6 +245,20 @@ import AppKit
         off("끄는 이유 F9·단축키: 끄고 그림은 남김", clears: false) { d.draw.turnOff(.hotkey) }
         off("끄는 이유 설정 열기: 끄고 그림은 남김", clears: false) { d.draw.turnOff(.settings) }
         off("끄는 이유 위젯 버튼: 끄고 지움", clears: true) { d.draw.turnOff(.widgetButton) }
+        // 덮개를 닫았다 열기: 잠자기로 꺼진 뒤(지움) 화면 알림이 오고, 다시 켜서 ⌘Z 하면 선이 돌아온다 (S5 확인 5번)
+        do {
+            d.draw.turnOn()
+            drawOneLine()
+            let n = c.items.count
+            post(NSWorkspace.willSleepNotification); post(NSWorkspace.screensDidSleepNotification)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+            d.draw.surface.checkScreens(forced: true)
+            d.draw.turnOn()
+            c.handleKey(6, .command, isRepeat: false, source: "hk") // ⌘Z
+            let ok = c.items.count == n && c.items.last?.kind == .stroke
+            check("덮개 닫았다 열어 다시 켜고 ⌘Z: 선이 돌아옴", ok, "획 \(n) → \(c.items.count) 마지막=\(String(describing: c.items.last?.kind))")
+            d.draw.turnOff(.hotkey)
+        }
         // 우리 앱이 앞으로 나오는 것(설정 창)은 끄는 이유가 아니다
         d.draw.turnOn()
         post(NSWorkspace.didActivateApplicationNotification, [NSWorkspace.applicationUserInfoKey: NSRunningApplication.current])
@@ -346,8 +360,9 @@ import AppKit
         let baked = view()?.bakedUpTo ?? -1
         check("긴 수업: 120획 뒤 오래된 획이 바닥 그림에 구워짐", baked >= 70 && baked <= c.model.floorAbs, "구운 곳=\(baked) 되돌릴 수 없는 곳=\(c.model.floorAbs)")
         check("긴 수업: 바닥 그림을 쓴 화면이 목록 전체를 처음부터 그린 것과 같음", differing() == 0, "다른 픽셀 \(differing())")
+        let beforeUndo = c.items.count
         for _ in 0..<30 { c.undo() }
-        check("긴 수업: ⌘Z 30번 뒤에도 같음 (바닥 그림 + 최근 획만 다시 그림)", differing() == 0 && c.items.count == 90, "다른 픽셀 \(differing()) 획 \(c.items.count)")
+        check("긴 수업: ⌘Z 30번 뒤에도 같음 (바닥 그림 + 최근 획만 다시 그림)", differing() == 0 && c.items.count == beforeUndo - 30, "다른 픽셀 \(differing()) 획 \(c.items.count)")
         c.clearAll()
         check("긴 수업: 바닥 굽기를 넘은 뒤 전부 지우기 → 빈 화면", differing() == 0, "다른 픽셀 \(differing())")
         c.undo()
@@ -385,6 +400,17 @@ import AppKit
         let redraw = d.draw.surface.lastRebuildMS
         check("다시 켜면 남은 잉크가 목록에서 다시 그려짐, 정리 예약은 취소됨",
               d.draw.isOn && differing() == 0 && !c.hasExpiryScheduled, "다른 픽셀 \(differing()) \(String(format: "%.0f", redraw))ms")
+
+        // 긴 그림 뒤 잠자기로 꺼지고(지움) 다시 켜서 ⌘Z: 선이 돌아오고 화면 그림이 목록과 같다
+        do {
+            let n = c.items.count
+            d.draw.turnOff(.sleep)
+            d.draw.turnOn()
+            let cleared = differing() == 0 && c.items.last?.kind == .clear
+            c.handleKey(6, .command, isRepeat: false, source: "hk")
+            check("긴 그림 + 잠자기로 끈 뒤 다시 켜고 ⌘Z: 선이 돌아옴", cleared && c.items.count == n && differing() == 0,
+                  "획 \(n) → \(c.items.count) 다른 픽셀 \(differing())")
+        }
 
         // 2,000획 뒤: 다시 그리기 시간과 실행 취소 시간 (SPIKES D4)
         for i in 0..<2000 { line(200 + i) }
