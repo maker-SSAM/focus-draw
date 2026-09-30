@@ -10,7 +10,9 @@ import Carbon
     var onKeyUp: (_ code: UInt16) -> Void = { _ in }
     var isDrawing: () -> Bool = { false }
 
-    private(set) var ids: [UInt32] = []
+    let registry: HotKeyRegistry
+    var ids: [UInt32] { registry.ids(.draw) }
+    init(registry: HotKeyRegistry = .shared) { self.registry = registry }
     private var repeatID: UInt32?
     private var repeatTimer: Timer?
     private var loggedRepeat = false
@@ -21,39 +23,34 @@ import Carbon
 
     var isRegistered: Bool { !ids.isEmpty }
 
+    // 드로잉 묶음을 한꺼번에 등록한다. 하나라도 실패하면 등록부가 묶음 전체를 되돌리고 실패를 돌려준다.
     @discardableResult
-    func registerAll() -> (ok: Int, failed: Int) {
-        guard ids.isEmpty else { return (ids.count, 0) }
-        var failed = 0
+    func registerAll() -> HotKeyGroupResult {
+        guard ids.isEmpty else { return HotKeyGroupResult(registered: ids) }
         loggedRepeat = false
+        var entries: [HotKeyEntry] = []
         func add(_ code: UInt16, _ mods: Int = 0, release: Bool = false, repeats: Bool = false) {
-            var myID: UInt32 = 0
             let flags = DrawKeys.flags(mods)
-            let r = HotKeys.register(keyCode: Int(code), modifiers: mods, name: "draw-\(code)+\(mods)", quiet: true,
-                                     onRelease: { [weak self] in self?.released(myID, code, release) }) { [weak self] in
-                self?.pressed(myID, code, flags, repeats)
-            }
-            myID = r.id
-            if r.status == noErr { ids.append(r.id) } else { failed += 1 }
+            entries.append(HotKeyEntry(name: "draw-\(code)+\(mods)", combo: .init(code: Int(code), mods: mods),
+                                       press: { [weak self] id in self?.pressed(id, code, flags, repeats) },
+                                       release: { [weak self] id in self?.released(id, code, release) }))
         }
         for k in DrawKeys.digits + DrawKeys.letters + DrawKeys.edits { add(k) }
         for k: UInt16 in [6, 7, 8] { add(k, release: true); add(k, shiftKey, release: true) } // Z X C (⇧와 함께 눌러도)
         for m in [0, shiftKey, optionKey, optionKey | shiftKey] { add(24, m, repeats: true) } // = +  (⌥: 지우개)
         for k: UInt16 in [27, 69, 78] { add(k, repeats: true); add(k, optionKey, repeats: true) } // - 키패드+ 키패드-
         add(6, cmdKey); add(6, controlKey)                                                    // ⌘Z ⌃Z
-        Log.log("HK", "drawkeys on ok=\(ids.count) failed=\(failed) total=\(HotKeys.count)")
-        return (ids.count, failed)
+        let r = registry.registerGroup(.draw, entries, policy: .allOrNothing)
+        Log.log("HK", "drawkeys on ok=\(r.registered.count) failed=\(r.failed.count) total=\(registry.count)")
+        return r
     }
 
     @discardableResult
     func unregisterAll() -> (removed: Int, errors: Int) {
         stopRepeat()
-        var errors = 0
-        let n = ids.count
-        for id in ids where HotKeys.unregister(id) != noErr { errors += 1 }
-        ids = []
-        if n > 0 { Log.log("HK", "drawkeys off removed=\(n) errors=\(errors) left=\(HotKeys.count)") }
-        return (n, errors)
+        let r = registry.unregisterGroup(.draw)
+        if r.removed > 0 { Log.log("HK", "drawkeys off removed=\(r.removed) errors=\(r.errors) left=\(registry.count)") }
+        return r
     }
 
     private func pressed(_ id: UInt32, _ code: UInt16, _ flags: NSEvent.ModifierFlags, _ repeats: Bool) {

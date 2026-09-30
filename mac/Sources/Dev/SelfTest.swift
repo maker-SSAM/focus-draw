@@ -125,7 +125,7 @@ import AppKit
 
     // ---- 판·드로잉 키·커서·진단 기록 ----
     static func session(_ d: AppDelegate, _ check: (String, Bool, String) -> Void, dir: URL) {
-        let globalKeys = HotKeys.count
+        let globalKeys = HotKeyRegistry.shared.count
         let diagURL = dir.appendingPathComponent("diag.log")
         try? FileManager.default.removeItem(at: diagURL)
         Log.start(at: diagURL, reason: "selftest")
@@ -141,8 +141,8 @@ import AppKit
         check("판은 키 창이 못 되는 비활성 패널",
               !panels.isEmpty && panels.allSatisfy { !$0.canBecomeKey && $0.styleMask.contains(.nonactivatingPanel) }, "")
         let registered = d.draw.keys.ids.count
-        check("드로잉 키 단축키 등록 (실패 없음)", registered >= 40 && HotKeys.count == globalKeys + registered,
-              "등록=\(registered) 전체=\(HotKeys.count)")
+        check("드로잉 키 단축키 등록 (실패 없음)", registered >= 40 && HotKeyRegistry.shared.count == globalKeys + registered,
+              "등록=\(registered) 전체=\(HotKeyRegistry.shared.count)")
         check("판 커서: 시스템 커서 숨김", SystemCursor.hidden, "")
         // 전역 단축키로 들어온 키도 같은 길을 탄다: 그은 뒤 delete → 전부 지우기
         let p = NSEvent.mouseLocation
@@ -158,8 +158,8 @@ import AppKit
               "판 \(inkCount)개 / 화면 \(NSScreen.screens.count)개, 옛 판 객체 \(oldView == nil ? "풀림" : "남음(캐시는 버림)")")
         Log.sample()
         d.draw.controller.handleKey(53, [], isRepeat: false, source: "hk")   // Esc
-        check("Esc로 끄면 드로잉 키 단축키가 모두 풀림", !d.draw.isOn && d.draw.keys.ids.isEmpty && HotKeys.count == globalKeys,
-              "남음=\(d.draw.keys.ids.count) 전체=\(HotKeys.count)")
+        check("Esc로 끄면 드로잉 키 단축키가 모두 풀림", !d.draw.isOn && d.draw.keys.ids.isEmpty && HotKeyRegistry.shared.count == globalKeys,
+              "남음=\(d.draw.keys.ids.count) 전체=\(HotKeyRegistry.shared.count)")
         check("Esc로 끄면 시스템 커서 돌아옴", !SystemCursor.hidden, "")
         check("AppState: 끄면 드로잉 꺼짐, 강조 원은 그대로 켬 상태", !d.state.drawOn && d.state.spotOn, "")
 
@@ -180,6 +180,8 @@ import AppKit
         d.draw.turnOff(.hotkey)
         d.toggleSpotlight()
         check("강조를 끄면 보이지 않음", !d.state.spotOn && !d.state.highlightVisible, "")
+
+        HotKeyTests.realBackend(check)
 
         check("비공개 커서 API를 찾음 (강조 중 커서 숨기기용)", SystemCursor.privateAPIFound, "")
 

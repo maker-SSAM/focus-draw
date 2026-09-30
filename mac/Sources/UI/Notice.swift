@@ -85,6 +85,16 @@ enum Notice {
             buttons: [("설정 폴더 열기", { revealSettingsFolder() })])
     }
 
+    // 드로잉 키를 하나라도 못 잡으면 드로잉을 켜지 않는다 (일부만 잡힌 채 그리면 어떤 키는 먹고 어떤 키는 발표 앱으로 간다)
+    static func drawKeysFailed(_ r: HotKeyGroupResult) -> NoticeContent {
+        let f = r.failed.first
+        return NoticeContent(
+            title: "드로잉을 켜지 못했습니다",
+            body: ["드로잉에 쓰는 키를 잡지 못했습니다. 다른 앱이 같은 키를 쓰고 있을 수 있습니다.",
+                   "다른 앱(단축키를 바꿔 주는 앱, 화면 캡처·번역 앱 등)을 잠시 끄고 다시 F9를 눌러 보세요. 그리던 그림과 설정은 그대로입니다."],
+            detail: f.map { "\($0.name): \(describeHotKeyStatus($0.status))" })
+    }
+
     static func unreadable(reason: String, backup: URL?) -> NoticeContent {
         let reassure = backup != nil
             ? "원래 파일은 지우지 않았고, 복사본(\(backup!.lastPathComponent))을 같은 폴더에 남겼습니다. 설정 창에서 [저장]을 누르기 전까지는 원래 파일을 건드리지 않습니다."

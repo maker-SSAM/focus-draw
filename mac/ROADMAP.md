@@ -20,11 +20,11 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **S3b 기초 공사 2** (설정 항목표, 단축키 등록부, 배포용 빌드) | Sonnet · 기본 (+선택 Opus · 중간 검토) | 없음 |
+| **S4 교실에서 드로잉 (키·창·커서)** | Sonnet · 기본 (어려우면 높음) | 없음 (결정 13·14·15는 이미 답함) |
 
-**S3a가 끝났다.** 선생님 확인 10분(stages.md S3a "선생님 확인" 1~3번)은 아직 안 함 — **미룬 일**: 앱을 실제로 켜 보고 결과를 이 칸에 반영. 특히 확인 1번에 "F9로 켤 때 열려 있던 설정 창이 숨었다가 끄면 돌아온다"를 더해서 본다(S3a에서 새로 넣은 동작).
-S3b는 stages.md의 S3b 절과 architecture.md 2·4절만 읽는다. 코드 자리: `Platform/`(Settings·IniFile·HotKeys·Log), `Input/DrawKeys.swift`(지금 드로잉 키 등록·해제 — S3b가 `HotKeyRegistry`로 옮긴다).
-동료 알파(S2b 미룬 일)는 그대로 미뤄 둔 상태다: 선생님이 zip(`mac/build/Focus-Draw-0.2.0-test-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 알파에서 알게 된 것: 맥의 "포인터 크기"를 키우면 드로잉 커서가 커 보인다(S4의 D3로 해결, 읽어주세요에 한계로 적어 둠).
+**S3(a·b)가 끝났다.** 선생님 확인: S3a 결과는 전부 정상(2026-09-30). S3b 확인 3개(stages.md S3b "선생님 확인" 1~3번)는 아직 안 함 — **미룬 일**: 색을 바꿔 저장·재실행, F8·F9·⌃⌥1·⌃⌥2, Finder 아이콘을 보고 결과를 이 칸에 반영.
+S4는 stages.md의 S4 절과 architecture.md 3~6절을 읽는다. 자리: 드로잉 키 묶음은 `Input/DrawKeys.swift`(`HotKeyRegistry`의 `draw` 묶음), 막기 묶음은 같은 등록부의 `block`(스스로 채운다), 끄는 이유는 `Session/DrawSession.swift`의 `OffReason`.
+동료 알파(S2b 미룬 일)는 그대로 미뤄 둔 상태다: 선생님이 zip(`mac/build/Focus-Draw-0.2.0-test-mac.zip`)을 직접 전달하고 [beta/alpha-questions.md](beta/alpha-questions.md)로 답을 받는다. 그 zip은 `build.sh --release`로 다시 만들어 S2b 때와 다른 내용이다(S3 코드). 알파에서 알게 된 것: 맥의 "포인터 크기"를 키우면 드로잉 커서가 커 보인다(S4의 D3로 해결, 읽어주세요에 한계로 적어 둠).
 
 ---
 
@@ -166,3 +166,4 @@ S3b는 stages.md의 S3b 절과 architecture.md 2·4절만 읽는다. 코드 자�
 
 형식: 날짜 · 세션 · 모델 · 맥/macOS · 결과 · 커밋. 끝난 단계는 [HISTORY.md](HISTORY.md)로 옮긴다.
 - 2026-09-30 · S3a · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **기초 공사 1: 파일 나누기 + 앱 상태 한곳.** `Sources/`를 설계도 2절 폴더(App·Model·Render·Surface·Input·Session·UI·Platform·Dev)로 나누고 `build.sh`가 `find`로 모은다. `AppState`(강조·드로잉·위젯 보임·드로잉 때문에 숨긴 설정 창)가 유일한 출처, 바뀌면 `AppDelegate.applyState()` 하나가 강조·클릭 링·위젯·설정 창을 다시 정하고 `applySettings()`는 바뀐 묶음(강조·위젯·그리기)만 다시 적용. 위젯의 `spotOn`·`drawOn` 손 맞춤 제거. `Draw.swift`(946줄)를 `InkModel`(선 목록·실행 취소, AppKit 없음)·`Geometry`·`Renderer`·`InkSurface`(판)·`DrawController`(펜·마우스)·`DrawKeyboard`·`DrawSession`(켜기·끄기)·`BrushCursor`·`Overlays`로 분해. 그리기 코드는 `DrawConfig` 복사본만 읽는다(`Settings.shared` grep 0). 지운 것: A·B안, `InkWindow`, `noStationary`·`joinAllApps`, `NSCursor` 붓 커서, 재시험 항목 메뉴, 켤 때 실험 이름 표시 — 실험 메뉴에는 "강조 중 커서 숨기기" 하나만(기본 끔). `DrawSession.turnOff(_ reason: OffReason)`(.esc·.widgetButton·.hotkey·.settings·.quit). `Model/Tuning.swift`에 Windows 이름 상수 모음. `Diag`→`Log`(`Platform/Log.swift`). UI 타입 `@MainActor`(Swift 5 모드 유지, 경고 약 80개는 타이머·알림 콜백 — S3b 이후 정리). 새 동작 하나: F9로 켤 때 설정 창이 열려 있으면 숨겼다가 끄면 되돌림(설계도 3절). 그림 33장 0 변경, 글 점검 71개, 자체 점검 27개(A안·창 동작 점검 삭제, AppState 점검 추가) · 아래 커밋 참고
+- 2026-09-30 · S3b · Sonnet 5.5 · 맥북 프로 M4/15.7.3 · **기초 공사 2: 설정 항목표 + 단축키 등록부 + 배포 빌드 점검.** `SettingsSchema`(45행 표: 읽기·쓰기·"모두 초기화"·진단이 한 표를 씀, `Settings.resetToDefaults()`), `[Hotkeys]`를 AHK 표기(`^!1`·`+F8`·`#!h`)로 읽고 쓰는 `HotkeyNotation`(알아볼 수 없거나 ⌃·⌥ 없는 조합은 기본값, 맥은 `SpotlightAlt`·`DrawAlt`를 추가). 옛 `HotKeys`를 `HotKeyRegistry`로 바꿈: 묶음 app·draw·block, 묶음 등록(draw는 하나라도 실패하면 전체 되돌림, block은 실패한 조합만 뺌), 같은 조합 두 번째는 -9878, 묶음별 고정 아이디(껐다 켜도 같은 번호), 종료 때 모두 해제, Carbon 호출은 백엔드 뒤(가짜 백엔드로 -9868·-9878 흉내). F8·F9·⌃⌥1·⌃⌥2는 `[Hotkeys]` 값에서 등록. 드로잉 키를 못 잡으면 드로잉을 켜지 않고 안내(새 동작). 배포 빌드: `.icns` 10장·zip 안 아이콘·Info.plist를 `build.sh`가 확인(icon.png가 500px라 1024는 확대본 — 나중에 큰 원본이 생기면 교체). 점검 추가: 항목표 왕복(모든 키), ahk 키 목록·범위·기본값 대조(18개), 표기 왕복, 등록·해제 50번, 묶음 되돌리기, 진짜 Carbon 20번 등록·해제. 그림 33장 0 변경, 글 점검 101개, 자체 점검 29개 · 아래 커밋 참고

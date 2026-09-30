@@ -57,6 +57,10 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$ICONSET"
+# 점검: 만들어진 .icns를 다시 풀어 16~512(@1x·@2x) 열 장이 모두 들어 있는지 (1024는 512@2x)
+iconutil -c iconset "$APP/Contents/Resources/AppIcon.icns" -o "$STAGE/check.iconset"
+[ "$(ls "$STAGE/check.iconset" | wc -l | tr -d ' ')" = 10 ] || { echo "빌드 실패: AppIcon.icns에 크기 10장이 다 들어 있지 않음"; exit 1; }
+rm -rf "$STAGE/check.iconset"
 
 # 개발자 인증서 없이 "자체 서명"만 한다. 받는 쪽에서 처음 한 번 "그래도 열기"가 필요하다.
 xattr -cr "$APP"
@@ -86,6 +90,10 @@ if [ "$MODE" = dev ] || [ "$MODE" = --release ]; then
   mkdir -p "$STAGE/unzipped"
   ditto -x -k "$STAGE/$ZIP" "$STAGE/unzipped"
   codesign --verify --deep --strict "$STAGE/unzipped/$PKGNAME/Focus & Draw.app"
+  # 풀어낸 앱에 아이콘이 있고 Info.plist가 그것을 가리키는지
+  UAPP="$STAGE/unzipped/$PKGNAME/Focus & Draw.app"
+  [ -s "$UAPP/Contents/Resources/AppIcon.icns" ] || { echo "빌드 실패: zip 안의 앱에 AppIcon.icns가 없음"; exit 1; }
+  [ "$(/usr/libexec/PlistBuddy -c "Print CFBundleIconFile" "$UAPP/Contents/Info.plist")" = AppIcon ] || { echo "빌드 실패: Info.plist의 CFBundleIconFile이 AppIcon이 아님"; exit 1; }
   rm -f build/Focus-Draw-*.zip build/Focus-Draw-*.zip.sha256
   cp "$STAGE/$ZIP" build/
   echo "완료: build/Focus & Draw.app"

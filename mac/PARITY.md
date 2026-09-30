@@ -38,7 +38,7 @@
 | 8 | 배포 | UPX 압축 안 씀 | 해당 없음 | — |  | Windows 전용 |
 | 9 | 배포 | 그림 파일 포함 | 완료 | A |  | `build.sh`가 빠지면 실패. 맥용 키보드 그림은 S8b |
 | 10 | 배포 | 단축키 그림 규칙 (화면에 맞추되 키우지 않음) | S8b | T |  | 맥 키캡 그림 |
-| 11 | 배포 | 아이콘·이름·버전 정보 | 완료 | T |  | Info.plist + AppIcon.icns |
+| 11 | 배포 | 아이콘·이름·버전 정보 | 완료 | T |  | Info.plist + AppIcon.icns (S3b: 빌드가 .icns 10장·zip 안 아이콘·Info.plist를 확인) |
 | 12 | 배포 | 버전이 한 곳에서만 정해짐 | 완료 | A |  | Info.plist 한 곳(`AppInfo.version`) |
 | 13 | 배포 | 실행 중일 때 새로 만들기 | 완료 | T |  | `build.sh --run`이 켜진 앱을 끄고 새로 띄움 |
 | 14 | 문서 | 라이선스 (MIT) | 완료 | T |  | zip에 LICENSE, 설정 창 일반 탭(S8a)에 제작자·라이선스 |

@@ -1,5 +1,4 @@
 import AppKit
-import Carbon
 import Combine
 
 // 조립만 한다. "무엇이 켜져 있는가"는 AppState가, 설정값은 Settings가 든다.
@@ -95,23 +94,28 @@ import Combine
             DispatchQueue.main.async { self?.applySettings() }
         }
 
-        // F8·F9 (맥북은 fn과 함께), 그리고 fn 없이 누를 수 있는 ⌃⌥1·⌃⌥2
-        func hotkey(_ code: Int, _ mods: Int, _ name: String, _ action: @escaping () -> Void) {
-            HotKeys.register(keyCode: code, modifiers: mods, name: name) {
-                Log.log("HK", "press \(name)")
-                action()
-            }
-        }
-        hotkey(kVK_F8, 0, "F8") { [weak self] in self?.toggleSpotlight() }
-        hotkey(kVK_F9, 0, "F9") { [weak self] in self?.draw.toggle() }
-        hotkey(kVK_ANSI_1, controlKey | optionKey, "⌃⌥1") { [weak self] in self?.toggleSpotlight() }
-        hotkey(kVK_ANSI_2, controlKey | optionKey, "⌃⌥2") { [weak self] in self?.draw.toggle() }
+        // 앱이 도는 동안 늘 있는 단축키 (묶음 app): settings.ini [Hotkeys]의 Spotlight·Draw(기본 F8·F9)와,
+        // fn 없이 누를 수 있는 맥 전용 SpotlightAlt·DrawAlt(기본 ⌃⌥1·⌃⌥2). 못 잡은 것은 기록에만 남긴다.
+        draw.onKeysFailed = { r in Notice.show(Notice.drawKeysFailed(r)) }
+        registerAppHotkeys()
 
         setupStatusItem()
         if normalRun { showStartupNotices(loadResult) }
 
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
         if let out = bench { DispatchQueue.main.async { Bench.run(self, out: out) } }
+    }
+
+    func registerAppHotkeys() {
+        let actions: [String: () -> Void] = [
+            "Spotlight": { [weak self] in self?.toggleSpotlight() }, "SpotlightAlt": { [weak self] in self?.toggleSpotlight() },
+            "Draw": { [weak self] in self?.draw.toggle() }, "DrawAlt": { [weak self] in self?.draw.toggle() },
+        ]
+        let entries: [HotKeyEntry] = SettingsSchema.hotkeys.compactMap { h in
+            guard let combo = HotkeyNotation.parse(Settings.shared.hotkeys[h.name] ?? h.def), let action = actions[h.name] else { return nil }
+            return HotKeyEntry(name: h.name, combo: combo, press: { _ in Log.log("HK", "press \(h.name)"); action() })
+        }
+        HotKeyRegistry.shared.registerGroup(.app, entries, policy: .skipFailures)
     }
 
     // 처음 열었을 때·문제가 있을 때만 안내 창을 띄운다 (자체 점검·측정 실행에서는 부르지 않는다)
@@ -209,6 +213,7 @@ import Combine
     // 드로잉 키 단축키를 풀고) 앱이 죽는다. 숨겨 둔 커서도 반드시 되돌린다.
     func applicationWillTerminate(_ n: Notification) {
         draw.turnOff(.quit)
+        HotKeyRegistry.shared.unregisterAll()
         SystemCursor.showAll()
         AppLog.write("SESSION", "quit")
         Log.log("SESSION", "quit")

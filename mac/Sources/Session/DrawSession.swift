@@ -23,6 +23,7 @@ enum OffReason: String {
     var surface: InkSurface { controller.surface }
     // 설정에서 복사본을 만들어 주는 곳 (AppDelegate가 채운다 — 그리기 코드는 Settings를 읽지 않는다)
     var makeConfig: () -> DrawConfig = { DrawConfig() }
+    var onKeysFailed: (HotKeyGroupResult) -> Void = { _ in } // 드로잉 키를 못 잡아 켜지 못했을 때 (안내 창은 AppDelegate가)
 
     var isOn: Bool { state.drawOn }
     var inkWindowNumbers: [Int] { surface.windowNumbers }
@@ -44,9 +45,15 @@ enum OffReason: String {
         controller.resetTemporaries()
         controller.expireUndoIfNeeded()
         surface.prepare()
+        // 드로잉 키는 하나라도 못 잡으면 등록부가 묶음 전체를 되돌린다 → 켜지 않고 알린다
+        let r = keys.registerAll()
+        guard r.ok else {
+            Log.log("DRAW", "on refused: draw keys failed=\(r.failed.count) first=\(r.failed.first.map { "\($0.name) \(describeHotKeyStatus($0.status))" } ?? "-")")
+            onKeysFailed(r)
+            return
+        }
         state.drawOn = true
         surface.show() // 앱을 앞으로 부르지 않는다 — 발표 앱이 앞에 그대로 있다
-        keys.registerAll()
         controller.begin()
         Log.log("DRAW", "on front=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "-") windows=\(surface.windows.count)")
     }

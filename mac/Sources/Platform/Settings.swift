@@ -41,6 +41,8 @@ final class Settings: ObservableObject {
     @Published var widgetOpacity: Double = 100
     var widgetX: Double? = nil
     var widgetY: Double? = nil
+    // [Hotkeys]: AHK 표기 그대로 든다 (Platform/HotkeyNotation.swift가 읽는다)
+    var hotkeys: [String: String] = SettingsSchema.hotkeyDefaults
     // [DrawKeys] 1~9, [Boards] W/E/R
     var drawKeyColors: [UInt32] = Settings.defaultDrawKeys
     var drawKeyAlphas: [Double] = Array(repeating: 100, count: 9)
@@ -97,42 +99,14 @@ final class Settings: ObservableObject {
             AppLog.write("SETTINGS", "unreadable: \(r.problem ?? "?") backup=\(backup?.lastPathComponent ?? "failed")")
             return .unreadable(reason: r.problem ?? "알 수 없음", backup: backup)
         }
-        func num(_ s: String, _ k: String, _ d: Double, _ lo: Double, _ hi: Double) -> Double {
-            guard let v = ini.value(s, k).flatMap(Double.init), v.isFinite else { return d }
-            return max(lo, min(hi, v))
-        }
-        func hex(_ s: String, _ k: String, _ d: UInt32) -> UInt32 { Settings.parseColor(ini.value(s, k)) ?? d }
-        func flag(_ s: String, _ k: String, _ d: Bool) -> Bool { ini.value(s, k).map { $0 == "1" } ?? d }
-        spotSize = num("Highlight", "Size", 130, 30, 200)
-        spotOpacity = num("Highlight", "Opacity", 40, 0, 100)
-        spotColor = hex("Highlight", "Color", 0xFF0000)
-        clickEffect = flag("Highlight", "ClickEffect", true)
-        clickThickness = num("Highlight", "RingThickness", 7, 2, 12)
-        clickSpeed = num("Highlight", "ClickSpeed", 26, 1, 30)
-        clickOpacity = num("Highlight", "ClickOpacity", 50, 0, 100)
-        clickColor = hex("Highlight", "ClickColor", 0xFF0000)
-        rclickEffect = flag("Highlight", "RClickEffect", false)
-        rclickThickness = num("Highlight", "RClickThickness", 7, 2, 12)
-        rclickSpeed = num("Highlight", "RClickSpeed", 26, 1, 30)
-        rclickOpacity = num("Highlight", "RClickOpacity", 50, 0, 100)
-        rclickColor = hex("Highlight", "RClickColor", 0x0020FF)
-        drawOpacity = num("Draw", "Opacity", 100, 0, 100)
-        drawColor = hex("Draw", "Color", 0xFF0000)
-        drawStep = num("Draw", "ThicknessStep", 5, 1, 10)
-        eraserStep = num("Draw", "EraserStep", 5, 1, 10)
-        showWidget = flag("Common", "ShowWidget", true)
-        widgetScale = num("Common", "WidgetScale", 100, 60, 250)
-        widgetColor = hex("Common", "WidgetColor", 0xF2F2F2)
-        widgetOpacity = num("Common", "WidgetOpacity", 100, 20, 100)
+        // 항목표(SettingsSchema)대로 읽는다: 못 읽는 값은 기본값, 범위 밖 숫자는 끝값
+        for k in SettingsSchema.keys { k.write(self, k.parse(ini.value(k.section, k.key)) ?? k.defaultValue) }
         widgetX = ini.value("Common", "WidgetX").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
         widgetY = ini.value("Common", "WidgetY").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil }
-        for i in 0..<9 {
-            drawKeyColors[i] = hex("DrawKeys", "Color\(i + 1)", Settings.defaultDrawKeys[i])
-            drawKeyAlphas[i] = num("DrawKeys", "Opacity\(i + 1)", 100, 5, 100)
-        }
-        for (i, k) in ["W", "E", "R"].enumerated() {
-            boardColors[i] = hex("Boards", "Color\(k)", Settings.defaultBoardColors[i])
-            boardAlphas[i] = num("Boards", "Opacity\(k)", 100, 5, 100)
+        // 단축키: 알아볼 수 없거나 ⌃·⌥ 없이 위험한 조합이면 기본값으로 (단축키가 하나도 안 먹는 채로 시작하지 않게)
+        for h in SettingsSchema.hotkeys {
+            let text = ini.value("Hotkeys", h.name) ?? h.def
+            hotkeys[h.name] = HotkeyNotation.parse(text).map(HotkeyNotation.isSafe) == true ? text : h.def
         }
         return .loaded
     }
@@ -161,31 +135,16 @@ final class Settings: ObservableObject {
 
     // 지금 값들 (절, 키, 문자열). 저장과 진단이 함께 쓴다.
     func pairs() -> [(String, String, String)] {
-        func h(_ v: UInt32) -> String { String(format: "%06X", v) }
-        func n(_ v: Double) -> String { String(Int(v.rounded())) }
-        func b(_ v: Bool) -> String { v ? "1" : "0" }
-        var p: [(String, String, String)] = [
-            ("Highlight", "Size", n(spotSize)), ("Highlight", "Opacity", n(spotOpacity)), ("Highlight", "Color", h(spotColor)),
-            ("Highlight", "ClickEffect", b(clickEffect)), ("Highlight", "RingThickness", n(clickThickness)),
-            ("Highlight", "ClickSpeed", n(clickSpeed)), ("Highlight", "ClickOpacity", n(clickOpacity)),
-            ("Highlight", "ClickColor", h(clickColor)),
-            ("Highlight", "RClickEffect", b(rclickEffect)), ("Highlight", "RClickThickness", n(rclickThickness)),
-            ("Highlight", "RClickSpeed", n(rclickSpeed)), ("Highlight", "RClickOpacity", n(rclickOpacity)),
-            ("Highlight", "RClickColor", h(rclickColor)),
-            ("Draw", "Opacity", n(drawOpacity)), ("Draw", "Color", h(drawColor)),
-            ("Draw", "ThicknessStep", n(drawStep)), ("Draw", "EraserStep", n(eraserStep)),
-            ("Common", "ShowWidget", b(showWidget)), ("Common", "WidgetScale", n(widgetScale)),
-            ("Common", "WidgetColor", h(widgetColor)), ("Common", "WidgetOpacity", n(widgetOpacity)),
-        ]
-        for i in 0..<9 {
-            p.append(("DrawKeys", "Color\(i + 1)", h(drawKeyColors[i])))
-            p.append(("DrawKeys", "Opacity\(i + 1)", n(drawKeyAlphas[i])))
-        }
-        for (i, k) in ["W", "E", "R"].enumerated() {
-            p.append(("Boards", "Color\(k)", h(boardColors[i])))
-            p.append(("Boards", "Opacity\(k)", n(boardAlphas[i])))
-        }
+        var p = SettingsSchema.keys.map { ($0.section, $0.key, $0.format($0.read(self))) }
+        for h in SettingsSchema.hotkeys { p.append(("Hotkeys", h.name, hotkeys[h.name] ?? h.def)) }
         return p
+    }
+
+    // "모두 초기화": 표의 기본값으로 돌린다. 위젯 자리는 비운다(다시 오른쪽 아래에서 시작).
+    func resetToDefaults() {
+        for k in SettingsSchema.keys { k.write(self, k.defaultValue) }
+        widgetX = nil; widgetY = nil
+        hotkeys = SettingsSchema.hotkeyDefaults
     }
 
     // 지금 디스크의 파일을 다시 읽어 아는 값만 바꿔 쓴다: 모르는 항목·주석·순서·인코딩은 그대로.
@@ -194,7 +153,11 @@ final class Settings: ObservableObject {
     func save(to url: URL = Settings.path) -> SaveError? {
         if writeBlocked { return .blocked }
         var f = Settings.readIni(url).ini ?? IniFile()
-        for (s, k, v) in pairs() { f.set(s, k, v) }
+        for (s, k, v) in pairs() {
+            // [Hotkeys]는 기본값이고 파일에도 없으면 쓰지 않는다 (Windows 파일에 맥 전용 줄을 공연히 늘리지 않는다)
+            if s == "Hotkeys", f.value(s, k) == nil, v == SettingsSchema.hotkeyDefaults[k] { continue }
+            f.set(s, k, v)
+        }
         if let x = widgetX, let y = widgetY {
             f.set("Common", "WidgetX", String(Int(x.rounded()))); f.set("Common", "WidgetY", String(Int(y.rounded())))
         }
