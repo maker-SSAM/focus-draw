@@ -9,7 +9,7 @@
 
 ## 끈 뒤
 - `InkSurface.hide()`가 바닥·획·화면 그림을 모두 버린다. 목록만 남는다. 켤 때 `show()`가 그림이 없는 화면만 목록에서 다시 그린다(로그 `redraw from list`).
-- 10분 규칙: 끌 때 `DrawController.scheduleExpiry()`가 한 번 깨는 작업(`UNDO_KEEP_S + 1`초 뒤)을 예약하고 켜면 취소한다. 잠자기로 밀리면 켤 때 `expireIfNeeded`가 본다. 화면이 비어 있으면(마지막이 지우기) 이 길로 목록까지 빈다.
+- 1분 규칙(`UNDO_KEEP_S=60`, 처음 10분에서 사용자가 바꿈): 끌 때 `DrawController.scheduleExpiry()`가 한 번 깨는 작업(`UNDO_KEEP_S + 1`초 뒤)을 예약하고 켜면 취소한다. 잠자기로 밀리면 켤 때 `expireIfNeeded`가 본다. 화면이 비어 있으면(마지막이 지우기) 이 길로 목록까지 빈다.
 - 레이저 타이머는 끌 때 바로 멈춘다(이전에는 다음 박자에 스스로 멈췄다).
 
 ## 화면 (D6)

@@ -1,6 +1,6 @@
 import AppKit
 
-// S5의 글 점검: 10분 규칙·바닥 굽기 경계·전부 지우기·화면 원점 옮김. 화면 없이 돈다(Golden.run).
+// S5의 글 점검: 1분 규칙·바닥 굽기 경계·전부 지우기·화면 원점 옮김. 화면 없이 돈다(Golden.run).
 // 창이 있어야 하는 것(긴 수업 그림 견주기·화면 바뀜·끈 뒤 정리)은 SelfTest.longClass가 본다.
 @MainActor enum S5Tests {
     static func stroke(_ i: Int) -> InkItem {
@@ -10,10 +10,10 @@ import AppKit
     static func run(_ report: (String, Bool, String) -> Void) {
         func check(_ name: String, _ ok: Bool, _ detail: String = "") { report(name, ok, detail) }
 
-        check("실행 취소 기록은 끈 뒤 10분(600초), 30단계", UNDO_KEEP_S == 600 && UNDO_MAX == 30, "\(UNDO_KEEP_S)초 \(UNDO_MAX)단계")
+        check("실행 취소 기록은 끈 뒤 1분(60초), 30단계", UNDO_KEEP_S == 60 && UNDO_MAX == 30, "\(UNDO_KEEP_S)초 \(UNDO_MAX)단계")
 
-        // ---- 10분 규칙 (가짜 시계) ----
-        for (sec, canUndo) in [(599.0, true), (601.0, false)] {
+        // ---- 1분 규칙 (가짜 시계) ----
+        for (sec, canUndo) in [(59.0, true), (61.0, false)] {
             let m = InkModel(); var now = Date(timeIntervalSince1970: 2_000_000)
             m.clock = { now }
             for i in 0..<3 { m.commit(stroke(i)) }
@@ -22,18 +22,18 @@ import AppKit
             let undone = m.undo()
             check("끈 뒤 \(Int(sec))초: \(canUndo ? "되살림 O" : "되살림 X")", undone == canUndo, "되돌림=\(undone)")
         }
-        do { // 화면이 비어 있는 채(마지막이 전부 지우기)로 10분이 지나면 목록까지 빈다
+        do { // 화면이 비어 있는 채(마지막이 전부 지우기)로 1분이 지나면 목록까지 빈다
             let m = InkModel(); var now = Date(timeIntervalSince1970: 2_000_000)
             m.clock = { now }
             for i in 0..<5 { m.commit(stroke(i)) }
             _ = m.clearAll()
             m.noteOff()
-            now.addTimeInterval(601); m.expireIfNeeded()
-            check("10분 뒤 화면이 비어 있으면 선 목록도 빔", m.items.isEmpty, "남은 \(m.items.count)개")
+            now.addTimeInterval(61); m.expireIfNeeded()
+            check("1분 뒤 화면이 비어 있으면 선 목록도 빔", m.items.isEmpty, "남은 \(m.items.count)개")
             let n = InkModel(); n.clock = { now }
             for i in 0..<5 { n.commit(stroke(i)) }
-            n.noteOff(); now.addTimeInterval(601); n.expireIfNeeded()
-            check("10분 뒤 화면에 그림이 있으면 목록은 그대로(되돌리기만 비움)", n.items.count == 5 && !n.undo(), "\(n.items.count)개")
+            n.noteOff(); now.addTimeInterval(61); n.expireIfNeeded()
+            check("1분 뒤 화면에 그림이 있으면 목록은 그대로(되돌리기만 비움)", n.items.count == 5 && !n.undo(), "\(n.items.count)개")
         }
 
         // ---- 30단계 경계와 바닥 굽기 자리 ----

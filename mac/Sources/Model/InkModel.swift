@@ -56,7 +56,7 @@ final class InkModel {
     private func setUndoFloor(_ f: Int) {
         undoFloor = f
         // 되돌릴 수 없는 곳에 "전부 지우기"가 있으면 그 앞은 더 들고 있을 이유가 없다
-        // (화면이 비어 있는 채로 10분이 지나면 이 길로 목록까지 빈다)
+        // (화면이 비어 있는 채로 1분이 지나면 이 길로 목록까지 빈다)
         if let idx = items[..<undoFloor].lastIndex(where: { $0.kind == .clear }) {
             items.removeSubrange(0...idx)
             undoFloor -= idx + 1

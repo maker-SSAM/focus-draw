@@ -391,7 +391,7 @@ import AppKit
         check("끄면 그림(바닥·획·화면)이 모두 버려지고 타이머가 없음 (잉크 목록만 남음)",
               !d.draw.surface.hasImages && c.laserTimer == nil && !c.watch.isRunning && !d.draw.isWatching && !c.items.isEmpty,
               "그림=\(d.draw.surface.hasImages) 레이저타이머=\(c.laserTimer != nil) 살핌=\(c.watch.isRunning)")
-        check("끄면 10분 뒤 정리 작업이 한 번만 예약됨", c.hasExpiryScheduled, "")
+        check("끄면 1분 뒤 정리 작업이 한 번만 예약됨", c.hasExpiryScheduled, "")
         d.draw.surface.checkScreens(forced: true)
         check("꺼진 채 화면이 바뀌면 판을 닫고 그림을 만들지 않음", d.draw.surface.windows.isEmpty && !d.draw.surface.hasImages, "판 \(d.draw.surface.windows.count)개")
 

@@ -140,7 +140,7 @@ enum PenKind { case normal, laser, rainbow }
         scheduleExpiry()
     }
 
-    // ---------- 끈 뒤 10분 (선생님 결정 ③) ----------
+    // ---------- 끈 뒤 1분 (선생님 결정 ③) ----------
     // 끌 때 한 번 깨는 작업을 예약하고, 켜면 취소한다. 잠자기로 밀리면 켤 때 expireIfNeeded가 한 번 더 본다.
     private var expiryWork: DispatchWorkItem?
     var hasExpiryScheduled: Bool { expiryWork != nil }
