@@ -62,6 +62,13 @@ func renderInk(_ item: InkItem, in ctx: CGContext) {
             ctx.setFillColor(item.hues.map { hueColor($0.first ?? 0) } ?? c)
             strokePoints(item.points, width: item.width, in: ctx)
         }
+        if let h = item.head, h.count == 3 {
+            // 머리는 테두리가 아니라 채운다. 무지개는 몸통이 끝난 색.
+            let c = item.hues.flatMap(\.last).map(hueColor) ?? color(item.rgb).cgColor
+            ctx.setFillColor(c)
+            ctx.move(to: h[0]); ctx.addLine(to: h[1]); ctx.addLine(to: h[2]); ctx.closePath()
+            ctx.fillPath()
+        }
         if translucent { ctx.endTransparencyLayer() }
     }
 }
@@ -78,7 +85,8 @@ private func strokePoints(_ pts: [CGPoint], width: CGFloat, in ctx: CGContext) {
 }
 
 // ---------- 사라지는 펜 (레이저) ----------
-struct LaserPt { var p: CGPoint; var t: TimeInterval; var hue: CGFloat? }
+// rgb: 그은 때의 색 — 꼬리가 사라지는 동안 펜 색을 바꿔도 이 획은 자기 색 그대로 (nil이면 그리는 쪽이 넘긴 기본색)
+struct LaserPt { var p: CGPoint; var t: TimeInterval; var hue: CGFloat?; var rgb: UInt32? = nil }
 
 func laserLife(_ t: TimeInterval, _ now: TimeInterval) -> CGFloat {
     let age = now - t
@@ -102,7 +110,7 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
             if s.count == 1 {
                 let life = laserLife(s[0].t, now)
                 let d = width * mul * life
-                ctx.setFillColor(tint(s[0].hue.map(hueColor) ?? baseColor, mix))
+                ctx.setFillColor(tint(s[0].hue.map(hueColor) ?? s[0].rgb.map { color($0).cgColor } ?? baseColor, mix))
                 ctx.fillEllipse(in: CGRect(x: s[0].p.x - d / 2, y: s[0].p.y - d / 2, width: d, height: d))
                 continue
             }
@@ -110,7 +118,7 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
                 let life = laserLife(s[i - 1].t, now)
                 guard life > 0 else { continue }
                 ctx.setLineWidth(max(0.5, width * mul * life))
-                ctx.setStrokeColor(tint(s[i].hue.map(hueColor) ?? baseColor, mix))
+                ctx.setStrokeColor(tint(s[i].hue.map(hueColor) ?? s[i].rgb.map { color($0).cgColor } ?? baseColor, mix))
                 ctx.move(to: s[i - 1].p)
                 ctx.addLine(to: s[i].p)
                 ctx.strokePath()

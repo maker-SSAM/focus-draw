@@ -19,6 +19,13 @@ func arrowPoints(_ a: CGPoint, _ b: CGPoint, width: CGFloat) -> [CGPoint] {
     return [a, base, l, b, r, base]
 }
 
+// 화살표: 몸통(시작점~머리 밑변)과 채울 머리 삼각형(꼭짓점, 왼쪽, 오른쪽). 너무 짧으면 머리 없이 두 점만.
+func arrowParts(_ a: CGPoint, _ b: CGPoint, width: CGFloat) -> (shaft: [CGPoint], head: [CGPoint]?) {
+    let p = arrowPoints(a, b, width: width)
+    guard p.count == 6 else { return ([a, b], nil) }
+    return ([p[0], p[1]], [p[3], p[2], p[4]])
+}
+
 func wavePoints(_ a: CGPoint, _ b: CGPoint, width: CGFloat) -> [CGPoint] {
     let dx = b.x - a.x, dy = b.y - a.y
     let len = hypot(dx, dy)

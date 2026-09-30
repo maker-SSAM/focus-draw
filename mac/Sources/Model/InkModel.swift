@@ -14,11 +14,12 @@ struct InkItem {
     var rgb: UInt32 = 0
     var alpha: CGFloat = 1
     var hues: [CGFloat]? = nil // 무지개 펜: 점마다 색상(0~360)
+    var head: [CGPoint]? = nil // 화살표 머리: 채운 삼각형의 세 점 (Windows와 같다). 무지개는 몸통이 끝난 색으로 채운다.
 
     var bounds: CGRect {
         guard let f = points.first else { return .null }
         var r = CGRect(origin: f, size: .zero)
-        for p in points { r = r.union(CGRect(origin: p, size: .zero)) }
+        for p in points + (head ?? []) { r = r.union(CGRect(origin: p, size: .zero)) }
         return r.insetBy(dx: -width - 2, dy: -width - 2)
     }
 }

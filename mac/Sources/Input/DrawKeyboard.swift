@@ -27,8 +27,8 @@ extension DrawController {
         case 13: board = 1; surface.invalidateAll(); updateCursor()        // W
         case 14: board = 2; surface.invalidateAll(); updateCursor()        // E
         case 15: board = 3; surface.invalidateAll(); updateCursor()        // R
-        case 24, 69: adjustSize(+1, eraser: rightDown || f.contains(.option)) // = + (키패드 +)
-        case 27, 78: adjustSize(-1, eraser: rightDown || f.contains(.option)) // - (키패드 -)
+        case 24, 69: adjustSize(+1, eraser: rightDown || optionHeld || f.contains(.option)) // = + (키패드 +)
+        case 27, 78: adjustSize(-1, eraser: rightDown || optionHeld || f.contains(.option)) // - (키패드 -)
         default:
             if let d = DrawController.digitKeys[k] {
                 if d == 0 { rgb = config.drawColor; alpha = 1 } else {
@@ -68,8 +68,13 @@ extension DrawController {
     }
 
     // ---------- 휠: 지금 쓰는 색을 진하게 / 연하게 ----------
+    // 위로 굴리면(트랙패드는 손가락을 위로 밀면) 진해진다 — "자연스러운 스크롤" 설정과 관계없이(결정 7: 트랙패드도 같음).
+    // 튕긴 뒤 손을 뗀 관성 스크롤은 무시한다.
     func scroll(_ e: NSEvent) {
-        scrollAccum += e.hasPreciseScrollingDeltas ? e.scrollingDeltaY / 12 : e.scrollingDeltaY
+        if !e.momentumPhase.isEmpty { return }
+        if e.phase.contains(.began) { scrollAccum = 0 }
+        let dy = physicalScrollUp(e.scrollingDeltaY, inverted: e.isDirectionInvertedFromDevice)
+        scrollAccum += e.hasPreciseScrollingDeltas ? dy / 12 : dy
         while abs(scrollAccum) >= 1 {
             let dir: CGFloat = scrollAccum > 0 ? 1 : -1
             scrollAccum -= dir
@@ -79,3 +84,6 @@ extension DrawController {
         updateCursor()
     }
 }
+
+// "자연스러운 스크롤"을 켜면 시스템이 방향을 뒤집어 보내므로, 장치에서 실제로 "위로" 굴린 양으로 되돌린다
+func physicalScrollUp(_ delta: CGFloat, inverted: Bool) -> CGFloat { inverted ? -delta : delta }

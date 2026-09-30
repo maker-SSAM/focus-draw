@@ -148,7 +148,7 @@ final class InkView: NSView {
     override func mouseUp(with e: NSEvent) { ctl.up(globalPoint(e)) }
     override func rightMouseDown(with e: NSEvent) { ctl.down(globalPoint(e), e, right: true) }
     override func rightMouseDragged(with e: NSEvent) { ctl.drag(globalPoint(e), e) }
-    override func rightMouseUp(with e: NSEvent) { ctl.up(globalPoint(e)) }
+    override func rightMouseUp(with e: NSEvent) { ctl.up(globalPoint(e), right: true) }
     override func scrollWheel(with e: NSEvent) { ctl.scroll(e) }
     override func flagsChanged(with e: NSEvent) { ctl.flagsChanged(e) }
 }

@@ -38,6 +38,8 @@ enum PenKind { case normal, laser, rainbow }
     var liveBounds: CGRect = .null
     var erasing = false
     var rightDown = false
+    var ignoreRightUp = false   // 왼쪽으로 긋는 도중 눌린 오른쪽 버튼 (뗄 때까지 무시)
+    var ignoreLeftUp = false
     var held: Set<UInt16> = [] // 누르고 있는 Z/X/C
     var scrollAccum: CGFloat = 0
     var mouse: CGPoint = .zero
@@ -191,6 +193,11 @@ enum PenKind { case normal, laser, rainbow }
     }
 
     func down(_ p: CGPoint, _ e: NSEvent, right: Bool) {
+        // 한쪽 버튼으로 긋는 도중 다른 버튼을 눌러도 아무 일도 없다 (흔적도, 새 획도). 그 버튼을 뗄 때도 무시한다.
+        if live != nil || laserLive != nil || erasing {
+            if right { ignoreRightUp = true } else { ignoreLeftUp = true }
+            return
+        }
         moveMouse(p)
         start = p; lastPoint = p
         activePen = pen
@@ -207,7 +214,7 @@ enum PenKind { case normal, laser, rainbow }
         mode = currentShape(e.modifierFlags)
         if activePen == .laser {
             if mode == .free {
-                laserLive = [LaserPt(p: p, t: Date.timeIntervalSinceReferenceDate, hue: nil)]
+                laserLive = [LaserPt(p: p, t: Date.timeIntervalSinceReferenceDate, hue: nil, rgb: rgb)]
                 startLaserTimer()
             } else {
                 laserLive = []
@@ -223,6 +230,7 @@ enum PenKind { case normal, laser, rainbow }
     }
 
     func drag(_ p: CGPoint, _ e: NSEvent) {
+        if (ignoreRightUp && e.type == .rightMouseDragged) || (ignoreLeftUp && e.type == .leftMouseDragged) { return }
         moveMouse(p)
         if erasing, var item = live {
             item.points.append(p)
@@ -234,10 +242,10 @@ enum PenKind { case normal, laser, rainbow }
         if activePen == .laser, laserLive != nil {
             let now = Date.timeIntervalSinceReferenceDate
             if mode == .free {
-                laserLive!.append(LaserPt(p: p, t: now, hue: nil))
+                laserLive!.append(LaserPt(p: p, t: now, hue: nil, rgb: rgb))
             } else {
                 let end = shapeEnd(p, e.modifierFlags)
-                laserLive = shapePoints(mode, start, end, width: laserWidth).map { LaserPt(p: $0, t: now, hue: nil) }
+                laserLive = shapePoints(mode, start, end, width: laserWidth).map { LaserPt(p: $0, t: now, hue: nil, rgb: rgb) }
             }
             lastPoint = p
             return
@@ -260,8 +268,11 @@ enum PenKind { case normal, laser, rainbow }
         lastPoint = p
     }
 
-    func up(_ p: CGPoint) {
+    func up(_ p: CGPoint, right: Bool = false) {
+        if right, ignoreRightUp { ignoreRightUp = false; return }
+        if !right, ignoreLeftUp { ignoreLeftUp = false; return }
         rightDown = false
+        finishAtRelease(p)
         if erasing {
             erasing = false
             // 움직이지 않은 오른쪽 클릭·⌥ 클릭(트랙패드 두 손가락 탭 포함)은 아무것도 지우지 않고
@@ -274,16 +285,38 @@ enum PenKind { case normal, laser, rainbow }
         if activePen == .laser, let pts = laserLive {
             // 도형은 손을 뗀 순간부터 함께 사라진다
             let now = Date.timeIntervalSinceReferenceDate
-            if !pts.isEmpty { laser.append(mode == .free ? pts : pts.map { LaserPt(p: $0.p, t: now, hue: $0.hue) }) }
+            if !pts.isEmpty { laser.append(mode == .free ? pts : pts.map { LaserPt(p: $0.p, t: now, hue: $0.hue, rgb: $0.rgb) }) }
             laserLive = nil
             startLaserTimer()
             return
         }
         guard let item = live else { return }
+        // 움직이지 않은 한 번 클릭은 점을 남기지 않는다 (Windows와 같음, 결정 6)
+        if item.points.allSatisfy({ $0 == item.points[0] }) && item.head == nil {
+            surface.strokeClear(liveBounds.union(item.bounds))
+            surface.invalidate(liveBounds.union(item.bounds))
+            live = nil
+            updateCursor()
+            return
+        }
         if activePen == .rainbow, mode != .free, let h = item.hues?.last { rainbowHue = h }
         commit(item)
         live = nil
         updateCursor()
+    }
+
+    // 손을 뗀 점까지 획에 넣는다 (마지막 이동 이벤트 뒤에 조금 더 갔을 때)
+    private func finishAtRelease(_ p: CGPoint) {
+        guard erasing || mode == .free, var item = live, let last = item.points.last, hypot(p.x - last.x, p.y - last.y) >= 0.5 else { return }
+        if !erasing, activePen == .rainbow {
+            rainbowHue = (rainbowHue + hypot(p.x - lastPoint.x, p.y - lastPoint.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360)
+            item.hues?.append(rainbowHue)
+        }
+        item.points.append(p)
+        live = item
+        if item.kind == .stroke { surface.strokeAdd(lastSegment(of: item)) }
+        surface.invalidate(segmentBounds(lastPoint, p, item.width))
+        lastPoint = p
     }
 
     var laserWidth: CGFloat { max(penPx(penStep), LASER_MIN_WIDTH) }
@@ -303,7 +336,12 @@ enum PenKind { case normal, laser, rainbow }
 
     func refreshShape(end: CGPoint) {
         guard var item = live else { return }
-        item.points = shapePoints(mode, start, end, width: item.width)
+        if mode == .arrow {
+            let a = arrowParts(start, end, width: item.width) // 몸통 + 채운 머리
+            item.points = a.shaft; item.head = a.head
+        } else {
+            item.points = shapePoints(mode, start, end, width: item.width)
+        }
         if activePen == .rainbow {
             // 테두리를 따라 색이 돈다. 미리보기는 매번 획을 시작한 색에서 다시 출발한다.
             var h = item.hues?.first ?? rainbowHue
@@ -347,6 +385,7 @@ enum PenKind { case normal, laser, rainbow }
             surface.invalidate(r)
         }
         live = nil; erasing = false; rightDown = false; held = []
+        ignoreRightUp = false; ignoreLeftUp = false
     }
 
     // ---------- 목록 다루기 ----------

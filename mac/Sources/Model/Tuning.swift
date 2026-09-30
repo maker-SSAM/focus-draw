@@ -17,7 +17,7 @@ func eraserPx(_ step: Int) -> CGFloat { ERASER_BASE_PX * pow(ERASER_STEP_RATIO, 
 // ---------- 굵기·진하기 숫자 배지 ----------
 // Windows는 30×24. 맥은 "100%"까지 들어가야 해서 너비는 글자에 맞춰 늘리고 최소만 34로 둔다.
 let STEP_BADGE_W: CGFloat = 34   // 최소 너비
-let STEP_BADGE_H: CGFloat = 26
+let STEP_BADGE_H: CGFloat = 22
 let STEP_BADGE_MS = 500          // 화면에 머무는 시간(ms)
 
 // ---------- 숫자키 색 1~9, 칠판 Q/W/E/R ----------
