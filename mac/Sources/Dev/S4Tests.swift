@@ -145,7 +145,8 @@ import Carbon
                   missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && missionControlShowing([dock(20)], boardLayer: L)
                   && !missionControlShowing([dock(-2147483624), small], boardLayer: L)
                   && !missionControlShowing([dock(L + 1), dock(L + 2)], boardLayer: L, nearDockEdge: true)
-                  && missionControlShowing([dock(20)], boardLayer: L, nearDockEdge: true)
+                  && !missionControlShowing([dock(20)], boardLayer: L, nearDockEdge: true)   // Dock이 자동 숨김에서 나올 때: 레벨 20 하나
+                  && missionControlShowing([dock(20), dock(18)], boardLayer: L, nearDockEdge: true) && missionControlShowing([dock(20), dock(20)], boardLayer: L, nearDockEdge: true)
                   && !missionControlShowing([dock(L + 1, owner: "Keynote")], boardLayer: L))
         }
 

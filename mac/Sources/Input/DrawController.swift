@@ -103,7 +103,8 @@ enum PenKind { case normal, laser, rainbow }
         let infos = currentWindowInfos()
         let hit = missionControlShowing(infos, boardLayer: OVERLAY_LEVEL.rawValue, nearDockEdge: near)
         if hit { // 무엇 때문에 꺼졌는지 진단에 남긴다 (Dock 창의 레벨·크기)
-            Log.log("GESTURE", "dock windows=" + infos.filter { $0.owner == "Dock" }.map { "L\($0.layer) \(Int($0.frame.width))x\(Int($0.frame.height))" }.joined(separator: ",") + " nearEdge=\(near)")
+            let docks = infos.filter { $0.owner == "Dock" }.map { "L\($0.layer) \(Int($0.frame.width))x\(Int($0.frame.height))" }
+            Log.log("GESTURE", "dock windows=" + docks.joined(separator: ",") + " nearEdge=\(near)")
         }
         return hit
     }
