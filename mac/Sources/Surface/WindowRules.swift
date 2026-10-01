@@ -108,13 +108,11 @@ func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int, nearDockEdg
     // Mission Control이 뜬 뒤: 화면만 한 Dock 창이 레벨 18·20에 생긴다 (평소의 Dock 창은 레벨 -2147483624 등 아주 낮은 것뿐 —
     // 이 맥에서 open -a "Mission Control" 중에 창 목록을 떠서 확인)
     let big = dock.filter { $0.layer > 0 && $0.layer < boardLayer && $0.frame.width >= 500 && $0.frame.height >= 300 }
-    if nearDockEdge {
-        // 진단 기록(2026-10-01)에서 본 것: Dock이 자동 숨김에서 나올 때는 화면만 한 Dock 창이 레벨 20에 하나만 생긴다.
-        // 진짜 Mission Control은 레벨 18 창이 함께 있거나 화면만 한 창이 둘 이상이다.
-        return big.contains { $0.layer == 18 } || big.count >= 2
-    }
-    // 데스크톱을 넘기는 중: Dock 창이 판과 같거나 높은 레벨
-    return dock.contains { $0.layer >= boardLayer } || !big.isEmpty
+    // 진단 기록(2026-10-01)에서 본 것: Dock이 자동 숨김에서 나올 때는 화면만 한 Dock 창이 레벨 20에 하나만 생긴다
+    // (포인터 자리가 가장자리로 읽히지 않는 때도 있었다). 진짜 Mission Control은 레벨 18 창이 함께 있거나 화면만 한 창이 둘 이상이다.
+    if big.contains(where: { $0.layer == 18 }) || big.count >= 2 { return true }
+    // 데스크톱을 넘기는 중: Dock 창이 판과 같거나 높은 레벨 (Dock이 나오는 가장자리에서는 이 신호를 쓰지 않는다)
+    return !nearDockEdge && dock.contains { $0.layer >= boardLayer }
 }
 @MainActor func currentWindowInfos() -> [WindowInfo] {
     guard let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else { return [] }

@@ -142,7 +142,8 @@ import Carbon
                   && pointerNearDockEdge(CGPoint(x: scr.maxX - 20, y: scr.midY), screens: band)
                   && !pointerNearDockEdge(CGPoint(x: scr.midX, y: scr.midY), screens: band) && !pointerNearDockEdge(CGPoint(x: scr.midX, y: scr.maxY - 5), screens: band))
             check("제스처: Dock의 높은 창(1000·1001)이나 화면만 한 창(레벨 18·20)이 뜨면 Mission Control, 평소 Dock 창이나 다른 앱은 아님",
-                  missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && missionControlShowing([dock(20)], boardLayer: L)
+                  missionControlShowing([dock(L + 1), dock(L)], boardLayer: L) && missionControlShowing([dock(20), dock(18)], boardLayer: L)
+                  && !missionControlShowing([dock(20)], boardLayer: L) // Dock이 나올 때의 창 하나는 제스처가 아님 (가장자리 판단과 무관하게)
                   && !missionControlShowing([dock(-2147483624), small], boardLayer: L)
                   && !missionControlShowing([dock(L + 1), dock(L + 2)], boardLayer: L, nearDockEdge: true)
                   && !missionControlShowing([dock(20)], boardLayer: L, nearDockEdge: true)   // Dock이 자동 숨김에서 나올 때: 레벨 20 하나
