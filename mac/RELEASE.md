@@ -2,7 +2,7 @@
 
 새 Haiku 세션이 이 순서대로 한다. **게시(5~6번)는 늘 선생님이 "올려" 하고 승인한 뒤에만 한다.** 맥 세션이므로 `mac/**`만 고친다.
 
-1. **버전 올리기**: `mac/Info.plist`의 `CFBundleShortVersionString`(예 0.5.1)과 `CFBundleVersion`(1 올림), `mac/맥용 읽어주세요.txt` 첫 줄과 `mac/beta/quick-guide.md` 제목의 버전을 맞춘다.
+1. **버전 올리기**: `mac/Info.plist`의 `CFBundleShortVersionString`(예 0.5.1)과 `CFBundleVersion`(1 올림), `mac/맥용 읽어주세요.txt` 첫 줄과 `mac/beta/한장안내.txt` 제목의 버전을 맞춘다.
 2. **점검과 빌드**: `mac/build.sh --test`가 통과한 뒤 `mac/build.sh --release`. 실패하면 멈추고 알린다.
 3. **zip 확인**: `mac/build/Focus-Draw-<버전>-test-mac.zip`과 `.sha256`. `unzip -l`로 앱·읽어주세요·LICENSE뿐인지, settings*.ini가 없는지 본다(빌드가 이미 검사한다). SHA-256을 선생님께 알린다.
 4. **커밋과 태그**: 버전 파일을 경로별로 `git add` → `git status` → 커밋 → `git tag mac-v<버전>`. (`git add -A` 금지, autocrlf 설정 금지 — CLAUDE.md)
