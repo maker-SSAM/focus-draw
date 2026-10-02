@@ -147,6 +147,21 @@ final class Settings: ObservableObject {
         hotkeys = SettingsSchema.hotkeyDefaults
     }
 
+    // "모든 설정 초기화": 설정 파일을 지우고(없으면 그대로) 기본값으로 돌린다. 지우지 못하면 아무것도 바꾸지 않고 오류를 돌려준다.
+    // 읽을 수 없어서 막아 두었던 저장도 풀린다 (파일이 사라졌으므로). 로그인 항목은 건드리지 않는다.
+    func resetAll(at url: URL = Settings.path) -> Error? {
+        if FileManager.default.fileExists(atPath: url.path) {
+            do { try FileManager.default.removeItem(at: url) } catch {
+                AppLog.write("SETTINGS", "reset failed: \(error)")
+                return error
+            }
+        }
+        load(from: url)
+        resetToDefaults()
+        objectWillChange.send() // 배열·단축키처럼 @Published가 아닌 값도 화면이 다시 읽게
+        return nil
+    }
+
     // 지금 디스크의 파일을 다시 읽어 아는 값만 바꿔 쓴다: 모르는 항목·주석·순서·인코딩은 그대로.
     // 성공하면 nil, 실패하면 이유.
     @discardableResult

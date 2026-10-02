@@ -37,6 +37,8 @@ import Combine
         let selftest = arg("--selftest"), bench = arg("--bench")
         // 자체 점검·속도 측정은 사용자가 고른 실험 스위치와 진단 기록을 건드리지 않는다
         let normalRun = selftest == nil && bench == nil
+        // 점검·측정·진단 실행은 로그인 항목(SMAppService)을 건드리지 않는다
+        if !normalRun || args.contains("--diag") { LoginItem.allowed = false }
         if !normalRun {
             AppLog.folder = nil // 사용자 기록에는 적지 않는다
             Experiments.memoryOnly = [:]
@@ -87,7 +89,9 @@ import Combine
             self?.widget.moveToDefault()
             if let o = self?.widget.window.frame.origin { Settings.shared.saveWidgetPosition(o) }
         }
+        settingsWindow.onResetAll = { [weak self] in self?.confirmResetAll() }
         settingsWindow.onQuit = { NSApp.terminate(nil) }
+        installMainMenu()
 
         // 설정 창에서 값을 움직이면 바로 반영
         changes = Settings.shared.objectWillChange.sink { [weak self] _ in
@@ -235,6 +239,55 @@ import Combine
             Settings.shared.showWidget = false
         case .grip: break
         }
+    }
+
+    // "모든 설정 초기화": 기본 선택이 "아니요"인 확인 뒤, 설정 파일을 지우고 기본값으로 돌린다.
+    // 단축키를 다시 잡고 위젯을 처음 자리로 보낸다. 로그인 항목은 그대로 둔다.
+    func confirmResetAll() {
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.messageText = "모든 설정을 처음 상태로 되돌릴까요?"
+        a.informativeText = "색, 크기, 단축키, 위젯 자리 등 저장해 둔 설정이 모두 지워지고 기본값이 됩니다. 이미 그린 그림과 로그인 시 실행 설정은 그대로입니다."
+        a.addButton(withTitle: "아니요")
+        a.addButton(withTitle: "예, 모두 초기화")
+        a.buttons[0].keyEquivalent = "\r"
+        a.buttons[1].keyEquivalent = ""
+        NSApp.activate(ignoringOtherApps: true)
+        guard a.runModal() == .alertSecondButtonReturn else { return }
+        if let e = Settings.shared.resetAll() {
+            Notice.show(Notice.resetFailed(e))
+            return
+        }
+        HotKeyRegistry.shared.unregisterGroup(.app)
+        registerAppHotkeys()
+        appHotkeyCount = HotKeyRegistry.shared.count(.app)
+        widget.moveToDefault()
+        applySettings()
+        AppLog.write("SETTINGS", "reset all")
+    }
+
+    // 메뉴 막대가 없는 앱이라도 설정 창이 앞에 있는 동안은 ⌘C·⌘V·⌘X·⌘A와 ⌘W(창 닫기)가 먹어야 한다
+    func installMainMenu() {
+        func item(_ title: String, _ action: Selector?, _ key: String = "") -> NSMenuItem {
+            NSMenuItem(title: title, action: action, keyEquivalent: key)
+        }
+        let main = NSMenu()
+        let appItem = NSMenuItem(), editItem = NSMenuItem(), winItem = NSMenuItem()
+        let appMenu = NSMenu(title: "Focus & Draw")
+        appMenu.addItem(item("설정...", #selector(openSettings), ","))
+        appMenu.items.last?.target = self
+        appItem.submenu = appMenu
+        let edit = NSMenu(title: "편집")
+        edit.addItem(item("오려두기", #selector(NSText.cut(_:)), "x"))
+        edit.addItem(item("복사", #selector(NSText.copy(_:)), "c"))
+        edit.addItem(item("붙여넣기", #selector(NSText.paste(_:)), "v"))
+        edit.addItem(item("전체 선택", #selector(NSText.selectAll(_:)), "a"))
+        editItem.submenu = edit
+        let win = NSMenu(title: "윈도우")
+        win.addItem(item("닫기", #selector(NSWindow.performClose(_:)), "w"))
+        winItem.submenu = win
+        for i in [appItem, editItem, winItem] { main.addItem(i) }
+        NSApp.mainMenu = main
     }
 
     // 드로잉 판이 화면을 덮고 있으면 설정 창을 누를 수 없으므로 드로잉을 먼저 끈다 (그린 것은 남긴다)

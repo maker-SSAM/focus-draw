@@ -127,6 +127,43 @@ enum Notice {
                    "이 안내는 메뉴 막대 아이콘 › 도움말 › 처음 안내 다시 보기에서 다시 볼 수 있습니다."])
     }
 
+    // ---------- 로그인 시 실행·초기화 ----------
+    static func loginNeedsInstall() -> NoticeContent {
+        NoticeContent(
+            title: "응용 프로그램 폴더로 옮긴 뒤에 켤 수 있습니다",
+            body: ["지금은 응용 프로그램 폴더가 아닌 곳(다운로드 폴더 등)에서 실행 중이라 로그인 시 실행을 켜지 않았습니다. 이 상태로 켜면 앱을 옮기거나 지웠을 때 로그인 항목이 엉킵니다.",
+                   "Finder의 '응용 프로그램' 폴더로 Focus & Draw 앱 아이콘만 끌어다 놓고 그 앱을 다시 연 뒤에 켜 주세요."],
+            buttons: [("Finder에서 보기", { revealOriginalApp() })])
+    }
+
+    static func loginNeedsApproval() -> NoticeContent {
+        NoticeContent(
+            title: "시스템 설정에서 한 번 허용해 주세요",
+            body: ["로그인 시 실행을 등록했지만, macOS가 사용자의 허용을 기다리고 있습니다.",
+                   "시스템 설정 › 일반 › 로그인 항목에서 Focus & Draw를 켜 주세요."],
+            buttons: [("로그인 항목 열기", { LoginItem.openSystemSettings() })])
+    }
+
+    static func loginFailed(_ error: Error) -> NoticeContent {
+        let ns = error as NSError
+        return NoticeContent(
+            title: "로그인 시 실행을 바꾸지 못했습니다",
+            body: ["macOS가 로그인 항목 변경을 받아들이지 않았습니다. 시스템 설정 › 일반 › 로그인 항목에서 직접 켜거나 끌 수 있습니다.",
+                   "다른 설정은 그대로입니다."],
+            detail: DiagReport.sanitize("오류: \(ns.localizedDescription) (\(ns.domain) \(ns.code))"),
+            buttons: [("로그인 항목 열기", { LoginItem.openSystemSettings() })])
+    }
+
+    static func resetFailed(_ error: Error) -> NoticeContent {
+        let ns = error as NSError
+        return NoticeContent(
+            title: "설정을 초기화하지 못했습니다",
+            body: ["설정 파일을 지울 수 없었습니다. 폴더가 읽기 전용이거나 다른 프로그램이 파일을 쓰고 있을 수 있습니다.",
+                   "아무것도 바뀌지 않았습니다. 설정 폴더를 열어 settings.ini를 직접 지운 뒤 앱을 다시 켜도 같은 효과입니다."],
+            detail: DiagReport.sanitize("설정 파일: \(tilde(Settings.path))\n오류: \(ns.localizedDescription) (\(ns.domain) \(ns.code))"),
+            buttons: [("설정 폴더 열기", { revealSettingsFolder() })])
+    }
+
     // ---------- 동작 ----------
     static func revealSettingsFolder() {
         try? FileManager.default.createDirectory(at: Settings.folder, withIntermediateDirectories: true)
