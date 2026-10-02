@@ -88,6 +88,31 @@ private extension Double {
     func clamped(to r: ClosedRange<Double>) -> Double { Swift.max(r.lowerBound, Swift.min(r.upperBound, self)) }
 }
 
+// SwiftUI의 Slider는 Form 안에서 −와 + 사이를 채우지 않고 가운데로 쪼그라들어서, 맥 기본 슬라이더(NSSlider)를 직접 쓴다
+private struct SliderBar: NSViewRepresentable {
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    final class Coordinator: NSObject {
+        var parent: SliderBar
+        init(_ p: SliderBar) { parent = p }
+        @objc func changed(_ s: NSSlider) { parent.value = s.doubleValue }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSSlider {
+        let s = NSSlider(value: value, minValue: range.lowerBound, maxValue: range.upperBound,
+                         target: context.coordinator, action: #selector(Coordinator.changed(_:)))
+        s.isContinuous = true
+        s.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        s.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return s
+    }
+    func updateNSView(_ s: NSSlider, context: Context) {
+        context.coordinator.parent = self
+        if s.doubleValue != value { s.doubleValue = value }
+    }
+}
+
 struct NumberRow: View {
     let f: SettingsLayout.Field
     var labelWidth: CGFloat = 110
@@ -103,19 +128,23 @@ struct NumberRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
-            if !f.label.isEmpty { Text(f.label).frame(width: labelWidth, alignment: .leading) }
-            Button("−") { value = max(range.lowerBound, value - 1) }.controlSize(.small).buttonStyle(.bordered)
+        // 글자를 위에 두고 조절 줄을 아래에 한 줄로 둔다: Form이 앞 글자를 왼쪽 칸으로 갈라 슬라이더가 줄어드는 것을 막는다
+        VStack(alignment: .leading, spacing: 2) {
+            if !f.label.isEmpty { Text(f.label) }
+            HStack(spacing: 6) {
+            Button("−") { value = max(range.lowerBound, value - 1) }.controlSize(.small).buttonStyle(.bordered).fixedSize()
             // step을 Slider에 직접 주면 −/+로 만든 1 단위 값을 슬라이더가 다시 간격에 맞춰 되돌린다 → 끌 때만 간격에 맞춘다
-            Slider(value: Binding(get: { value },
-                                  set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
-                   in: range)
-                .frame(maxWidth: .infinity) // −와 + 사이를 꽉 채운다
-            Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small).buttonStyle(.bordered)
+            SliderBar(value: Binding(get: { value },
+                                     set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
+                      range: range)
+            Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small).buttonStyle(.bordered).fixedSize()
             TextField("", value: $value, format: .number.precision(.fractionLength(0)))
-                .multilineTextAlignment(.trailing).frame(width: 64).textFieldStyle(.roundedBorder)
-                .monospacedDigit()
+                .multilineTextAlignment(.trailing).textFieldStyle(.plain).monospacedDigit()
+                .padding(.horizontal, 8).padding(.vertical, 3).frame(width: 84)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.4)))
             Text(f.suffix).frame(width: 34, alignment: .leading).foregroundStyle(.secondary)
+            }
         }
     }
 }

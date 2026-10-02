@@ -17,8 +17,8 @@ import SwiftUI
         defer { s.spotSize = saved }
         s.spotSize = 130
         let field = SettingsLayout.Field(id: "Highlight.Size", label: "크기", suffix: "px", step: 5)
-        let host = NSHostingView(rootView: NumberRow(field).padding(8).frame(width: 520))
-        let w = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 520, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
+        let host = NSHostingView(rootView: Form { NumberRow(field) }.formStyle(.grouped).frame(width: 520))
+        let w = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 520, height: 90), styleMask: [.titled], backing: .buffered, defer: false)
         w.contentView = host
         w.orderFront(nil)
         spin(0.5)
