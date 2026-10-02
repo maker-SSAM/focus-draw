@@ -191,7 +191,7 @@ private struct StepButton: View {
     var body: some View {
         Button(action: action) {
             Text(symbol).frame(width: 16, height: 16).padding(4)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor))) // 설정 배경과 같은 색
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
         }
         .buttonStyle(.plain)
@@ -272,7 +272,7 @@ private struct Card<Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.10))) // 설정 배경보다 10% 연하게
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10)))
     }
 }
@@ -388,6 +388,7 @@ struct SettingsView: View {
             Card(title: "숫자키 색 · 칠판 (색과 진하기 5~100%)") {
                 VStack(spacing: 8) {
                     ForEach(SettingsLayout.drawKeys, id: \.color) { r in
+                        if r.color == "Boards.ColorW" { Divider() } // 숫자키와 칠판 사이
                         HStack(spacing: 8) {
                             Text(r.label).frame(width: 48, alignment: .leading)
                             ColorField("", id: r.color, compact: true)
