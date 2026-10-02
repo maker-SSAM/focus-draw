@@ -73,7 +73,14 @@ func valueBinding(_ id: String) -> Binding<Double> {
     return Binding(get: { k.read(Settings.shared) },
                    set: { v in
                        Settings.shared.objectWillChange.send() // 배열에 든 값(숫자키 색 등)도 화면과 저장 표시가 알게
-                       k.write(Settings.shared, k.parse(String(v.rounded())) ?? k.defaultValue)
+                       // 색은 16진 글자가 아니라 숫자 그대로 자른다 (글자로 바꿔 읽으면 못 읽어 기본값으로 돌아간다)
+                       let w: Double
+                       switch k.kind {
+                       case .int(let r): w = max(r.lowerBound, min(r.upperBound, v.rounded()))
+                       case .flag: w = v >= 1 ? 1 : 0
+                       case .color: w = max(0, min(16_777_215, v.rounded()))
+                       }
+                       k.write(Settings.shared, w)
                        DispatchQueue.main.async { Settings.shared.objectWillChange.send() } // 바뀐 뒤에도 한 번 더: 칸이 새 값을 읽도록
                    })
 }
@@ -265,8 +272,8 @@ private struct Card<Content: View>: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.10)))
     }
 }
 
@@ -379,18 +386,15 @@ struct SettingsView: View {
         Page {
             GroupBoxView(g: SettingsLayout.draw)
             Card(title: "숫자키 색 · 칠판 (색과 진하기 5~100%)") {
-                ScrollView {
-                    VStack(spacing: 8) {
-                        ForEach(SettingsLayout.drawKeys, id: \.color) { r in
-                            HStack(spacing: 8) {
-                                Text(r.label).frame(width: 48, alignment: .leading)
-                                ColorField("", id: r.color, compact: true)
-                                NumberRow(SettingsLayout.Field(id: r.opacity, label: "", suffix: "%", step: 5))
-                            }
+                VStack(spacing: 8) {
+                    ForEach(SettingsLayout.drawKeys, id: \.color) { r in
+                        HStack(spacing: 8) {
+                            Text(r.label).frame(width: 48, alignment: .leading)
+                            ColorField("", id: r.color, compact: true)
+                            NumberRow(SettingsLayout.Field(id: r.opacity, label: "", suffix: "%", step: 5))
                         }
                     }
                 }
-                .frame(height: 188)
                 Text("전체 진하기는 색별 진하기에 곱해집니다. 예: 전체 100%에 3번 키 40%이면 40%로 그려집니다.")
                     .font(.callout).foregroundStyle(.secondary)
             }

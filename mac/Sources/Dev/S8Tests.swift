@@ -26,6 +26,21 @@ import AppKit
               HotkeyDisplay.symbols("^!1") == "⌃⌥1" && HotkeyDisplay.symbols("F8") == "F8"
               && HotkeyDisplay.symbols("+F8") == "⇧F8" && HotkeyDisplay.symbols("#!h") == "⌥⌘H")
 
+        // ---- 설정 창 칸이 쓰는 값 쓰기 ----
+        do {
+            let saved = Settings.shared.widgetColor, savedKey = Settings.shared.drawKeyColors, savedA = Settings.shared.boardAlphas
+            valueBinding("Common.WidgetColor").wrappedValue = Double(0x3366CC)
+            valueBinding("DrawKeys.Color3").wrappedValue = Double(0x123456)
+            valueBinding("Boards.OpacityW").wrappedValue = 42
+            check("설정 창: 색을 고르면 그 색이 설정에 남음 (위젯 색·숫자키 색)",
+                  Settings.shared.widgetColor == 0x3366CC && Settings.shared.drawKeyColors[2] == 0x123456,
+                  String(Settings.shared.widgetColor, radix: 16))
+            check("설정 창: 칠판 진하기 값도 남음", Settings.shared.boardAlphas[0] == 42)
+            valueBinding("Common.WidgetColor").wrappedValue = 99_999_999
+            check("설정 창: 범위 밖 색 숫자는 FFFFFF로 자름", Settings.shared.widgetColor == 0xFFFFFF)
+            Settings.shared.widgetColor = saved; Settings.shared.drawKeyColors = savedKey; Settings.shared.boardAlphas = savedA
+        }
+
         // ---- 모두 초기화 ----
         let dir = fm.temporaryDirectory.appendingPathComponent("fd-s8-\(getpid())", isDirectory: true)
         try? fm.removeItem(at: dir)
