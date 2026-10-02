@@ -276,6 +276,8 @@ import Combine
         let appMenu = NSMenu(title: "Focus & Draw")
         appMenu.addItem(item("설정...", #selector(openSettings), ","))
         appMenu.items.last?.target = self
+        appMenu.addItem(item("Focus & Draw 종료", #selector(menuQuit), "q"))
+        appMenu.items.last?.target = self
         appItem.submenu = appMenu
         let edit = NSMenu(title: "편집")
         edit.addItem(item("오려두기", #selector(NSText.cut(_:)), "x"))

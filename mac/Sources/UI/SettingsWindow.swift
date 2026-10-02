@@ -68,12 +68,13 @@ enum SettingsLayout {
 
 private let settingKeys: [String: SettingKey] = Dictionary(uniqueKeysWithValues: SettingsSchema.keys.map { ($0.id, $0) })
 
-private func valueBinding(_ id: String) -> Binding<Double> {
+func valueBinding(_ id: String) -> Binding<Double> {
     let k = settingKeys[id]!
     return Binding(get: { k.read(Settings.shared) },
                    set: { v in
                        Settings.shared.objectWillChange.send() // 배열에 든 값(숫자키 색 등)도 화면과 저장 표시가 알게
                        k.write(Settings.shared, k.parse(String(v.rounded())) ?? k.defaultValue)
+                       DispatchQueue.main.async { Settings.shared.objectWillChange.send() } // 바뀐 뒤에도 한 번 더: 칸이 새 값을 읽도록
                    })
 }
 
@@ -87,9 +88,10 @@ private extension Double {
     func clamped(to r: ClosedRange<Double>) -> Double { Swift.max(r.lowerBound, Swift.min(r.upperBound, self)) }
 }
 
-private struct NumberRow: View {
+struct NumberRow: View {
     let f: SettingsLayout.Field
     var labelWidth: CGFloat = 110
+    @ObservedObject private var settings = Settings.shared // 값이 바뀌면 이 칸을 다시 그린다 (슬라이더·−/+·숫자 칸이 서로 따라가게)
     @Binding var value: Double
     let range: ClosedRange<Double>
 
@@ -146,6 +148,7 @@ private struct ColorField: View {
 
 private struct FieldView: View {
     let f: SettingsLayout.Field
+    @ObservedObject private var settings = Settings.shared
     var body: some View {
         if case .color = settingKeys[f.id]!.kind { ColorField(f.label, id: f.id) } else { NumberRow(f) }
     }
@@ -153,6 +156,7 @@ private struct FieldView: View {
 
 private struct GroupBoxView: View {
     let g: SettingsLayout.Panel
+    @ObservedObject private var settings = Settings.shared
     var body: some View {
         Section {
             if let t = g.toggle {

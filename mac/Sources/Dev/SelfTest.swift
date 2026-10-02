@@ -117,6 +117,7 @@ import AppKit
         d.applySettings()
 
         session(d, check, dir: dir)
+        S8UITests.run(check, dir: dir)
 
         log.append("DONE")
         try? log.joined(separator: "\n").write(to: dir.appendingPathComponent("log.txt"), atomically: true, encoding: .utf8)
