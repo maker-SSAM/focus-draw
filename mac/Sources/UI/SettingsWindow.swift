@@ -115,12 +115,12 @@ private struct SliderBar: NSViewRepresentable {
 
 struct NumberRow: View {
     let f: SettingsLayout.Field
-    var labelWidth: CGFloat = 110
+    var labelWidth: CGFloat = 96
     @ObservedObject private var settings = Settings.shared // 값이 바뀌면 이 칸을 다시 그린다 (슬라이더·−/+·숫자 칸이 서로 따라가게)
     @Binding var value: Double
     let range: ClosedRange<Double>
 
-    init(_ f: SettingsLayout.Field, labelWidth: CGFloat = 110) {
+    init(_ f: SettingsLayout.Field, labelWidth: CGFloat = 96) {
         self.f = f
         self.labelWidth = labelWidth
         _value = valueBinding(f.id)
@@ -128,24 +128,67 @@ struct NumberRow: View {
     }
 
     var body: some View {
-        // 글자를 위에 두고 조절 줄을 아래에 한 줄로 둔다: Form이 앞 글자를 왼쪽 칸으로 갈라 슬라이더가 줄어드는 것을 막는다
-        VStack(alignment: .leading, spacing: 2) {
-            if !f.label.isEmpty { Text(f.label) }
-            HStack(spacing: 6) {
-            Button("−") { value = max(range.lowerBound, value - 1) }.controlSize(.small).buttonStyle(.bordered).fixedSize()
-            // step을 Slider에 직접 주면 −/+로 만든 1 단위 값을 슬라이더가 다시 간격에 맞춰 되돌린다 → 끌 때만 간격에 맞춘다
+        // 이름·−·슬라이더·+·숫자·단위를 한 줄에. 간격과 안쪽 여백은 4의 배수(4·8·16)로 맞춘다.
+        HStack(spacing: 8) {
+            if !f.label.isEmpty { Text(f.label).frame(width: labelWidth, alignment: .leading) }
+            StepButton(symbol: "−") { value = max(range.lowerBound, value - 1) }
             SliderBar(value: Binding(get: { value },
                                      set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
                       range: range)
-            Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small).buttonStyle(.bordered).fixedSize()
-            TextField("", value: $value, format: .number.precision(.fractionLength(0)))
-                .multilineTextAlignment(.trailing).textFieldStyle(.plain).monospacedDigit()
-                .padding(.horizontal, 8).padding(.vertical, 3).frame(width: 84)
-                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .textBackgroundColor)))
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.4)))
-            Text(f.suffix).frame(width: 34, alignment: .leading).foregroundStyle(.secondary)
-            }
+            StepButton(symbol: "+") { value = min(range.upperBound, value + 1) }
+            NumberBox(value: $value)
+                .frame(width: 60, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
+            Text(f.suffix).frame(width: 32, alignment: .leading).foregroundStyle(.secondary)
         }
+        .padding(.vertical, 4)
+    }
+}
+
+// 숫자 입력칸: 가운데 정렬. Enter를 누르거나 칸을 떠날 때 값이 적용된다 (범위로 자르는 일은 바인딩이 한다).
+// SwiftUI TextField는 맥에서 가운데 정렬이 먹지 않아 NSTextField를 쓴다.
+private struct NumberBox: NSViewRepresentable {
+    @Binding var value: Double
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: NumberBox
+        init(_ p: NumberBox) { parent = p }
+        func controlTextDidEndEditing(_ n: Notification) {
+            guard let f = n.object as? NSTextField else { return }
+            if let v = Double(f.stringValue.trimmingCharacters(in: .whitespaces)), v.isFinite { parent.value = v.rounded() }
+            f.stringValue = String(Int(parent.value.rounded())) // 못 읽는 글자는 원래 값으로 되돌린다
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSTextField {
+        let f = NSTextField(string: String(Int(value.rounded())))
+        f.alignment = .center
+        f.isBordered = false
+        f.drawsBackground = false
+        f.focusRingType = .none
+        f.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        f.delegate = context.coordinator
+        return f
+    }
+    func updateNSView(_ f: NSTextField, context: Context) {
+        context.coordinator.parent = self
+        let text = String(Int(value.rounded()))
+        if f.currentEditor() == nil, f.stringValue != text { f.stringValue = text } // 입력 중에는 건드리지 않는다
+    }
+}
+
+// −/+ 단추: 안쪽 여백 4, 글자 칸 16, 모서리 8
+private struct StepButton: View {
+    let symbol: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(symbol).frame(width: 16, height: 16).padding(4)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
+        }
+        .buttonStyle(.plain)
     }
 }
 
