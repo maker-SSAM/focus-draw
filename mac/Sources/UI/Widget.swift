@@ -91,6 +91,11 @@ final class WidgetView: NSView {
         icons["drawOff"] = tintedIcon("icon_draw_dark", .black)
         icons["drawOn"] = tintedIcon("icon_draw_dark", color(ON_COLOR))
         icons["settings"] = tintedIcon("settings", .black)
+        // 칸 배경이 없으므로 어두운 위젯 바탕에서는 밝은 아이콘을 쓴다
+        let light = NSColor(white: 0.92, alpha: 1)
+        icons["spotOff-light"] = tintedIcon("icon_spotlight_dark", light)
+        icons["drawOff-light"] = tintedIcon("icon_draw_dark", light)
+        icons["settings-light"] = tintedIcon("settings", light)
         needsDisplay = true
     }
 
@@ -103,10 +108,17 @@ final class WidgetView: NSView {
         let iconSize = WidgetView.px(22)
         for (part, key) in [(Part.spot, spotOn ? "spotOn" : "spotOff"), (.draw, drawOn ? "drawOn" : "drawOff"), (.settings, "settings")] {
             let r = rect(part)
-            (pressed == part ? NSColor(white: 0.88, alpha: 1) : NSColor.white).setFill()
-            NSBezierPath(roundedRect: r, xRadius: corner, yRadius: corner).fill()
+            // 칸은 배경 없이 테두리만. 누르는 동안만 옅게 칠한다.
+            // 테두리색 = 위젯 배경색을 50% 더 진하게 (배경이 어두우면 50% 더 연하게)
+            let edge = color(s.widgetColor).blended(withFraction: 0.5, of: isDark ? .white : .black) ?? .gray
+            let chip = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: corner, yRadius: corner)
+            if pressed == part { edge.withAlphaComponent(0.18).setFill(); chip.fill() }
+            edge.setStroke()
+            chip.lineWidth = 1 // 위젯 크기와 상관없이 1px
+            chip.stroke()
             let ir = NSRect(x: r.midX - iconSize / 2, y: r.midY - iconSize / 2, width: iconSize, height: iconSize)
-            icons[key]?.draw(in: ir)
+            let useLight = isDark && !key.hasSuffix("On")
+            icons[useLight ? key + "-light" : key]?.draw(in: ir)
         }
 
         let textColor = isDark ? NSColor(white: 0.9, alpha: 1) : NSColor.black

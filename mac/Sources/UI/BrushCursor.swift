@@ -72,7 +72,7 @@ func eraserRingImage(diameter d: CGFloat, ring: NSColor) -> NSImage {
     let side = ceil(d + 4)
     return NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
         let p = NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: d, height: d))
-        p.lineWidth = 1.5
+        p.lineWidth = 1 // 1px로 가늘게
         ring.setStroke()
         p.stroke()
         return true
