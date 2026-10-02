@@ -110,9 +110,10 @@ struct NumberRow: View {
             Slider(value: Binding(get: { value },
                                   set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
                    in: range)
+                .frame(maxWidth: .infinity) // −와 + 사이를 꽉 채운다
             Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small).buttonStyle(.bordered)
             TextField("", value: $value, format: .number.precision(.fractionLength(0)))
-                .multilineTextAlignment(.trailing).frame(width: 46).textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing).frame(width: 64).textFieldStyle(.roundedBorder)
                 .monospacedDigit()
             Text(f.suffix).frame(width: 34, alignment: .leading).foregroundStyle(.secondary)
         }
