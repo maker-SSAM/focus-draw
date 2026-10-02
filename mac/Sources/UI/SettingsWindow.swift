@@ -83,6 +83,10 @@ private func flagBinding(_ id: String) -> Binding<Bool> {
 }
 
 // 슬라이더 + −/+ + 숫자 입력. 입력은 Enter나 칸을 떠날 때 적용되고 스키마 범위로 잘린다.
+private extension Double {
+    func clamped(to r: ClosedRange<Double>) -> Double { Swift.max(r.lowerBound, Swift.min(r.upperBound, self)) }
+}
+
 private struct NumberRow: View {
     let f: SettingsLayout.Field
     var labelWidth: CGFloat = 110
@@ -99,12 +103,15 @@ private struct NumberRow: View {
     var body: some View {
         HStack(spacing: 6) {
             if !f.label.isEmpty { Text(f.label).frame(width: labelWidth, alignment: .leading) }
-            Slider(value: $value, in: range, step: f.step)
-            Button("−") { value = max(range.lowerBound, value - 1) }.controlSize(.small)
+            Button("−") { value = max(range.lowerBound, value - 1) }.controlSize(.small).buttonStyle(.bordered)
+            // step을 Slider에 직접 주면 −/+로 만든 1 단위 값을 슬라이더가 다시 간격에 맞춰 되돌린다 → 끌 때만 간격에 맞춘다
+            Slider(value: Binding(get: { value },
+                                  set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
+                   in: range)
+            Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small).buttonStyle(.bordered)
             TextField("", value: $value, format: .number.precision(.fractionLength(0)))
                 .multilineTextAlignment(.trailing).frame(width: 46).textFieldStyle(.roundedBorder)
                 .monospacedDigit()
-            Button("+") { value = min(range.upperBound, value + 1) }.controlSize(.small)
             Text(f.suffix).frame(width: 34, alignment: .leading).foregroundStyle(.secondary)
         }
     }
