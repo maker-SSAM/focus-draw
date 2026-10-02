@@ -35,5 +35,16 @@ import SwiftUI
         b.wrappedValue = 9999           // 범위 밖은 끝값으로
         check("설정 칸: 범위 밖 입력은 끝값(200)으로 잘림", s.spotSize == 200, "\(s.spotSize)")
         w.orderOut(nil)
+
+        // 탭마다 그림을 뽑는다 (settings-tab-0~4.png)
+        for t in 0..<5 {
+            let v = NSHostingView(rootView: SettingsView(onSave: { true }, onResetWidget: {}, onResetAll: {}, onClose: {}, onQuit: {}, startTab: t))
+            let win = NSWindow(contentRect: NSRect(x: 100, y: 100, width: 560, height: 620), styleMask: [.titled], backing: .buffered, defer: false)
+            win.contentView = v
+            win.orderFront(nil)
+            spin(0.5)
+            if let d = bytes(v) { try? d.write(to: dir.appendingPathComponent("settings-tab-\(t).png")) }
+            win.orderOut(nil)
+        }
     }
 }

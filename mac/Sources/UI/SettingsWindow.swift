@@ -142,7 +142,6 @@ struct NumberRow: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
             Text(f.suffix).frame(width: 32, alignment: .leading).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
     }
 }
 
@@ -192,30 +191,49 @@ private struct StepButton: View {
     }
 }
 
-// 색 선택은 자체 상태를 둔다: 설정에는 8비트 색만 있어서, 매번 되읽으면 고른 색이 조금씩 튄다.
+// 색 칸: 맥 기본 색 칸(NSColorWell). 설정에는 8비트 색만 있으므로, 밖에서 바뀐 값(초기화 등)만 따라가고
+// 같은 색이면 되읽지 않는다 (되읽으면 고른 색이 조금씩 튄다). 이름 바로 옆에 왼쪽 정렬.
+private struct ColorWell: NSViewRepresentable {
+    @Binding var value: Double
+
+    final class Coordinator: NSObject {
+        var parent: ColorWell
+        init(_ p: ColorWell) { parent = p }
+        @objc func changed(_ w: NSColorWell) {
+            let rgb = Double(rgbOf(w.color))
+            if rgb != parent.value { parent.value = rgb }
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSColorWell {
+        let w = NSColorWell(frame: .zero)
+        w.colorWellStyle = .default
+        w.color = color(UInt32(value))
+        w.target = context.coordinator
+        w.action = #selector(Coordinator.changed(_:))
+        return w
+    }
+    func updateNSView(_ w: NSColorWell, context: Context) {
+        context.coordinator.parent = self
+        if Double(rgbOf(w.color)) != value { w.color = color(UInt32(value)) }
+    }
+}
+
 private struct ColorField: View {
     let label: String
     let id: String
-    @State private var chosen: Color
+    var labelWidth: CGFloat = 96
+    var compact = false // 목록 줄 안에서는 남는 자리를 먹지 않는다
+    @ObservedObject private var settings = Settings.shared
 
-    init(_ label: String, id: String) {
-        self.label = label; self.id = id
-        _chosen = State(initialValue: Color(nsColor: color(UInt32(valueBinding(id).wrappedValue))))
-    }
+    init(_ label: String, id: String, compact: Bool = false) { self.label = label; self.id = id; self.compact = compact }
 
     var body: some View {
-        ColorPicker(label, selection: $chosen, supportsOpacity: false)
-            .onChange(of: chosen) { c in
-                let rgb = Double(rgbOf(NSColor(c)))
-                if rgb != valueBinding(id).wrappedValue { valueBinding(id).wrappedValue = rgb }
-            }
-            .onReceive(Settings.shared.objectWillChange) { _ in
-                // 초기화처럼 밖에서 바뀐 값만 따라간다
-                DispatchQueue.main.async {
-                    let cur = valueBinding(id).wrappedValue
-                    if Double(rgbOf(NSColor(chosen))) != cur { chosen = Color(nsColor: color(UInt32(cur))) }
-                }
-            }
+        HStack(spacing: 8) {
+            if !label.isEmpty { Text(label).frame(width: labelWidth, alignment: .leading) }
+            ColorWell(value: valueBinding(id)).frame(width: 48, height: 28)
+            if !compact { Spacer(minLength: 0) }
+        }
     }
 }
 
@@ -227,20 +245,47 @@ private struct FieldView: View {
     }
 }
 
+// 묶음 하나 = 상자 하나. 안쪽 여백 12, 줄 사이 8 (4의 배수)
+private struct Card<Content: View>: View {
+    var title: String? = nil
+    var toggle: Binding<Bool>? = nil
+    @ViewBuilder var content: Content
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let t = toggle, let title {
+                HStack {
+                    Text(title).font(.headline)
+                    Spacer()
+                    Toggle("", isOn: t).labelsHidden().toggleStyle(.switch)
+                }
+            } else if let title {
+                Text(title).font(.headline)
+            }
+            content
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.25)))
+    }
+}
+
+private struct Page<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        ScrollView { VStack(spacing: 12) { content }.padding(12) }
+    }
+}
+
 private struct GroupBoxView: View {
     let g: SettingsLayout.Panel
     @ObservedObject private var settings = Settings.shared
     var body: some View {
-        Section {
-            if let t = g.toggle {
-                Toggle(g.title, isOn: flagBinding(t)).font(.headline)
-            }
-            Group { ForEach(g.fields, id: \.id) { FieldView(f: $0) } }
-                .disabled(g.toggle.map { !flagBinding($0).wrappedValue } ?? false)
-                .opacity(g.toggle.map { flagBinding($0).wrappedValue ? 1 : 0.45 } ?? 1)
+        let on = g.toggle.map { flagBinding($0).wrappedValue } ?? true
+        Card(title: g.title, toggle: g.toggle.map(flagBinding)) {
+            VStack(alignment: .leading, spacing: 8) { ForEach(g.fields, id: \.id) { FieldView(f: $0) } }
+                .disabled(!on).opacity(on ? 1 : 0.45)
             if let n = g.note { Text(n).font(.callout).foregroundStyle(.secondary) }
-        } header: {
-            if g.toggle == nil { Text(g.title) }
         }
     }
 }
@@ -254,17 +299,19 @@ struct SettingsView: View {
     var onResetAll: () -> Void
     var onClose: () -> Void
     var onQuit: () -> Void
+    var startTab = 0 // 자체 점검이 탭마다 그림을 뽑으려고
+    @State private var tab = -1
     @State private var saved = false
     @State private var login = LoginItem.state()
 
     var body: some View {
         VStack(spacing: 0) {
-            TabView {
-                general.tabItem { Text("일반") }
-                focus.tabItem { Text("포커스") }
-                drawing.tabItem { Text("드로잉") }
-                widget.tabItem { Text("위젯") }
-                keys.tabItem { Text("단축키") }
+            TabView(selection: Binding(get: { tab < 0 ? startTab : tab }, set: { tab = $0 })) {
+                general.tabItem { Text("일반") }.tag(0)
+                focus.tabItem { Text("포커스") }.tag(1)
+                drawing.tabItem { Text("드로잉") }.tag(2)
+                widget.tabItem { Text("위젯") }.tag(3)
+                keys.tabItem { Text("단축키") }.tag(4)
             }
             .padding([.top, .horizontal], 12)
 
@@ -283,14 +330,14 @@ struct SettingsView: View {
 
     // ---- 일반 ----
     private var general: some View {
-        Form {
-            Section("시작") {
+        Page {
+            Card(title: "시작") {
                 Toggle("로그인할 때 자동으로 실행", isOn: Binding(get: { login == .on || login == .needsApproval }, set: setLogin))
                 if login == .needsApproval {
                     Text("시스템 설정 › 일반 › 로그인 항목에서 허용해야 켜집니다.").font(.callout).foregroundStyle(.secondary)
                 }
             }
-            Section("설정 파일") {
+            Card(title: "설정 파일") {
                 Text(Settings.path.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                 HStack {
                     Button("설정 폴더 열기") { Notice.revealSettingsFolder() }
@@ -298,12 +345,11 @@ struct SettingsView: View {
                 }
                 Button("모든 설정 초기화...", action: onResetAll)
             }
-            Section("정보") {
+            Card(title: "정보") {
                 Text("Focus & Draw \(AppInfo.displayVersion)")
                 Text("제작 maker_SSAM · MIT 라이선스").foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
         .onAppear { login = LoginItem.state() }
     }
 
@@ -321,65 +367,59 @@ struct SettingsView: View {
 
     // ---- 포커스 ----
     private var focus: some View {
-        Form {
+        Page {
             ForEach(SettingsLayout.focus, id: \.title) { GroupBoxView(g: $0) }
-            Section {
-                Text("강조 중에는 마우스 화살표를 숨기고, 원 한가운데에 작은 십자를 보여 줍니다.").font(.callout).foregroundStyle(.secondary)
-            }
+            Text("강조 중에는 마우스 화살표를 숨기고, 원 한가운데에 작은 십자를 보여 줍니다.")
+                .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
         }
-        .formStyle(.grouped)
     }
 
     // ---- 드로잉 ----
     private var drawing: some View {
-        Form {
+        Page {
             GroupBoxView(g: SettingsLayout.draw)
-            Section("숫자키 색 · 칠판 (색과 진하기 5~100%)") {
+            Card(title: "숫자키 색 · 칠판 (색과 진하기 5~100%)") {
                 ScrollView {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 8) {
                         ForEach(SettingsLayout.drawKeys, id: \.color) { r in
                             HStack(spacing: 8) {
-                                Text(r.label).frame(width: 54, alignment: .leading)
-                                ColorField("", id: r.color).labelsHidden()
+                                Text(r.label).frame(width: 48, alignment: .leading)
+                                ColorField("", id: r.color, compact: true)
                                 NumberRow(SettingsLayout.Field(id: r.opacity, label: "", suffix: "%", step: 5))
                             }
                         }
-                    }.padding(.vertical, 4)
+                    }
                 }
-                .frame(height: 190)
+                .frame(height: 188)
                 Text("전체 진하기는 색별 진하기에 곱해집니다. 예: 전체 100%에 3번 키 40%이면 40%로 그려집니다.")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
     }
 
     // ---- 위젯 ----
     private var widget: some View {
-        Form {
-            Section("위젯") {
-                Toggle("위젯 표시", isOn: flagBinding(SettingsLayout.widgetShow))
+        Page {
+            Card(title: "위젯 표시", toggle: flagBinding(SettingsLayout.widgetShow)) {
                 ForEach(SettingsLayout.widget.fields, id: \.id) { FieldView(f: $0) }
                 Button("처음 자리로 되돌리기", action: onResetWidget)
             }
         }
-        .formStyle(.grouped)
     }
 
     // ---- 단축키 ----
     private var keys: some View {
-        Form {
-            Section("켜고 끄기") {
+        Page {
+            Card(title: "켜고 끄기") {
                 keyLine("강조 켜기/끄기", "Spotlight", "SpotlightAlt")
                 keyLine("드로잉 켜기/끄기", "Draw", "DrawAlt")
                 Text("맥북 키보드에서는 F8·F9를 fn 키와 함께 누르세요. fn 없이 누르면 음악 재생·건너뛰기가 먼저 동작합니다.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            Section("드로잉 중에 쓰는 키") {
+            Card(title: "드로잉 중에 쓰는 키") {
                 Text(Self.keyHelp).font(.callout).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
     }
 
     private func keyLine(_ title: String, _ a: String, _ b: String) -> some View {
