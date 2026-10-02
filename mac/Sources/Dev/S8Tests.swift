@@ -26,6 +26,73 @@ import AppKit
               HotkeyDisplay.symbols("^!1") == "⌃⌥1" && HotkeyDisplay.symbols("F8") == "F8"
               && HotkeyDisplay.symbols("+F8") == "⇧F8" && HotkeyDisplay.symbols("#!h") == "⌥⌘H")
 
+        // ---- S8b: 단축키 규칙 (조합 25개) ----
+        do {
+            func combo(_ t: String) -> HotkeyNotation.Combo { HotkeyNotation.parse(t)! }
+            let others: [String: HotkeyNotation.Combo] = ["Draw": combo("F9"), "DrawAlt": combo("^!2"), "SpotlightAlt": combo("^!1")]
+            // (표기, 기대: nil = 허용 / 이유에 들어갈 글자, 설명)
+            let cases: [(String, String?)] = [
+                ("^!h", nil), ("^h", nil), ("^+h", nil), ("#!h", nil), ("#^h", nil), ("^!5", nil), ("F7", nil), ("+F7", nil), ("!F7", nil), ("^F7", nil), ("F19", nil),
+                ("h", "보조 키"), ("+h", "보조 키"), ("!h", "⌥"), ("!+h", "⌥"), ("#h", "⌘"), ("#+h", "⌘"), ("5", "드로잉 중에 쓰는 키"),
+                ("#F7", "⌘"), ("F20", "F1~F19"),
+                ("#Space", "macOS"), ("^Space", "macOS"), ("#Tab", "macOS"), ("^Left", "macOS"), ("^Up", "macOS"), ("#+3", "화면 캡처"), ("#+4", "화면 캡처"),
+                ("Space", "⌃ 또는 ⌥"), ("Tab", "⌃ 또는 ⌥"), ("Esc", "드로잉 중에 쓰는 키"),
+                ("F9", "이미 '"), ("^!2", "이미 '"),     // 다른 기능이 쓰는 조합
+                ("#z", "드로잉 중에 쓰는 키"), ("^z", "드로잉 중에 쓰는 키"), ("1", "드로잉 중에 쓰는 키"),
+            ]
+            var wrong: [String] = []
+            for (t, expect) in cases {
+                let v = HotkeyRules.check(combo(t), name: "Spotlight", others: others)
+                switch (v, expect) {
+                case (.ok, nil): break
+                case (.rejected(let why), let e?) where why.contains(e): break
+                default: wrong.append("\(t) → \(v) (기대 \(expect ?? "허용"))")
+                }
+            }
+            check("단축키 규칙: 조합 \(cases.count)개의 허용·거절과 이유 (한국어)", wrong.isEmpty, wrong.joined(separator: "; "))
+            let defs = SettingsSchema.hotkeys.allSatisfy { h in
+                HotkeyRules.check(combo(h.def), name: h.name, others: [:]) == .ok
+            }
+            check("단축키 규칙: 기본값 F8·F9·⌃⌥1·⌃⌥2는 모두 허용", defs)
+            let same = HotkeyRules.check(combo("F8"), name: "Spotlight", others: others) == .ok
+            check("단축키 규칙: 자기 자신의 지금 키를 다시 누르는 것은 허용", same)
+            let rt = ["F8", "^!h", "#^!+Space", "!F7", "^+Left"].map { HotkeyNotation.parse($0).flatMap(HotkeyNotation.format) ?? "nil" }
+            check("단축키: Windows 표기 왕복 (바꾼 키가 [Hotkeys]에 AHK 표기로 남고 다시 읽힘)", rt == ["F8", "^!h", "#^!+Space", "!F7", "^+Left"], "\(rt)")
+            // 바꾼 키가 저장되고 다시 읽힘
+            let fm = FileManager.default
+            let dir = fm.temporaryDirectory.appendingPathComponent("fd-s8b-\(getpid())", isDirectory: true)
+            try? fm.removeItem(at: dir); try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            defer { try? fm.removeItem(at: dir) }
+            let path = dir.appendingPathComponent("settings.ini")
+            let st = Settings(); st.hotkeys["Spotlight"] = "^!h"
+            check("바꾼 단축키 저장", st.save(to: path) == nil)
+            let back = Settings(); back.load(from: path)
+            check("바꾼 단축키를 다시 읽음 (^!h) · 안 바꾼 것은 기본값", back.hotkeys["Spotlight"] == "^!h" && back.hotkeys["Draw"] == "F9", "\(back.hotkeys)")
+        }
+
+        // ---- S8b: 키보드 그림 ----
+        do {
+            let rows = KeyboardLayout.rows(Settings())
+            let caps = rows.flatMap { $0 }
+            let special: [String: Int] = ["−": 27, "=": 24, "delete": 51]
+            func code(_ label: String) -> Int? {
+                special[label] ?? HotkeyNotation.parse(label.lowercased()).map(\.code)
+            }
+            let drawCodes = Set(KeyMap.drawKeys.filter { $0.combo.mods == 0 }.map(\.combo.code))
+            let activeBad = caps.filter { $0.active && !(code($0.label).map(drawCodes.contains) ?? false) }.map(\.label)
+            let missing = KeyMap.digits.prefix(10).filter { c in !caps.contains { $0.active && code($0.label) == c } }
+            check("키보드 그림: 쓰는 키로 표시한 칸은 모두 실제 드로잉 키 표에 있음", activeBad.isEmpty, activeBad.joined(separator: ", "))
+            check("키보드 그림: 숫자 0~9·칠판 Q W E R·펜 A S·도형 Z X C가 모두 있음",
+                  missing.isEmpty && ["Q", "W", "E", "R", "A", "S", "Z", "X", "C"].allSatisfy { l in caps.contains { $0.label == l && $0.active } })
+            let s = Settings(); s.drawKeyColors[2] = 0x123456
+            check("키보드 그림: 3번 색을 바꾸면 그림의 색도 바뀜", KeyboardLayout.rows(s).flatMap { $0 }.first { $0.label == "3" }?.rgb == 0x123456)
+            let n = KeyboardLayout.natural
+            check("키보드 그림 크기: 화면에 맞추되 원래보다 키우지 않음",
+                  KeyboardWindowController.fitScale(screen: CGSize(width: 3000, height: 2000)) == 1
+                  && KeyboardWindowController.fitScale(screen: CGSize(width: 800, height: 600)) < 1
+                  && n.width * KeyboardWindowController.fitScale(screen: CGSize(width: 1000, height: 800)) <= 1000 * 0.9 + 0.001)
+        }
+
         // ---- 설정 창 칸이 쓰는 값 쓰기 ----
         do {
             let saved = Settings.shared.widgetColor, savedKey = Settings.shared.drawKeyColors, savedA = Settings.shared.boardAlphas

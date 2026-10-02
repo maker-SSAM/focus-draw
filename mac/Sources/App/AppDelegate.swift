@@ -10,6 +10,7 @@ import Combine
     let clicks = ClickEffect()
     let draw = DrawSession(state: AppState.shared)
     let settingsWindow = SettingsWindowController()
+    let keyboardWindow = KeyboardWindowController()
     var widget: Widget!
     var statusItem: NSStatusItem!
     var changes: AnyCancellable?
@@ -89,6 +90,7 @@ import Combine
             self?.widget.moveToDefault()
             if let o = self?.widget.window.frame.origin { Settings.shared.saveWidgetPosition(o) }
         }
+        settingsWindow.onHotkey = { [weak self] name, combo in self?.changeHotkey(name, to: combo) }
         settingsWindow.onResetAll = { [weak self] in self?.confirmResetAll() }
         settingsWindow.onQuit = { NSApp.terminate(nil) }
         installMainMenu()
@@ -142,7 +144,8 @@ import Combine
         return have >= appHotkeyCount
     }
 
-    func registerAppHotkeys() {
+    @discardableResult
+    func registerAppHotkeys() -> HotKeyGroupResult {
         let actions: [String: () -> Void] = [
             "Spotlight": { [weak self] in self?.toggleSpotlight() }, "SpotlightAlt": { [weak self] in self?.toggleSpotlight() },
             "Draw": { [weak self] in self?.draw.toggle() }, "DrawAlt": { [weak self] in self?.draw.toggle() },
@@ -151,7 +154,45 @@ import Combine
             guard let combo = HotkeyNotation.parse(Settings.shared.hotkeys[h.name] ?? h.def), let action = actions[h.name] else { return nil }
             return HotKeyEntry(name: h.name, combo: combo, press: { _ in Log.log("HK", "press \(h.name)"); action() })
         }
-        HotKeyRegistry.shared.registerGroup(.app, entries, policy: .skipFailures)
+        return HotKeyRegistry.shared.registerGroup(.app, entries, policy: .skipFailures)
+    }
+
+    // 설정 창에서 단축키를 바꾼다 (combo가 nil이면 기본값으로). 성공하면 nil, 거절·실패면 한국어 이유 — 그 경우 원래 키 그대로.
+    func changeHotkey(_ name: String, to combo: HotkeyNotation.Combo?) -> String? {
+        let s = Settings.shared
+        guard let h = SettingsSchema.hotkeys.first(where: { $0.name == name }) else { return nil }
+        guard let target = combo ?? HotkeyNotation.parse(h.def) else { return nil }
+        var others: [String: HotkeyNotation.Combo] = [:]
+        for o in SettingsSchema.hotkeys where o.name != name {
+            if let c = HotkeyNotation.parse(s.hotkeys[o.name] ?? o.def) { others[o.name] = c }
+        }
+        if case .rejected(let why) = HotkeyRules.check(target, name: name, others: others) {
+            AppLog.write("HOTKEY", "rejected \(name) \(HotkeyNotation.format(target) ?? "?"): \(why)")
+            return why
+        }
+        guard let text = HotkeyNotation.format(target) else { return "지원하지 않는 키입니다." }
+        let old = s.hotkeys[name] ?? h.def
+        if text == old { return nil }
+        s.hotkeys[name] = text
+        HotKeyRegistry.shared.unregisterGroup(.app)
+        let r = registerAppHotkeys()
+        if let f = r.failed.first(where: { $0.name == name }) {
+            s.hotkeys[name] = old
+            HotKeyRegistry.shared.unregisterGroup(.app)
+            registerAppHotkeys()
+            appHotkeyCount = HotKeyRegistry.shared.count(.app)
+            AppLog.write("HOTKEY", "register failed \(name) \(text): \(describeHotKeyStatus(f.status))")
+            let shown = HotkeyRules.show(target)
+            switch f.status {
+            case hotKeyExistsStatus: return "\(shown)는 이미 다른 앱이 사용 중입니다. 다른 조합을 눌러 주세요. 원래 키(\(HotkeyDisplay.symbols(old)))로 돌려 두었습니다."
+            case hotKeyRejectedStatus: return "\(shown)는 macOS가 단축키로 받아 주지 않습니다. 다른 조합을 눌러 주세요. 원래 키(\(HotkeyDisplay.symbols(old)))로 돌려 두었습니다."
+            default: return "\(shown)를 등록하지 못했습니다(\(f.status)). 원래 키(\(HotkeyDisplay.symbols(old)))로 돌려 두었습니다."
+            }
+        }
+        appHotkeyCount = HotKeyRegistry.shared.count(.app)
+        s.objectWillChange.send()
+        AppLog.write("HOTKEY", "changed \(name) \(old) -> \(text)")
+        return nil
     }
 
     // 처음 열었을 때·문제가 있을 때만 안내 창을 띄운다 (자체 점검·측정 실행에서는 부르지 않는다)

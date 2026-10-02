@@ -35,8 +35,12 @@ extension AppDelegate {
             item.state = on ? .on : .off
             menu.addItem(item)
         }
-        add("강조 (F8)", #selector(menuSpot), on: state.spotOn)
-        add("드로잉 (F9)", #selector(menuDraw), on: draw.isOn)
+        func keys(_ a: String, _ b: String) -> String {
+            [a, b].map { HotkeyDisplay.symbols(Settings.shared.hotkeys[$0] ?? SettingsSchema.hotkeyDefaults[$0] ?? "") }.joined(separator: " · ")
+        }
+        add("강조 (\(keys("Spotlight", "SpotlightAlt")))", #selector(menuSpot), on: state.spotOn)
+        add("드로잉 (\(keys("Draw", "DrawAlt")))", #selector(menuDraw), on: draw.isOn)
+        add("드로잉 모드 단축키 보기", #selector(menuKeyboard))
         menu.addItem(.separator())
         add("위젯 표시", #selector(menuWidget), on: Settings.shared.showWidget)
         add("설정...", #selector(openSettings), key: ",")
@@ -60,6 +64,7 @@ extension AppDelegate {
         add("Focus & Draw 종료", #selector(menuQuit), key: "q")
     }
 
+    @objc func menuKeyboard() { keyboardWindow.show() }
     @objc func menuSpot() { toggleSpotlight() }
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }

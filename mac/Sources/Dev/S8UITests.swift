@@ -36,6 +36,17 @@ import SwiftUI
         check("설정 칸: 범위 밖 입력은 끝값(200)으로 잘림", s.spotSize == 200, "\(s.spotSize)")
         w.orderOut(nil)
 
+        // 키보드 그림 (문서용 PNG)
+        do {
+            let v = NSHostingView(rootView: KeyboardWindowController.makeView(settings: Settings.shared, scale: 1, onClick: {}))
+            let win = NSWindow(contentRect: NSRect(origin: .zero, size: KeyboardLayout.natural), styleMask: [.titled], backing: .buffered, defer: false)
+            win.contentView = v
+            win.orderFront(nil)
+            spin(0.5)
+            if let d = bytes(v) { try? d.write(to: dir.appendingPathComponent("draw-shortcuts.png")) }
+            win.orderOut(nil)
+        }
+
         // 탭마다 그림을 뽑는다 (settings-tab-0~4.png)
         for t in 0..<5 {
             let v = NSHostingView(rootView: SettingsView(onSave: { true }, onResetWidget: {}, onResetAll: {}, onClose: {}, onQuit: {}, startTab: t))

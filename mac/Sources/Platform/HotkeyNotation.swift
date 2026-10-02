@@ -47,6 +47,9 @@ enum HotkeyNotation {
         return Combo(code: code, mods: mods)
     }
 
+    // 키 자리 번호 → 소문자 이름 ("a", "1", "f9", "space"). 모르는 키면 nil.
+    static func keyName(_ code: Int) -> String? { canonical[code] }
+
     static func format(_ c: Combo) -> String? {
         guard let name = canonical[c.code] else { return nil }
         let pre = prefixes.filter { c.mods & $0.1 != 0 }.map { String($0.0) }.joined()

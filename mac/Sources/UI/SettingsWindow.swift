@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import SwiftUI
 
 // 설정 창: 일반·포커스·드로잉·위젯·단축키 5개 탭. 움직이면 바로 화면에 반영되고,
@@ -184,6 +185,76 @@ private struct NumberBox: NSViewRepresentable {
     }
 }
 
+// 단축키 녹화 칸: 눌러서 초점을 주면 "키를 누르세요"가 되고, 다음에 누른 조합을 알려 준다.
+// 글자가 아니라 키 자리 번호로 읽으므로 한글 입력 상태와 상관없다. 보조 키만 누른 것은 무시하고, 키를 누르고 있어 되풀이되는 것도 무시한다.
+// ⌘ 조합이 메뉴(⌘W 등)로 새지 않도록 performKeyEquivalent에서 먼저 받는다.
+final class HotkeyCaptureView: NSView {
+    var display = ""
+    var onCapture: (HotkeyNotation.Combo) -> Void = { _ in }
+    private(set) var recording = false
+
+    // 눌렀을 때만 초점을 받는다 (창이 열릴 때 첫 칸이 저절로 "키를 누르세요" 상태가 되지 않게)
+    private var armed = false
+    override var acceptsFirstResponder: Bool { armed }
+    override var intrinsicContentSize: NSSize { NSSize(width: 160, height: 28) }
+    override func mouseDown(with event: NSEvent) { armed = true; window?.makeFirstResponder(self) }
+    override func becomeFirstResponder() -> Bool { recording = true; needsDisplay = true; return true }
+    override func resignFirstResponder() -> Bool { recording = false; armed = false; needsDisplay = true; return true }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool { recording ? handle(event) : false }
+    override func keyDown(with event: NSEvent) { if !handle(event) { super.keyDown(with: event) } }
+
+    private func handle(_ e: NSEvent) -> Bool {
+        guard recording else { return false }
+        if e.isARepeat { return true }
+        let f = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if e.keyCode == 53 && f.intersection([.command, .control, .option, .shift]).isEmpty { // Esc만: 취소
+            window?.makeFirstResponder(nil)
+            return true
+        }
+        var mods = 0
+        if f.contains(.command) { mods |= cmdKey }
+        if f.contains(.control) { mods |= controlKey }
+        if f.contains(.option) { mods |= optionKey }
+        if f.contains(.shift) { mods |= shiftKey }
+        window?.makeFirstResponder(nil)
+        onCapture(HotkeyNotation.Combo(code: Int(e.keyCode), mods: mods))
+        return true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        effectiveAppearance.performAsCurrentDrawingAppearance { self.drawCap() }
+    }
+
+    private func drawCap() {
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: 8, yRadius: 8)
+        NSColor.textBackgroundColor.setFill(); path.fill()
+        (recording ? NSColor.controlAccentColor : NSColor.secondaryLabelColor.withAlphaComponent(0.5)).setStroke()
+        path.lineWidth = recording ? 2 : 1
+        path.stroke()
+        let text = recording ? "키를 누르세요 (Esc: 취소)" : display
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedSystemFont(ofSize: recording ? 11 : 13, weight: .regular),
+            .foregroundColor: recording ? NSColor.secondaryLabelColor : NSColor.labelColor,
+        ]
+        let str = NSAttributedString(string: text, attributes: attrs)
+        let sz = str.size()
+        str.draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: bounds.midY - sz.height / 2))
+    }
+}
+
+private struct HotkeyField: NSViewRepresentable {
+    let display: String
+    let onCapture: (HotkeyNotation.Combo) -> Void
+    func makeNSView(context: Context) -> HotkeyCaptureView { HotkeyCaptureView() }
+    func updateNSView(_ v: HotkeyCaptureView, context: Context) {
+        v.display = display
+        v.onCapture = onCapture
+        v.needsDisplay = true
+    }
+}
+
 // −/+ 단추: 안쪽 여백 4, 글자 칸 16, 모서리 8
 private struct StepButton: View {
     let symbol: String
@@ -306,8 +377,10 @@ struct SettingsView: View {
     var onResetAll: () -> Void
     var onClose: () -> Void
     var onQuit: () -> Void
+    var onHotkey: (String, HotkeyNotation.Combo?) -> String? = { _, _ in nil } // 이름, 새 조합(nil = 기본값) → 거절 이유(없으면 nil)
     var startTab = 0 // 자체 점검이 탭마다 그림을 뽑으려고
     @State private var tab = -1
+    @State private var hotkeyMessage: [String: String] = [:]
     @State private var saved = false
     @State private var login = LoginItem.state()
 
@@ -415,10 +488,11 @@ struct SettingsView: View {
     // ---- 단축키 ----
     private var keys: some View {
         Page {
-            Card(title: "켜고 끄기") {
-                keyLine("강조 켜기/끄기", "Spotlight", "SpotlightAlt")
-                keyLine("드로잉 켜기/끄기", "Draw", "DrawAlt")
+            Card(title: "켜고 끄기 (칸을 누른 뒤 바꿀 키를 누르세요)") {
+                ForEach(SettingsSchema.hotkeys, id: \.name) { h in hotkeyRow(h.name, def: h.def) }
                 Text("맥북 키보드에서는 F8·F9를 fn 키와 함께 누르세요. fn 없이 누르면 음악 재생·건너뛰기가 먼저 동작합니다.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text("글자·숫자는 ⌃(Control)를 함께 눌러야 합니다. 드로잉 중에 쓰는 키와 macOS가 쓰는 조합은 바꿀 수 없습니다.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             Card(title: "드로잉 중에 쓰는 키") {
@@ -427,12 +501,21 @@ struct SettingsView: View {
         }
     }
 
-    private func keyLine(_ title: String, _ a: String, _ b: String) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text([a, b].map { HotkeyDisplay.symbols(s.hotkeys[$0] ?? SettingsSchema.hotkeyDefaults[$0] ?? "") }.joined(separator: "   또는   "))
-                .monospaced().foregroundStyle(.secondary)
+    private func hotkeyRow(_ name: String, def: String) -> some View {
+        let current = s.hotkeys[name] ?? def
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(HotkeyRules.label(name)).frame(width: 168, alignment: .leading)
+                HotkeyField(display: HotkeyDisplay.symbols(current)) { combo in
+                    hotkeyMessage[name] = onHotkey(name, combo)
+                }
+                .frame(width: 160, height: 28)
+                Button("기본값") { hotkeyMessage[name] = onHotkey(name, nil) }.disabled(current == def)
+                Spacer(minLength: 0)
+            }
+            if let m = hotkeyMessage[name] {
+                Text(m).font(.callout).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -463,6 +546,7 @@ enum HotkeyDisplay {
     var onSave: () -> Bool = { true }
     var onResetWidget: () -> Void = {}
     var onResetAll: () -> Void = {}
+    var onHotkey: (String, HotkeyNotation.Combo?) -> String? = { _, _ in nil }
     var onQuit: () -> Void = {}
 
     func show() {
@@ -476,7 +560,8 @@ enum HotkeyDisplay {
                                                                  onResetWidget: { self.onResetWidget() },
                                                                  onResetAll: { self.onResetAll() },
                                                                  onClose: { [weak self] in self?.window?.performClose(nil) },
-                                                                 onQuit: { self.onQuit() }))
+                                                                 onQuit: { self.onQuit() },
+                                                                 onHotkey: { self.onHotkey($0, $1) }))
             w.center()
             window = w
         }
