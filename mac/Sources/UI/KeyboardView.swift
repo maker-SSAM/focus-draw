@@ -6,7 +6,7 @@ import SwiftUI
 // 역할 글은 한곳(KeyboardLayout)에 모았다.
 
 enum KeyboardLayout {
-    enum Bar { case checker, laser, rainbow, line, wave, arrow, rect, ellipse }
+    enum Bar { case checker, laser, rainbow, line, wave, arrow, rect, ellipse, eraser }
     struct Cap: Identifiable {
         let id = UUID()
         let label: String
@@ -16,31 +16,41 @@ enum KeyboardLayout {
         var bar: Bar? = nil          // 색이 아닌 펜·칠판의 모양 막대
         var width: CGFloat = 1       // 1 = 보통 키
         var active = true            // 드로잉에서 쓰는 키면 true
+        var height: CGFloat = 1      // 1 = 보통 키 (기능 줄·위아래 화살표는 더 낮다)
+        var subs: [Cap] = []         // 위아래 화살표처럼 세로로 쌓은 칸
     }
 
+    // 맥북 자판(ANSI) 배열과 키 폭을 그대로 옮긴다. 한 줄은 폭 15칸.
     static func rows(_ s: Settings) -> [[Cap]] {
         func digit(_ i: Int) -> Cap { Cap(label: "\(i)", role: "색 \(i)", rgb: s.drawKeyColors[i - 1], alpha: s.drawKeyAlphas[i - 1] / 100) }
+        func plain(_ chars: String) -> [Cap] { chars.map { Cap(label: String($0), active: false) } }
+        func mod(_ label: String, _ w: CGFloat = 1) -> Cap { Cap(label: label, width: w, active: false) }
+        let fn: [Cap] = [Cap(label: "esc", role: "지우고 끝내기", width: 1.5, height: 0.8)]
+            + (1...12).map { Cap(label: "F\($0)", active: false, height: 0.8) } + [Cap(label: "", active: false, height: 0.8)]
         var r1: [Cap] = [Cap(label: "`", active: false)]
         r1 += (1...9).map(digit)
         r1 += [Cap(label: "0", role: "기본 색", rgb: s.drawColor, alpha: s.drawOpacity / 100),
                Cap(label: "−", role: "가늘게"), Cap(label: "=", role: "굵게"),
-               Cap(label: "delete", role: "전부 지움", width: 1.7)]
-        let r2: [Cap] = [
+               Cap(label: "delete", role: "전부 지움", width: 2)]
+        let r2: [Cap] = [mod("tab", 1.5),
             Cap(label: "Q", role: "투명 칠판", bar: .checker),
             Cap(label: "W", role: "흰 칠판", rgb: s.boardColors[0], alpha: s.boardAlphas[0] / 100),
             Cap(label: "E", role: "초록 칠판", rgb: s.boardColors[1], alpha: s.boardAlphas[1] / 100),
             Cap(label: "R", role: "검정 칠판", rgb: s.boardColors[2], alpha: s.boardAlphas[2] / 100),
-        ] + "TYUIOP[]".map { Cap(label: String($0), active: false) }
-        let r3: [Cap] = [Cap(label: "A", role: "레이저 펜", rgb: s.drawColor, bar: .laser), Cap(label: "S", role: "무지개 펜", bar: .rainbow)]
-            + "DFGHJKL;'".map { Cap(label: String($0), active: false) }
-        let r4: [Cap] = [Cap(label: "Z", role: "직선", bar: .line), Cap(label: "X", role: "물결", bar: .wave), Cap(label: "C", role: "화살표", bar: .arrow)]
-            + "VBNM,./".map { Cap(label: String($0), active: false) }
-        // 끌면서 함께 누르는 키: ⇧ = 사각형, ⌃ = 원
-        let r5: [Cap] = [Cap(label: "⇧", role: "사각형", bar: .rect, width: 1.7), Cap(label: "⌃", role: "원", bar: .ellipse, width: 1.7)]
-        return [r1, r2, r3, r4, r5]
+        ] + plain("TYUIOP[]") + [mod("\\", 1.5)]
+        let r3: [Cap] = [mod("caps lock", 1.75), Cap(label: "A", role: "레이저 펜", rgb: s.drawColor, bar: .laser), Cap(label: "S", role: "무지개 펜", bar: .rainbow)]
+            + plain("DFGHJKL;'") + [mod("return", 2.25)]
+        let shiftL = Cap(label: "shift", role: "사각형", bar: .rect, width: 2.25)
+        let shiftR = Cap(label: "shift", role: "사각형", bar: .rect, width: 2.75)
+        let r4: [Cap] = [shiftL, Cap(label: "Z", role: "직선", bar: .line), Cap(label: "X", role: "물결", bar: .wave), Cap(label: "C", role: "화살표", bar: .arrow)]
+            + plain("VBNM,./") + [shiftR]
+        // 맨 아래 줄: ⌃ = 원, ⌥ = 지우개 (끌면서 함께 누르는 키)
+        let r5: [Cap] = [mod("fn"), Cap(label: "control", role: "원", bar: .ellipse), Cap(label: "option", role: "지우개", bar: .eraser), mod("command", 1.25),
+                         mod("space", 5), mod("command", 1.25), Cap(label: "option", role: "지우개", bar: .eraser),
+                         mod("←"), Cap(label: "", active: false, height: 1, subs: [Cap(label: "↑", active: false, height: 0.5), Cap(label: "↓", active: false, height: 0.5)]), mod("→")]
+        return [fn, r1, r2, r3, r4, r5]
     }
-    static let indents: [CGFloat] = [0, 0.5, 0.75, 1.25, 0]
-    static let natural = CGSize(width: 980, height: 502)
+    static let natural = CGSize(width: 980, height: 540)
 }
 
 // 투명 칠판 = 체크무늬, 레이저 펜 = 지금 펜 색이 꼬리처럼 사라지는 띠, 무지개 펜 = 무지개 띠
@@ -59,7 +69,7 @@ enum KeyboardLayout {
     case .laser:
         LinearGradient(colors: [Color(nsColor: color(cap.rgb ?? 0xFF0000)), Color(nsColor: color(cap.rgb ?? 0xFF0000)).opacity(0)],
                        startPoint: .leading, endPoint: .trailing)
-    case .line, .wave, .arrow, .rect, .ellipse:
+    case .line, .wave, .arrow, .rect, .ellipse, .eraser:
         shapeGlyph(bar)
     case .rainbow:
         LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 1.0 / 6).map { Color(hue: $0, saturation: 0.85, brightness: 1) },
@@ -88,6 +98,12 @@ private func shapeGlyph(_ bar: KeyboardLayout.Bar) -> some View {
             p.move(to: CGPoint(x: w - 9, y: 1)); p.addLine(to: CGPoint(x: w - 2, y: m)); p.addLine(to: CGPoint(x: w - 9, y: h - 1))
         case .rect:
             p.addRect(CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
+        case .eraser:
+            // 기울어진 지우개: 몸통 사각형과 지우는 쪽을 가르는 선
+            var q = Path()
+            q.addRoundedRect(in: CGRect(x: w / 2 - 11, y: 2, width: 22, height: h - 4), cornerSize: CGSize(width: 2, height: 2))
+            q.move(to: CGPoint(x: w / 2 - 3, y: 2)); q.addLine(to: CGPoint(x: w / 2 - 3, y: h - 2))
+            p = q.applying(CGAffineTransform(translationX: w / 2, y: m).rotated(by: -0.5).translatedBy(x: -w / 2, y: -m))
         default:
             p.addEllipse(in: CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
         }
@@ -100,11 +116,16 @@ private struct CapView: View {
     let unit: CGFloat
     var body: some View {
         let w = unit * cap.width + (cap.width - 1) * 6
+        let h = unit * cap.height + (cap.height - 1) * 6
+        if !cap.subs.isEmpty {
+            VStack(spacing: 6) { ForEach(cap.subs) { CapView(cap: $0, unit: unit) } }
+        } else {
         VStack(spacing: 2) {
-            Text(cap.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(cap.active ? Color.primary : Color.secondary.opacity(0.6))
+            Text(cap.label).font(.system(size: cap.label.count > 1 && cap.label.first?.isASCII == true ? 12 : 15, weight: .semibold))
+                .foregroundStyle(cap.active ? Color.primary : Color.secondary.opacity(0.6))
             if let bar = cap.bar {
-                if [.line, .wave, .arrow, .rect, .ellipse].contains(bar) {
-                    barView(bar, cap).frame(width: w - 20, height: 10)
+                if [.line, .wave, .arrow, .rect, .ellipse, .eraser].contains(bar) {
+                    barView(bar, cap).frame(width: w - 20, height: 16)
                 } else {
                     barView(bar, cap).frame(width: w - 20, height: 8)
                         .clipShape(RoundedRectangle(cornerRadius: 3))
@@ -116,9 +137,10 @@ private struct CapView: View {
             }
             Text(cap.role).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
         }
-        .frame(width: w, height: unit)
+        .frame(width: w, height: cap.subs.isEmpty ? h : (unit - 6) / 2)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(cap.active ? 0.14 : 0.04)))
         .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(cap.active ? 0.35 : 0.12)))
+        }
     }
 }
 
@@ -129,9 +151,8 @@ struct KeyboardView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("드로잉 모드 단축키").font(.title3.weight(.semibold))
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(Array(KeyboardLayout.rows(settings).enumerated()), id: \.offset) { i, row in
+                ForEach(Array(KeyboardLayout.rows(settings).enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 6) {
-                        Spacer().frame(width: (unit + 6) * KeyboardLayout.indents[i])
                         ForEach(row) { CapView(cap: $0, unit: unit) }
                     }
                 }
