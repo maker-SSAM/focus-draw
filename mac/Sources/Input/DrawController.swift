@@ -199,7 +199,14 @@ enum PenKind { case normal, laser, rainbow }
         syncPointer()
     }
 
+    // 판이 메뉴 막대까지 덮고 있어서, 메뉴 막대 아이콘 위 클릭은 여기서 대신 처리한다 (처리했으면 true). 뗄 때의 mouseUp은 무시한다.
+    var statusClick: (_ right: Bool) -> Bool = { _ in false }
+
     func down(_ p: CGPoint, _ e: NSEvent, right: Bool) {
+        if statusClick(right || e.modifierFlags.contains(.control)) {
+            if right { ignoreRightUp = true } else { ignoreLeftUp = true }
+            return
+        }
         // 한쪽 버튼으로 긋는 도중 다른 버튼을 눌러도 아무 일도 없다 (흔적도, 새 획도). 그 버튼을 뗄 때도 무시한다.
         if live != nil || laserLive != nil || erasing {
             if right { ignoreRightUp = true } else { ignoreLeftUp = true }

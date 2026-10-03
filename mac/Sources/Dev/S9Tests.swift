@@ -43,6 +43,16 @@ import AppKit
         spot.visible = false
         check("강조를 끄면 감시자가 모두 사라짐", !spot.isRunning)
 
+        // ---- 드로잉 중 메뉴 막대 아이콘 위의 포인터 ----
+        let board = WindowInfo(number: 1, layer: OVERLAY_LEVEL.rawValue, alpha: 1, ownedByUs: true, frame: CGRect(x: 0, y: 0, width: 1000, height: 700))
+        let tray = WindowInfo(number: 2, layer: NSWindow.Level.statusBar.rawValue, alpha: 1, ownedByUs: true, frame: CGRect(x: 800, y: 0, width: 80, height: 37))
+        let other = WindowInfo(number: 3, layer: NSWindow.Level.statusBar.rawValue, alpha: 1, ownedByUs: false, frame: CGRect(x: 900, y: 0, width: 40, height: 37))
+        func target(_ x: CGFloat, _ wins: [WindowInfo]) -> PointerTarget {
+            pointerTarget(at: CGPoint(x: x, y: 10), windows: wins, boards: [1], boardLayer: OVERLAY_LEVEL.rawValue, widgetLayer: WIDGET_LEVEL.rawValue)
+        }
+        check("메뉴 막대: 판이 덮어도 우리 아이콘 위에서는 화살표, 다른 앱 아이콘·빈 곳은 판",
+              target(820, [board, tray, other]) == .board && target(820, [tray, board]) == .widget && target(920, [other, board]) == .board)
+
         // ---- 접근성 이름 ----
         let names = [WidgetView.Part.grip, .spot, .draw, .settings, .close].map { WidgetView.accessibilityName($0, spotOn: false, drawOn: true) }
         check("위젯 버튼 접근성 이름이 모두 있고 켜짐에 따라 바뀜",

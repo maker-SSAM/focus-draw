@@ -73,13 +73,23 @@ extension AppDelegate {
     @objc func menuTray() { Settings.shared.showTrayIcons.toggle() }
     // 합친 아이콘(강조 | 드로잉 | 설정)에서 눌린 자리: 왼쪽 = 강조, 가운데 = 드로잉, 오른쪽 = 메뉴(설정). 오른쪽 클릭·⌃클릭은 어디서나 메뉴.
     @objc func trayClicked(_ sender: NSStatusBarButton) {
-        guard let w = sender.window else { return }
         let e = NSApp.currentEvent
-        let menuClick = e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true
+        trayAction(menuClick: e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true)
+    }
+
+    private func trayAction(menuClick: Bool) {
+        guard let w = statusItem.button?.window else { return }
         let third = (NSEvent.mouseLocation.x - w.frame.minX) / max(1, w.frame.width) * 3
         if menuClick || third >= 2 { showStatusMenu() }
         else if third < 1 { toggleSpotlight() }
         else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+    }
+
+    // 드로잉 중 판이 메뉴 막대를 덮어도 아이콘을 누르면 같은 일을 하게 한다 (판이 클릭을 받으면 여기로 넘어온다)
+    func handleClickOverStatusItem(menuClick: Bool) -> Bool {
+        guard let w = statusItem?.button?.window, w.frame.contains(NSEvent.mouseLocation) else { return false }
+        if Settings.shared.showTrayIcons { trayAction(menuClick: menuClick) } else { showStatusMenu() }
+        return true
     }
 
     private func showStatusMenu() {

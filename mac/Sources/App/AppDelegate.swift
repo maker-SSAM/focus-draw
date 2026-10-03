@@ -67,6 +67,7 @@ import Combine
         applied = Applied(Settings.shared)
         AppLog.write("SESSION", "start version=\(AppInfo.version) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) app=\((Bundle.main.bundlePath as NSString).abbreviatingWithTildeInPath)")
         widget = Widget(state: state)
+        draw.controller.statusClick = { [weak self] menuClick in self?.handleClickOverStatusItem(menuClick: menuClick) ?? false }
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
         widget.view.contextMenu = { [weak self] in
             let m = NSMenu()

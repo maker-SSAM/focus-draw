@@ -77,7 +77,7 @@ func pointerTarget(at point: CGPoint, windows: [WindowInfo], boards: Set<Int>, b
     for w in windows where w.frame.contains(point) {
         if boards.contains(w.number) { return .board }
         if w.ownedByUs {
-            if w.layer == widgetLayer { return .widget }
+            if w.layer == widgetLayer || w.layer == NSWindow.Level.statusBar.rawValue { return .widget } // 위젯과 우리 메뉴 막대 아이콘 위에서는 화살표
             continue // 클릭이 통과하는 강조 원·클릭 링 등
         }
         if w.alpha < 0.05 { continue }
