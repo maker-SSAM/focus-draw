@@ -217,6 +217,28 @@ extension Golden {
         widget("widget-on-250", spot: true, draw: true, size: 250)
         widget("widget-dark-100", spot: true, draw: false, size: 100, bg: 0x202020)
         widget("widget-on-100-2x", scale: 2, spot: true, draw: true, size: 100)
+        // 진하기 20%: 진하기는 위젯 창의 투명도라서, 체크무늬 바탕 위에 20%로 얹어 그린다
+        addImage("widget-opacity-20") {
+            let st = AppState()
+            st.spotOn = true; st.drawOn = false
+            let v = WidgetView(state: st)
+            v.frame = NSRect(origin: .zero, size: WidgetView.size)
+            v.reloadIcons()
+            guard let img = snapshot(v, scale: 1) else { return nil }
+            let w = img.width, h = img.height
+            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            for y in stride(from: 0, to: h, by: 8) {
+                for x in stride(from: 0, to: w, by: 8) {
+                    ctx.setFillColor(((x / 8 + y / 8) % 2 == 0 ? CGColor(gray: 0.85, alpha: 1) : CGColor(gray: 0.55, alpha: 1)))
+                    ctx.fill(CGRect(x: x, y: y, width: 8, height: 8))
+                }
+            }
+            ctx.setAlpha(0.2)
+            ctx.draw(img, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return ctx.makeImage()
+        }
         return list
     }
 }

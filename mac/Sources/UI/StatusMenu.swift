@@ -84,7 +84,7 @@ extension AppDelegate {
             return
         }
         func make(_ existing: NSStatusItem?, name: String, on: Bool, tip: String) -> NSStatusItem {
-            let item = existing ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            let item = existing ?? NSStatusBar.system.statusItem(withLength: 28) // 좁게: 노치가 있는 맥북은 왼쪽 아이콘이 노치 뒤로 숨는다
             item.behavior = .removalAllowed
             if existing == nil, let b = item.button { b.target = self; b.action = #selector(trayClicked(_:)) }
             if let img = on ? tintedIcon(name, color(ON_COLOR)) : Bundle.main.url(forResource: name, withExtension: "png").flatMap({ NSImage(contentsOf: $0) }) {
