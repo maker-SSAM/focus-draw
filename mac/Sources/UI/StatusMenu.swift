@@ -44,7 +44,7 @@ extension AppDelegate {
         add("드로잉 모드 단축키 보기", #selector(menuKeyboard))
         menu.addItem(.separator())
         add("위젯 표시", #selector(menuWidget), on: Settings.shared.showWidget)
-        add("메뉴 막대 아이콘에 강조·드로잉도 합쳐 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
+        add("메뉴 막대 아이콘을 위젯처럼 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
         add("설정...", #selector(openSettings), key: ",")
         menu.addItem(.separator())
         add("진단 기록", #selector(menuDiag), on: Log.isOn)
@@ -71,14 +71,14 @@ extension AppDelegate {
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
     @objc func menuTray() { Settings.shared.showTrayIcons.toggle() }
-    // 합친 아이콘(주 아이콘 | 강조 | 드로잉)에서 눌린 자리: 왼쪽 셋 중 첫째 = 메뉴, 가운데 = 강조, 오른쪽 = 드로잉. 오른쪽 클릭·⌃클릭은 늘 메뉴.
+    // 합친 아이콘(강조 | 드로잉 | 설정)에서 눌린 자리: 왼쪽 = 강조, 가운데 = 드로잉, 오른쪽 = 메뉴(설정). 오른쪽 클릭·⌃클릭은 어디서나 메뉴.
     @objc func trayClicked(_ sender: NSStatusBarButton) {
         guard let w = sender.window else { return }
         let e = NSApp.currentEvent
         let menuClick = e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true
         let third = (NSEvent.mouseLocation.x - w.frame.minX) / max(1, w.frame.width) * 3
-        if menuClick || third < 1 { showStatusMenu() }
-        else if third < 2 { toggleSpotlight() }
+        if menuClick || third >= 2 { showStatusMenu() }
+        else if third < 1 { toggleSpotlight() }
         else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
     }
 
@@ -89,7 +89,7 @@ extension AppDelegate {
     }
 
     // ---------- 합친 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
-    // 켜면 한 칸에 주 아이콘 · 강조 · 드로잉을 나란히 그려 메뉴 막대 자리를 아낀다. 꺼진 것은 메뉴 막대 색, 켜진 것은 파랑(0A84FF).
+    // 켜면 한 칸에 위젯과 같은 차례로 강조 · 드로잉 · 설정을 얇은 테두리로 묶어 그린다. 꺼진 것은 메뉴 막대 색, 켜진 것은 파랑(0A84FF).
     func updateTrayIcons() {
         guard let item = statusItem, let button = item.button else { return }
         func load(_ name: String) -> NSImage? {
@@ -109,14 +109,20 @@ extension AppDelegate {
         button.target = self
         button.action = #selector(trayClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        button.toolTip = "왼쪽 메뉴 · 가운데 강조 · 오른쪽 드로잉"
+        button.toolTip = "강조 · 드로잉 · 설정 메뉴"
         let spotOn = state.spotOn, drawOn = draw.isOn
-        let all = NSImage(size: NSSize(width: 62, height: 18), flipped: false) { _ in
+        let all = NSImage(size: NSSize(width: 70, height: 18), flipped: false) { r in
             // 템플릿 이미지는 한 장이 한 색이라, 켜진 것만 파랑으로 칠하려면 직접 칠한다. 색은 그리는 중인 메뉴 막대의 밝기를 따른다.
             let base = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black
+            // 위젯과 같은 차례(강조 · 드로잉 · 설정)를 얇은 둥근 테두리 하나로 묶는다
+            base.withAlphaComponent(0.75).setStroke()
+            let box = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
+            box.lineWidth = 1
+            box.stroke()
             func glyph(_ name: String, on: Bool) -> NSImage? { tintedIcon(name, on ? color(ON_COLOR) : base) }
-            for (i, g) in [glyph("icon_menubar", on: false), glyph("icon_spotlight_dark", on: spotOn), glyph("icon_draw_dark", on: drawOn)].enumerated() {
-                g?.draw(in: NSRect(x: CGFloat(i) * 22, y: 0, width: 18, height: 18))
+            let cell = r.width / 3
+            for (i, g) in [glyph("icon_spotlight_dark", on: spotOn), glyph("icon_draw_dark", on: drawOn), glyph("settings", on: false)].enumerated() {
+                g?.draw(in: NSRect(x: cell * CGFloat(i) + (cell - 14) / 2, y: 2, width: 14, height: 14))
             }
             return true
         }
