@@ -97,11 +97,16 @@ extension AppDelegate {
     }
 
     private func showStatusMenu() {
-        // 드로잉 판이 메뉴 위를 덮어 메뉴가 눌리지 않고 드로잉도 먹통이 되므로, 메뉴를 열기 전에 드로잉을 끈다(그림은 남김)
-        if draw.isOn { draw.turnOff(.settings) }
-        statusItem.menu = statusMenu
-        statusItem.button?.performClick(nil)
-        statusItem.menu = Settings.shared.showTrayIcons ? nil : statusMenu // 기본 모드에서는 메뉴를 붙여 둬야 다음 클릭도 먹는다
+        // 드로잉 중이면 Esc처럼 끄고(그림도 지움) 메뉴는 판 이벤트 처리가 끝난 뒤에 연다.
+        // 판이 마우스를 누른 처리 한가운데서 메뉴 추적(performClick)을 돌리면 그 눌림이 끝나지 않은 채로 남아 이후 입력이 먹통이 된다.
+        let wasDrawing = draw.isOn
+        if wasDrawing { draw.turnOff(.esc) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + (wasDrawing ? 0.15 : 0)) { [weak self] in
+            guard let self else { return }
+            self.statusItem.menu = self.statusMenu
+            self.statusItem.button?.performClick(nil)
+            self.statusItem.menu = Settings.shared.showTrayIcons ? nil : self.statusMenu // 기본 모드에서는 메뉴를 붙여 둬야 다음 클릭도 먹는다
+        }
     }
 
     // ---------- 합친 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------

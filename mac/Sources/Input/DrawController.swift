@@ -79,6 +79,7 @@ enum PenKind { case normal, laser, rainbow }
     // 끄는 자리: 살핌을 멈추고 커서 상태를 되돌린다
     func end() {
         watch.stop()
+        ignoreRightUp = false; ignoreLeftUp = false
         optionHeld = false
         mouseInside = true
         lastCheckedMouse = CGPoint(x: -1e9, y: -1e9)
@@ -210,7 +211,8 @@ enum PenKind { case normal, laser, rainbow }
             return
         }
         if statusClick(right || e.modifierFlags.contains(.control)) {
-            if right { ignoreRightUp = true } else { ignoreLeftUp = true }
+            // 드로잉이 꺼졌으면 판이 사라져 뗄 때의 mouseUp이 오지 않으므로 무시 표시를 남기지 않는다 (남으면 다음 드로잉의 첫 획이 안 그려진다)
+            if isOn { if right { ignoreRightUp = true } else { ignoreLeftUp = true } }
             return
         }
         moveMouse(p)
