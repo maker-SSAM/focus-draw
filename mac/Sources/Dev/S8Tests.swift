@@ -79,7 +79,7 @@ import AppKit
                 special[label] ?? HotkeyNotation.parse(label.lowercased()).map(\.code)
             }
             let drawCodes = Set(KeyMap.drawKeys.filter { $0.combo.mods == 0 }.map(\.combo.code))
-            let activeBad = caps.filter { $0.active && !(code($0.label).map(drawCodes.contains) ?? false) }.map(\.label)
+            let activeBad = caps.filter { $0.active && !"⇧⌃".contains($0.label) && !(code($0.label).map(drawCodes.contains) ?? false) }.map(\.label)
             let missing = KeyMap.digits.prefix(10).filter { c in !caps.contains { $0.active && code($0.label) == c } }
             check("키보드 그림: 쓰는 키로 표시한 칸은 모두 실제 드로잉 키 표에 있음", activeBad.isEmpty, activeBad.joined(separator: ", "))
             check("키보드 그림: 숫자 0~9·칠판 Q W E R·펜 A S·도형 Z X C가 모두 있음",

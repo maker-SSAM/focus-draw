@@ -6,7 +6,7 @@ import SwiftUI
 // 역할 글은 한곳(KeyboardLayout)에 모았다.
 
 enum KeyboardLayout {
-    enum Bar { case checker, laser, rainbow }
+    enum Bar { case checker, laser, rainbow, line, wave, arrow, rect, ellipse }
     struct Cap: Identifiable {
         let id = UUID()
         let label: String
@@ -33,12 +33,14 @@ enum KeyboardLayout {
         ] + "TYUIOP[]".map { Cap(label: String($0), active: false) }
         let r3: [Cap] = [Cap(label: "A", role: "레이저 펜", rgb: s.drawColor, bar: .laser), Cap(label: "S", role: "무지개 펜", bar: .rainbow)]
             + "DFGHJKL;'".map { Cap(label: String($0), active: false) }
-        let r4: [Cap] = [Cap(label: "Z", role: "직선"), Cap(label: "X", role: "물결"), Cap(label: "C", role: "화살표")]
+        let r4: [Cap] = [Cap(label: "Z", role: "직선", bar: .line), Cap(label: "X", role: "물결", bar: .wave), Cap(label: "C", role: "화살표", bar: .arrow)]
             + "VBNM,./".map { Cap(label: String($0), active: false) }
-        return [r1, r2, r3, r4]
+        // 끌면서 함께 누르는 키: ⇧ = 사각형, ⌃ = 원
+        let r5: [Cap] = [Cap(label: "⇧", role: "사각형", bar: .rect, width: 1.7), Cap(label: "⌃", role: "원", bar: .ellipse, width: 1.7)]
+        return [r1, r2, r3, r4, r5]
     }
-    static let indents: [CGFloat] = [0, 0.5, 0.75, 1.25]
-    static let natural = CGSize(width: 980, height: 440)
+    static let indents: [CGFloat] = [0, 0.5, 0.75, 1.25, 0]
+    static let natural = CGSize(width: 980, height: 502)
 }
 
 // 투명 칠판 = 체크무늬, 레이저 펜 = 지금 펜 색이 꼬리처럼 사라지는 띠, 무지개 펜 = 무지개 띠
@@ -57,9 +59,39 @@ enum KeyboardLayout {
     case .laser:
         LinearGradient(colors: [Color(nsColor: color(cap.rgb ?? 0xFF0000)), Color(nsColor: color(cap.rgb ?? 0xFF0000)).opacity(0)],
                        startPoint: .leading, endPoint: .trailing)
+    case .line, .wave, .arrow, .rect, .ellipse:
+        shapeGlyph(bar)
     case .rainbow:
         LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 1.0 / 6).map { Color(hue: $0, saturation: 0.85, brightness: 1) },
                        startPoint: .leading, endPoint: .trailing)
+    }
+}
+
+// 도형 키의 작은 그림: 직선·물결·화살표·사각형·원 (선 색은 글자색)
+private func shapeGlyph(_ bar: KeyboardLayout.Bar) -> some View {
+    Canvas { ctx, size in
+        let w = size.width, h = size.height, m = h / 2
+        var p = Path()
+        switch bar {
+        case .line:
+            p.move(to: CGPoint(x: 2, y: m)); p.addLine(to: CGPoint(x: w - 2, y: m))
+        case .wave:
+            p.move(to: CGPoint(x: 2, y: m))
+            var x: CGFloat = 2
+            while x < w - 2 {
+                let nx = min(x + 8, w - 2)
+                p.addQuadCurve(to: CGPoint(x: nx, y: m), control: CGPoint(x: (x + nx) / 2, y: ((Int((x - 2) / 8) % 2) == 0) ? 0 : h))
+                x = nx
+            }
+        case .arrow:
+            p.move(to: CGPoint(x: 2, y: m)); p.addLine(to: CGPoint(x: w - 3, y: m))
+            p.move(to: CGPoint(x: w - 9, y: 1)); p.addLine(to: CGPoint(x: w - 2, y: m)); p.addLine(to: CGPoint(x: w - 9, y: h - 1))
+        case .rect:
+            p.addRect(CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
+        default:
+            p.addEllipse(in: CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
+        }
+        ctx.stroke(p, with: .color(.primary), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
     }
 }
 
@@ -71,9 +103,13 @@ private struct CapView: View {
         VStack(spacing: 2) {
             Text(cap.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(cap.active ? Color.primary : Color.secondary.opacity(0.6))
             if let bar = cap.bar {
-                barView(bar, cap).frame(width: w - 20, height: 8)
-                    .clipShape(RoundedRectangle(cornerRadius: 3))
-                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
+                if [.line, .wave, .arrow, .rect, .ellipse].contains(bar) {
+                    barView(bar, cap).frame(width: w - 20, height: 10)
+                } else {
+                    barView(bar, cap).frame(width: w - 20, height: 8)
+                        .clipShape(RoundedRectangle(cornerRadius: 3))
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
+                }
             } else if let rgb = cap.rgb {
                 RoundedRectangle(cornerRadius: 3).fill(Color(nsColor: color(rgb)).opacity(cap.alpha)).frame(width: w - 20, height: 8)
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
