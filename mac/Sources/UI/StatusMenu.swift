@@ -70,33 +70,59 @@ extension AppDelegate {
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
     @objc func menuTray() { Settings.shared.showTrayIcons.toggle() }
+    // 눌린 자리가 왼쪽 반이면 강조, 오른쪽 반이면 드로잉
     @objc func trayClicked(_ sender: NSStatusBarButton) {
-        if sender === spotTray?.button { toggleSpotlight() } else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+        guard let w = sender.window else { return }
+        if NSEvent.mouseLocation.x - w.frame.minX < w.frame.width / 2 { toggleSpotlight() } else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+    }
+
+    // 어느 아이콘이 어디 있고 시스템이 보이게 두었는지 (노치·메뉴 막대 넘침으로 가려졌는지 찾으려고)
+    func logStatusItems() {
+        for (n, i) in [("main", statusItem), ("tray", spotTray)] {
+            guard let i else { continue }
+            let f = i.button?.window?.frame ?? .zero
+            AppLog.write("STATUSITEM", "\(n) visible=\(i.isVisible) x=\(Int(f.minX)) w=\(Int(f.width)) image=\(i.button?.image != nil) screenW=\(Int(i.button?.window?.screen?.frame.width ?? 0)) notchLeftInset=\(i.button?.window?.screen?.auxiliaryTopLeftArea.map { Int($0.width) } ?? -1) rightArea=\(i.button?.window?.screen?.auxiliaryTopRightArea.map { Int($0.minX) } ?? -1)")
+        }
     }
 
     // ---------- 강조·드로잉 전용 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
-    // 한 번 누르면 켜고 끈다. 꺼져 있으면 메뉴 막대 색을 따르고, 켜져 있으면 파랑(0A84FF).
+    // 메뉴 막대 자리를 아끼려고 한 칸에 두 아이콘(강조 | 드로잉)을 나란히 그린다. 왼쪽 반을 누르면 강조, 오른쪽 반이면 드로잉.
+    // 꺼져 있으면 메뉴 막대 색을 따르고, 켜져 있으면 파랑(0A84FF).
     func updateTrayIcons() {
-        let want = Settings.shared.showTrayIcons
-        if !want {
-            [spotTray, drawTray].compactMap { $0 }.forEach { NSStatusBar.system.removeStatusItem($0) }
-            spotTray = nil; drawTray = nil
+        guard Settings.shared.showTrayIcons else {
+            if let t = spotTray { NSStatusBar.system.removeStatusItem(t) }
+            spotTray = nil
             return
         }
-        func make(_ existing: NSStatusItem?, name: String, on: Bool, tip: String) -> NSStatusItem {
-            let item = existing ?? NSStatusBar.system.statusItem(withLength: 28) // 좁게: 노치가 있는 맥북은 왼쪽 아이콘이 노치 뒤로 숨는다
+        let item: NSStatusItem
+        if let t = spotTray { item = t } else {
+            item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            item.autosaveName = "FocusDrawTrayItem"
             item.behavior = .removalAllowed
-            if existing == nil, let b = item.button { b.target = self; b.action = #selector(trayClicked(_:)) }
-            if let img = on ? tintedIcon(name, color(ON_COLOR)) : Bundle.main.url(forResource: name, withExtension: "png").flatMap({ NSImage(contentsOf: $0) }) {
-                img.size = NSSize(width: 18, height: 18)
-                img.isTemplate = !on
-                item.button?.image = img
-            }
-            item.button?.toolTip = tip
-            return item
+            item.button?.target = self
+            item.button?.action = #selector(trayClicked(_:))
+            item.button?.toolTip = "왼쪽 강조 · 오른쪽 드로잉 (누를 때마다 켜고 끔)"
+            spotTray = item
         }
-        spotTray = make(spotTray, name: "icon_spotlight_dark", on: state.spotOn, tip: "강조 켜기/끄기")
-        drawTray = make(drawTray, name: "icon_draw_dark", on: draw.isOn, tip: "드로잉 켜기/끄기")
+        func part(_ name: String, on: Bool) -> NSImage? {
+            let img = on ? tintedIcon(name, color(ON_COLOR))
+                         : Bundle.main.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+            img?.size = NSSize(width: 18, height: 18)
+            return img
+        }
+        let spotOn = state.spotOn, drawOn = draw.isOn
+        let both = NSImage(size: NSSize(width: 40, height: 18), flipped: false) { _ in
+            // 꺼진 쪽은 메뉴 막대 색을 따라야 하므로 따로 칠하지 않고, 켜진 쪽만 파랑 그림을 쓴다.
+            // 템플릿 이미지는 한 장 전체가 한 색이라, 꺼진 쪽은 현재 메뉴 막대에 맞는 색으로 칠해 둔다.
+            let base = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black
+            let off: (String) -> NSImage? = { n in tintedIcon(n, base) }
+            (spotOn ? part("icon_spotlight_dark", on: true) : off("icon_spotlight_dark"))?.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+            (drawOn ? part("icon_draw_dark", on: true) : off("icon_draw_dark"))?.draw(in: NSRect(x: 22, y: 0, width: 18, height: 18))
+            return true
+        }
+        both.isTemplate = false
+        item.button?.image = both
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.logStatusItems() }
     }
     @objc func menuFirstRun() { Notice.show(Notice.firstRun()) }
 

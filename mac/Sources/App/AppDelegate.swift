@@ -13,8 +13,7 @@ import Combine
     let keyboardWindow = KeyboardWindowController()
     var widget: Widget!
     var statusItem: NSStatusItem!
-    var spotTray: NSStatusItem?   // 선택: 강조·드로잉 전용 메뉴 막대 아이콘
-    var drawTray: NSStatusItem?
+    var spotTray: NSStatusItem?   // 선택: 강조·드로잉 전용 메뉴 막대 아이콘 (한 칸에 둘)
     var changes: AnyCancellable?
     var statusVisibility: NSKeyValueObservation?
 
@@ -126,6 +125,7 @@ import Combine
 
         setupStatusItem()
         updateTrayIcons()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.logStatusItems() }
         if normalRun { showStartupNotices(loadResult) }
 
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
