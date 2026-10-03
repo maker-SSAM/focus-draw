@@ -26,14 +26,19 @@ final class RingView: NSView {
     private let sides = [Side(), Side()] // 0 = 왼쪽, 1 = 오른쪽
     var enabledNow: () -> Bool = { true } // 보임은 AppState가 정한다 (강조 켬 && 드로잉 꺼짐)
 
+    // ⌃ 클릭은 맥에서 오른쪽(보조) 클릭이다 — 오른쪽 링과 같게 본다
+    static func isRight(_ e: NSEvent) -> Bool {
+        e.type == .rightMouseDown || (e.type == .leftMouseDown && e.modifierFlags.contains(.control))
+    }
+
     func start() {
         // 다른 앱 위의 클릭(전역)과 위젯 위의 클릭(우리 앱)을 둘 다 받는다.
         // 마우스 클릭을 지켜보는 것은 "손쉬운 사용" 권한 없이도 된다.
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            self?.fire(right: e.type == .rightMouseDown)
+            self?.fire(right: ClickEffect.isRight(e))
         }
         NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            self?.fire(right: e.type == .rightMouseDown)
+            self?.fire(right: ClickEffect.isRight(e))
             return e
         }
     }

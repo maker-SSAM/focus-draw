@@ -21,6 +21,11 @@ func tintedIcon(_ name: String, _ tint: NSColor) -> NSImage? {
     return ctx.makeImage().map { NSImage(cgImage: $0, size: src.size) }
 }
 
+final class WidgetPartElement: NSAccessibilityElement {
+    var press: () -> Void = {}
+    override func accessibilityPerformPress() -> Bool { press(); return true }
+}
+
 final class WidgetView: NSView {
     enum Part { case grip, spot, draw, settings, close }
 
@@ -46,7 +51,7 @@ final class WidgetView: NSView {
 
     private var icons: [String: NSImage] = [:]
     private var dragStart: NSPoint?
-    private var windowStart: NSPoint = .zero
+    private var grab = CGVector.zero // 끌기 시작할 때 커서가 위젯 왼쪽 아래에서 떨어진 거리
     private var pressed: Part?
 
     static func px(_ base: CGFloat) -> CGFloat { max(1, (base * CGFloat(Settings.shared.widgetScale) / 100).rounded()) }
@@ -134,6 +139,29 @@ final class WidgetView: NSView {
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
+    // VoiceOver: 그려진 칸마다 이름 있는 버튼을 단다 (눌러서 실행 = 마우스로 누른 것과 같은 동작)
+    static func accessibilityName(_ part: Part, spotOn: Bool, drawOn: Bool) -> String {
+        switch part {
+        case .grip: return "위젯 옮기기"
+        case .spot: return spotOn ? "강조 끄기" : "강조 켜기"
+        case .draw: return drawOn ? "드로잉 끄기" : "드로잉 켜기"
+        case .settings: return "설정 열기"
+        case .close: return "위젯 숨기기"
+        }
+    }
+    override func isAccessibilityElement() -> Bool { false }
+    override func accessibilityChildren() -> [Any]? {
+        [Part.grip, .spot, .draw, .settings, .close].map { part in
+            let e = WidgetPartElement()
+            e.press = { [weak self] in if part != .grip { self?.onAction(part) } }
+            e.setAccessibilityRole(part == .grip ? .handle : .button)
+            e.setAccessibilityLabel(WidgetView.accessibilityName(part, spotOn: spotOn, drawOn: drawOn))
+            e.setAccessibilityParent(self)
+            e.setAccessibilityFrameInParentSpace(rect(part))
+            return e
+        }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
@@ -150,7 +178,8 @@ final class WidgetView: NSView {
         let hit = part(at: p)
         if hit == .grip || hit == nil {
             dragStart = NSEvent.mouseLocation
-            windowStart = window?.frame.origin ?? .zero
+            let o = window?.frame.origin ?? .zero
+            grab = CGVector(dx: dragStart!.x - o.x, dy: dragStart!.y - o.y)
         } else {
             pressed = hit
             needsDisplay = true
@@ -158,16 +187,14 @@ final class WidgetView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let start = dragStart, let w = window else { return }
+        guard dragStart != nil, let w = window else { return }
         let m = NSEvent.mouseLocation
-        var o = NSPoint(x: windowStart.x + m.x - start.x, y: windowStart.y + m.y - start.y)
         // 화면 밖으로는 나가지 않게. 모니터가 여럿이면 커서가 있는 화면을 따른다.
-        let screen = NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.screens.first
-        if let f = screen?.frame {
-            o.x = min(max(o.x, f.minX), f.maxX - w.frame.width)
-            o.y = min(max(o.y, f.minY), f.maxY - w.frame.height)
-        }
-        w.setFrameOrigin(o)
+        // 메뉴 막대·노치 아래까지만, Dock 쪽 가장자리에서는 15pt 안이면 붙는다 (계산은 widgetDragPlace)
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(m) }) ?? NSScreen.screens.first else { return }
+        let r = widgetDragPlace(cursor: m, grab: grab, size: w.frame.size, frame: screen.frame, visible: screen.visibleFrame)
+        grab = r.grab
+        w.setFrameOrigin(r.origin)
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -231,6 +258,7 @@ final class WidgetView: NSView {
         window.setFrame(NSRect(origin: o, size: WidgetView.size), display: true)
         window.alphaValue = CGFloat(s.widgetOpacity) / 100
         view.needsDisplay = true
+        window.invalidateShadow() // 크기·색이 바뀌면 그림자도 새 모양으로
         clampIntoScreen()
     }
 

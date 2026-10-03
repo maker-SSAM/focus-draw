@@ -21,11 +21,13 @@ final class SpotView: NSView {
 
 @MainActor final class Spotlight {
     private var window: GlassPanel?
-    private var timer: Timer?
+    // 마우스 움직임을 지켜보는 감시자 둘(전역·로컬). 움직일 때만 깨어나고 쉬는 동안 타이머는 없다.
+    private var monitors: [Any] = []
+    private static let moveEvents: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
     // 보일지 말지는 AppState가 정한다 (강조 켬 && 드로잉 꺼짐). 여기서는 그대로 따른다.
     var visible = false { didSet { if visible != oldValue { refresh() } } }
     var windowNumber: Int? { window?.windowNumber }
-    var isRunning: Bool { timer != nil }
+    var isRunning: Bool { !monitors.isEmpty }
 
     init() {
         // 켜 둔 채 다른 데스크톱으로 넘어갔는데 원이 따라오지 않았으면 그 자리에서 새로 만든다
@@ -58,13 +60,17 @@ final class SpotView: NSView {
             }
             applySettings()
             window?.orderFrontRegardless()
-            if timer == nil {
-                let t = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in self?.follow() }
-                RunLoop.main.add(t, forMode: .common)
-                timer = t
+            if monitors.isEmpty {
+                if let g = NSEvent.addGlobalMonitorForEvents(matching: Spotlight.moveEvents, handler: { [weak self] _ in
+                    MainActor.assumeIsolated { self?.follow() }
+                }) { monitors.append(g) }
+                if let l = NSEvent.addLocalMonitorForEvents(matching: Spotlight.moveEvents, handler: { [weak self] e in
+                    MainActor.assumeIsolated { self?.follow() }
+                    return e
+                }) { monitors.append(l) }
             }
         } else {
-            timer?.invalidate(); timer = nil
+            monitors.forEach(NSEvent.removeMonitor); monitors = []
             window?.orderOut(nil)
         }
     }
@@ -75,6 +81,6 @@ final class SpotView: NSView {
         let half = w.frame.width / 2
         let o = NSPoint(x: (m.x - half).rounded(), y: (m.y - half).rounded())
         if w.frame.origin != o { w.setFrameOrigin(o) }
-        SystemCursor.reassert() // 시스템이 커서를 다시 보이게 했으면(앞 앱이 바뀌거나 Dock을 지나면) 다시 숨긴다 (0.25초에 한 번까지)
+        SystemCursor.reassert() // 시스템이 커서를 다시 보이게 했으면(앞 앱이 바뀌거나 Dock을 지나면) 다시 숨긴다 (마우스가 움직일 때, 0.25초에 한 번까지)
     }
 }
