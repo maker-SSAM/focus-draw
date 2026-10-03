@@ -13,6 +13,8 @@ import Combine
     let keyboardWindow = KeyboardWindowController()
     var widget: Widget!
     var statusItem: NSStatusItem!
+    var spotTray: NSStatusItem?   // 선택: 강조·드로잉 전용 메뉴 막대 아이콘
+    var drawTray: NSStatusItem?
     var changes: AnyCancellable?
     var statusVisibility: NSKeyValueObservation?
 
@@ -21,10 +23,12 @@ import Combine
         var spot: [Double]
         var widget: [Double]
         var draw: DrawConfig
+        var tray: Bool
         init(_ s: Settings) {
             spot = [s.spotSize, s.spotOpacity, Double(s.spotColor)]
             widget = [s.widgetScale, s.widgetOpacity, Double(s.widgetColor)]
             draw = DrawConfig(s)
+            tray = s.showTrayIcons
         }
     }
     private var applied = Applied(Settings.shared)
@@ -121,6 +125,7 @@ import Combine
         }
 
         setupStatusItem()
+        updateTrayIcons()
         if normalRun { showStartupNotices(loadResult) }
 
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
@@ -236,6 +241,7 @@ import Combine
         widget.setVisible(state.widgetVisible)
         widget.view.needsDisplay = true
         updateSpotCursor()
+        if Settings.shared.showTrayIcons { updateTrayIcons() }
         Log.setActive(state.drawOn || state.spotOn)
         // 드로잉 판이 설정 창을 덮으므로 드로잉 동안만 숨겼다가, 끝나면 되돌린다
         if state.drawOn {
@@ -260,6 +266,7 @@ import Combine
         let now = Applied(Settings.shared)
         if now.spot != applied.spot { spotlight.applySettings() }
         if now.widget != applied.widget { widget.applySettings() }
+        if now.tray != applied.tray { updateTrayIcons() }
         if now.draw != applied.draw { draw.applySettings() }
         applied = now
         state.widgetVisible = Settings.shared.showWidget

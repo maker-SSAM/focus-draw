@@ -12,7 +12,7 @@ extension AppDelegate {
         statusVisibility = statusItem.observe(\.isVisible, options: [.new]) { _, change in
             AppLog.write("STATUSITEM", "visible=\(change.newValue ?? true)")
         }
-        if let url = Bundle.main.url(forResource: "icon_draw_dark", withExtension: "png"),
+        if let url = Bundle.main.url(forResource: "icon_menubar", withExtension: "png"),
            let img = NSImage(contentsOf: url) {
             img.size = NSSize(width: 18, height: 18)
             img.isTemplate = true // 메뉴 막대 색(밝게/어둡게)에 맞춰 칠해진다
@@ -43,6 +43,7 @@ extension AppDelegate {
         add("드로잉 모드 단축키 보기", #selector(menuKeyboard))
         menu.addItem(.separator())
         add("위젯 표시", #selector(menuWidget), on: Settings.shared.showWidget)
+        add("메뉴 막대에 강조·드로잉 아이콘 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
         add("설정...", #selector(openSettings), key: ",")
         menu.addItem(.separator())
         add("진단 기록", #selector(menuDiag), on: Log.isOn)
@@ -68,6 +69,35 @@ extension AppDelegate {
     @objc func menuSpot() { toggleSpotlight() }
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
+    @objc func menuTray() { Settings.shared.showTrayIcons.toggle() }
+    @objc func trayClicked(_ sender: NSStatusBarButton) {
+        if sender === spotTray?.button { toggleSpotlight() } else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+    }
+
+    // ---------- 강조·드로잉 전용 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
+    // 한 번 누르면 켜고 끈다. 꺼져 있으면 메뉴 막대 색을 따르고, 켜져 있으면 파랑(0A84FF).
+    func updateTrayIcons() {
+        let want = Settings.shared.showTrayIcons
+        if !want {
+            [spotTray, drawTray].compactMap { $0 }.forEach { NSStatusBar.system.removeStatusItem($0) }
+            spotTray = nil; drawTray = nil
+            return
+        }
+        func make(_ existing: NSStatusItem?, name: String, on: Bool, tip: String) -> NSStatusItem {
+            let item = existing ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+            item.behavior = .removalAllowed
+            if existing == nil, let b = item.button { b.target = self; b.action = #selector(trayClicked(_:)) }
+            if let img = on ? tintedIcon(name, color(ON_COLOR)) : Bundle.main.url(forResource: name, withExtension: "png").flatMap({ NSImage(contentsOf: $0) }) {
+                img.size = NSSize(width: 18, height: 18)
+                img.isTemplate = !on
+                item.button?.image = img
+            }
+            item.button?.toolTip = tip
+            return item
+        }
+        spotTray = make(spotTray, name: "icon_spotlight_dark", on: state.spotOn, tip: "강조 켜기/끄기")
+        drawTray = make(drawTray, name: "icon_draw_dark", on: draw.isOn, tip: "드로잉 켜기/끄기")
+    }
     @objc func menuFirstRun() { Notice.show(Notice.firstRun()) }
 
     // 문제가 생겼을 때 붙여 보낼 글을 클립보드에 복사한다 (이름·컴퓨터 이름은 들어 있지 않다)

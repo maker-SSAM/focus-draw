@@ -43,10 +43,10 @@ done
 lipo -create -output "$APP/Contents/MacOS/FocusDraw" "${BINS[@]}"
 
 cp Info.plist "$APP/Contents/"
-for f in icon_spotlight_dark.png icon_draw_dark.png settings.png icon.png; do
+for f in icon_spotlight_dark.png icon_draw_dark.png icon_menubar.png settings.png icon.png; do
   [ -f "$ROOT/$f" ] || { echo "빌드 실패: 그림 파일이 없음: $ROOT/$f"; exit 1; }
 done
-cp "$ROOT/icon_spotlight_dark.png" "$ROOT/icon_draw_dark.png" "$ROOT/settings.png" "$APP/Contents/Resources/"
+cp "$ROOT/icon_spotlight_dark.png" "$ROOT/icon_draw_dark.png" "$ROOT/icon_menubar.png" "$ROOT/settings.png" "$APP/Contents/Resources/"
 
 # 앱 아이콘 (mac/icon-mac.png → AppIcon.icns). Windows용 icon.png는 가장자리까지 꽉 차서 맥 Dock·Launchpad에서 다른 앱보다 커 보이므로,
 # 맥 아이콘 규격대로 1024 캔버스에 824(약 80%)로 앉히고 둘레를 투명하게 둔 맥 전용 원본을 쓴다.

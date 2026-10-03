@@ -53,6 +53,7 @@ enum SettingsLayout {
         Field(id: "Common.WidgetColor", label: "배경색"),
         Field(id: "Common.WidgetOpacity", label: "진하기", suffix: "%", step: 5)])
     static let widgetShow = "Common.ShowWidget"
+    static let trayShow = "Common.ShowTrayIcons"
 
     // 칸이 있는 모든 키 (자체 점검: 표의 키와 같아야 한다)
     static var allIDs: Set<String> {
@@ -60,7 +61,7 @@ enum SettingsLayout {
         for g in focus { ids.formUnion(g.fields.map(\.id)); if let t = g.toggle { ids.insert(t) } }
         ids.formUnion(draw.fields.map(\.id))
         for r in drawKeys { ids.insert(r.color); ids.insert(r.opacity) }
-        ids.formUnion(widget.fields.map(\.id)); ids.insert(widgetShow)
+        ids.formUnion(widget.fields.map(\.id)); ids.insert(widgetShow); ids.insert(trayShow)
         return ids
     }
 }
@@ -482,6 +483,10 @@ struct SettingsView: View {
             Card(title: "위젯 표시", toggle: flagBinding(SettingsLayout.widgetShow)) {
                 ForEach(SettingsLayout.widget.fields, id: \.id) { FieldView(f: $0) }
                 Button("처음 자리로 되돌리기", action: onResetWidget)
+            }
+            Card(title: "메뉴 막대에 강조·드로잉 아이콘 표시", toggle: flagBinding(SettingsLayout.trayShow)) {
+                Text("켜면 메뉴 막대에 강조와 드로잉 아이콘이 따로 생겨, 누를 때마다 켜고 끕니다. 켜져 있는 동안은 파랗게 보입니다.")
+                    .font(.callout).foregroundStyle(.secondary)
             }
         }
     }

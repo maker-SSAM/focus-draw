@@ -14,7 +14,7 @@ enum SettingsSchemaTests {
 
         // ---- 표 자체 ----
         check("항목표: 키가 겹치지 않고 절·키가 모두 있음 (\(keys.count)개)",
-              Set(keys.map(\.id)).count == keys.count && keys.count == 21 + 18 + 6 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
+              Set(keys.map(\.id)).count == keys.count && keys.count == 22 + 18 + 6 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
         do {
             let f = Settings()
             let bad = keys.filter { $0.read(f) != $0.defaultValue }.map(\.id)

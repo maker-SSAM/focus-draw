@@ -36,6 +36,7 @@ final class Settings: ObservableObject {
     @Published var eraserStep: Double = 5
     // [Common]
     @Published var showWidget = true
+    @Published var showTrayIcons = false // 메뉴 막대에 강조·드로잉 아이콘을 따로 둔다
     @Published var widgetScale: Double = 100
     @Published var widgetColor: UInt32 = 0xF2F2F2
     @Published var widgetOpacity: Double = 100

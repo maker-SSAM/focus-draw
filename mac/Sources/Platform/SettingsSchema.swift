@@ -84,6 +84,7 @@ enum SettingsSchema {
             num("Draw", "ThicknessStep", \.drawStep, 5, 1...Double(STEP_MAX)),
             num("Draw", "EraserStep", \.eraserStep, 5, 1...Double(STEP_MAX)),
             flag("Common", "ShowWidget", \.showWidget, true),
+            flag("Common", "ShowTrayIcons", \.showTrayIcons, false),
             num("Common", "WidgetScale", \.widgetScale, 100, 60...250),
             color("Common", "WidgetColor", \.widgetColor, 0xF2F2F2),
             num("Common", "WidgetOpacity", \.widgetOpacity, 100, 20...100),
@@ -104,7 +105,7 @@ enum SettingsSchema {
     static let positionKeys: [(section: String, key: String)] = [("Common", "WidgetX"), ("Common", "WidgetY")]
 
     // Windows 판만 쓰는 키: 맥은 읽지도 지우지도 않는다(IniFile이 그대로 보존한다)
-    static let windowsOnly: Set<String> = ["Highlight.HideCursor", "Common.ShowTrayIcons"]
+    static let windowsOnly: Set<String> = ["Highlight.HideCursor"]
     // ahk가 예전 파일을 읽으려고 받아 주는 옛 키
     static let windowsLegacy: Set<String> = ["Common.Color", "Draw.Thickness", "Draw.EraserSize"]
 

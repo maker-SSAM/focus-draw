@@ -19,8 +19,8 @@ import AppKit
         check("설정 창: 슬라이더 간격은 크기·진하기 5, 위젯 크기 10, 나머지 1", stepWrong.isEmpty, stepWrong.joined(separator: ", "))
         check("설정 창: 켬·끔 키는 모두 상자 제목이나 위젯 표시에 있음",
               SettingsLayout.focus.compactMap(\.toggle) == ["Highlight.ClickEffect", "Highlight.RClickEffect"]
-              && SettingsLayout.widgetShow == "Common.ShowWidget"
-              && SettingsSchema.keys.filter { if case .flag = $0.kind { return true } else { return false } }.count == 3)
+              && SettingsLayout.widgetShow == "Common.ShowWidget" && SettingsLayout.trayShow == "Common.ShowTrayIcons"
+              && SettingsSchema.keys.filter { if case .flag = $0.kind { return true } else { return false } }.count == 4)
         check("설정 창: 숫자키 9개와 칠판 W·E·R 12줄", SettingsLayout.drawKeys.count == 12)
         check("단축키 기호 표시: ^!1 → ⌃⌥1, F8 → F8, +F8 → ⇧F8, #!h → ⌥⌘H",
               HotkeyDisplay.symbols("^!1") == "⌃⌥1" && HotkeyDisplay.symbols("F8") == "F8"
