@@ -111,18 +111,18 @@ extension AppDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.toolTip = "강조 · 드로잉 · 설정 메뉴"
         let spotOn = state.spotOn, drawOn = draw.isOn
-        let all = NSImage(size: NSSize(width: 56, height: 18), flipped: false) { r in
+        let all = NSImage(size: NSSize(width: 60, height: 22), flipped: false) { r in
             // 템플릿 이미지는 한 장이 한 색이라, 켜진 것만 파랑으로 칠하려면 직접 칠한다. 색은 그리는 중인 메뉴 막대의 밝기를 따른다.
             let base = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black
             // 위젯과 같은 차례(강조 · 드로잉 · 설정)를 얇은 둥근 테두리 하나로 묶는다
             base.withAlphaComponent(0.75).setStroke()
-            let box = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
+            let box = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6)
             box.lineWidth = 1
             box.stroke()
             func glyph(_ name: String, on: Bool) -> NSImage? { tintedIcon(name, on ? color(ON_COLOR) : base) }
             let cell = r.width / 3
             for (i, g) in [glyph("icon_spotlight_dark", on: spotOn), glyph("icon_draw_dark", on: drawOn), glyph("settings", on: false)].enumerated() {
-                g?.draw(in: NSRect(x: cell * CGFloat(i) + (cell - 13) / 2, y: 2.5, width: 13, height: 13))
+                g?.draw(in: NSRect(x: cell * CGFloat(i) + (cell - 17) / 2, y: 2.5, width: 17, height: 17))
             }
             return true
         }
