@@ -123,15 +123,15 @@ private func shapeGlyph(_ bar: KeyboardLayout.Bar) -> some View {
             p.move(to: CGPoint(x: 2, y: m)); p.addLine(to: CGPoint(x: w - 3, y: m))
             p.move(to: CGPoint(x: w - 9, y: 1)); p.addLine(to: CGPoint(x: w - 2, y: m)); p.addLine(to: CGPoint(x: w - 9, y: h - 1))
         case .rect:
-            p.addRect(CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
+            p.addRect(CGRect(x: (w - 28) / 2, y: 1, width: 28, height: h - 2)) // 원과 같은 크기
         case .eraser:
             // 기울어진 지우개: 몸통 사각형과 지우는 쪽을 가르는 선
             var q = Path()
-            q.addRoundedRect(in: CGRect(x: w / 2 - 11, y: 2, width: 22, height: h - 4), cornerSize: CGSize(width: 2, height: 2))
-            q.move(to: CGPoint(x: w / 2 - 3, y: 2)); q.addLine(to: CGPoint(x: w / 2 - 3, y: h - 2))
+            q.addRoundedRect(in: CGRect(x: w / 2 - 8, y: m - 4, width: 16, height: 8), cornerSize: CGSize(width: 1.5, height: 1.5)) // 기울여도 칸 높이 안에 들어오게 작게
+            q.move(to: CGPoint(x: w / 2 - 2, y: m - 4)); q.addLine(to: CGPoint(x: w / 2 - 2, y: m + 4))
             p = q.applying(CGAffineTransform(translationX: w / 2, y: m).rotated(by: -0.5).translatedBy(x: -w / 2, y: -m))
         default:
-            p.addEllipse(in: CGRect(x: w * 0.25, y: 1, width: w * 0.5, height: h - 2))
+            p.addEllipse(in: CGRect(x: (w - 28) / 2, y: 1, width: 28, height: h - 2))
         }
         ctx.stroke(p, with: .color(.primary), style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
     }
