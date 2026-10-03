@@ -90,6 +90,7 @@ extension AppDelegate {
 
     // ---------- 합친 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
     // 켜면 한 칸에 위젯과 같은 차례로 강조 · 드로잉 · 설정을 얇은 테두리로 묶어 그린다. 꺼진 것은 메뉴 막대 색, 켜진 것은 파랑(0A84FF).
+    static var trayRetries = 0
     func updateTrayIcons() {
         guard let item = statusItem, let button = item.button else { return }
         func load(_ name: String) -> NSImage? {
@@ -111,10 +112,19 @@ extension AppDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.toolTip = "강조 · 드로잉 · 설정 메뉴"
         let spotOn = state.spotOn, drawOn = draw.isOn
-        // NSStatusBar.thickness(22)는 옛 값이다. 노치 맥북의 실제 메뉴 막대는 더 높아(약 37) 칸 창 높이를 따라 테두리를 키운다.
-        // 아이콘은 폭 때문에 키울 수 없다 — 폭은 노치와 오른쪽 이웃 아이콘 사이에 들어가야 하고(너무 넓으면 시스템이 통째로 숨긴다), 사이 여백 2, 양끝 여백 3.5
-        let imgH: CGFloat = 28
-        let icon: CGFloat = 21, gap: CGFloat = 2, margin: CGFloat = 3.5
+        // 모든 크기를 메뉴 막대 높이에 비례시킨다. 기준은 노치 맥북(메뉴 막대 37)에서 정한 값: 테두리 28, 아이콘 21, 사이 여백 2, 양끝 여백 3.5.
+        // (NSStatusBar.thickness는 22로 옛 값이라 쓰지 않고 칸 창의 실제 높이를 읽는다. 폭이 너무 넓으면 시스템이 통째로 숨기므로 높이에 비례해 줄어들게 했다)
+        var barH = button.window?.frame.height ?? 0
+        if barH < 10 {
+            barH = NSScreen.screens.first.map { $0.safeAreaInsets.top > 0 ? $0.safeAreaInsets.top : 24 } ?? 24
+            if AppDelegate.trayRetries < 5 { // 칸 창이 생긴 뒤 실제 높이로 다시 (끝없이 되풀이하지 않게 5번까지)
+                AppDelegate.trayRetries += 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.updateTrayIcons() }
+            }
+        }
+        let k = barH / 37
+        let imgH = (28 * k).rounded()
+        let icon = (21 * k).rounded(), gap = 2 * k, margin = 3.5 * k
         let imgW = 3 * icon + 2 * gap + 2 * margin
         let all = NSImage(size: NSSize(width: imgW, height: imgH), flipped: false) { r in
             // 템플릿 이미지는 한 장이 한 색이라, 켜진 것만 파랑으로 칠하려면 직접 칠한다. 색은 그리는 중인 메뉴 막대의 밝기를 따른다.
