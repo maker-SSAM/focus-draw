@@ -114,13 +114,13 @@ extension AppDelegate {
         let both = NSImage(size: NSSize(width: 40, height: 18), flipped: false) { _ in
             // 꺼진 쪽은 메뉴 막대 색을 따라야 하므로 따로 칠하지 않고, 켜진 쪽만 파랑 그림을 쓴다.
             // 템플릿 이미지는 한 장 전체가 한 색이라, 꺼진 쪽은 현재 메뉴 막대에 맞는 색으로 칠해 둔다.
-            let base = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black
+            let base = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black // 메뉴 막대가 그리는 중의 밝기(앱 창 모양이 아니라)
             let off: (String) -> NSImage? = { n in tintedIcon(n, base) }
             (spotOn ? part("icon_spotlight_dark", on: true) : off("icon_spotlight_dark"))?.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
             (drawOn ? part("icon_draw_dark", on: true) : off("icon_draw_dark"))?.draw(in: NSRect(x: 22, y: 0, width: 18, height: 18))
             return true
         }
-        both.isTemplate = false
+        both.isTemplate = !spotOn && !drawOn // 둘 다 꺼졌으면 시스템이 메뉴 막대 색으로 칠한다(가장 확실)
         item.button?.image = both
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.logStatusItems() }
     }
