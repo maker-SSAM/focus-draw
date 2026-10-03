@@ -6,12 +6,14 @@ import SwiftUI
 // 역할 글은 한곳(KeyboardLayout)에 모았다.
 
 enum KeyboardLayout {
+    enum Bar { case checker, laser, rainbow }
     struct Cap: Identifiable {
         let id = UUID()
         let label: String
         var role = ""
         var rgb: UInt32? = nil       // 색 칸 (숫자키·칠판)
         var alpha: Double = 1
+        var bar: Bar? = nil          // 색이 아닌 펜·칠판의 모양 막대
         var width: CGFloat = 1       // 1 = 보통 키
         var active = true            // 드로잉에서 쓰는 키면 true
     }
@@ -24,12 +26,12 @@ enum KeyboardLayout {
                Cap(label: "−", role: "가늘게"), Cap(label: "=", role: "굵게"),
                Cap(label: "delete", role: "전부 지움", width: 1.7)]
         let r2: [Cap] = [
-            Cap(label: "Q", role: "투명 칠판"),
+            Cap(label: "Q", role: "투명 칠판", bar: .checker),
             Cap(label: "W", role: "흰 칠판", rgb: s.boardColors[0], alpha: s.boardAlphas[0] / 100),
             Cap(label: "E", role: "초록 칠판", rgb: s.boardColors[1], alpha: s.boardAlphas[1] / 100),
             Cap(label: "R", role: "검정 칠판", rgb: s.boardColors[2], alpha: s.boardAlphas[2] / 100),
         ] + "TYUIOP[]".map { Cap(label: String($0), active: false) }
-        let r3: [Cap] = [Cap(label: "A", role: "사라지는 펜"), Cap(label: "S", role: "무지개 펜")]
+        let r3: [Cap] = [Cap(label: "A", role: "레이저 펜", rgb: s.drawColor, bar: .laser), Cap(label: "S", role: "무지개 펜", bar: .rainbow)]
             + "DFGHJKL;'".map { Cap(label: String($0), active: false) }
         let r4: [Cap] = [Cap(label: "Z", role: "직선"), Cap(label: "X", role: "물결"), Cap(label: "C", role: "화살표")]
             + "VBNM,./".map { Cap(label: String($0), active: false) }
@@ -39,6 +41,28 @@ enum KeyboardLayout {
     static let natural = CGSize(width: 980, height: 440)
 }
 
+// 투명 칠판 = 체크무늬, 레이저 펜 = 지금 펜 색이 꼬리처럼 사라지는 띠, 무지개 펜 = 무지개 띠
+@ViewBuilder private func barView(_ bar: KeyboardLayout.Bar, _ cap: KeyboardLayout.Cap) -> some View {
+    switch bar {
+    case .checker:
+        Canvas { ctx, size in
+            let n: CGFloat = 4
+            for yi in 0..<Int(ceil(size.height / n)) {
+                for xi in 0..<Int(ceil(size.width / n)) {
+                    let c = (xi + yi) % 2 == 0 ? Color(white: 0.85) : Color(white: 0.6)
+                    ctx.fill(Path(CGRect(x: CGFloat(xi) * n, y: CGFloat(yi) * n, width: n, height: n)), with: .color(c))
+                }
+            }
+        }
+    case .laser:
+        LinearGradient(colors: [Color(nsColor: color(cap.rgb ?? 0xFF0000)), Color(nsColor: color(cap.rgb ?? 0xFF0000)).opacity(0)],
+                       startPoint: .leading, endPoint: .trailing)
+    case .rainbow:
+        LinearGradient(colors: stride(from: 0.0, through: 1.0, by: 1.0 / 6).map { Color(hue: $0, saturation: 0.85, brightness: 1) },
+                       startPoint: .leading, endPoint: .trailing)
+    }
+}
+
 private struct CapView: View {
     let cap: KeyboardLayout.Cap
     let unit: CGFloat
@@ -46,7 +70,11 @@ private struct CapView: View {
         let w = unit * cap.width + (cap.width - 1) * 6
         VStack(spacing: 2) {
             Text(cap.label).font(.system(size: 15, weight: .semibold)).foregroundStyle(cap.active ? Color.primary : Color.secondary.opacity(0.6))
-            if let rgb = cap.rgb {
+            if let bar = cap.bar {
+                barView(bar, cap).frame(width: w - 20, height: 8)
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
+            } else if let rgb = cap.rgb {
                 RoundedRectangle(cornerRadius: 3).fill(Color(nsColor: color(rgb)).opacity(cap.alpha)).frame(width: w - 20, height: 8)
                     .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.25), lineWidth: 0.5))
             }

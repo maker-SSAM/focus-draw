@@ -90,6 +90,7 @@ import Combine
             self?.widget.moveToDefault()
             if let o = self?.widget.window.frame.origin { Settings.shared.saveWidgetPosition(o) }
         }
+        settingsWindow.onShowKeyboard = { [weak self] in self?.keyboardWindow.show() }
         settingsWindow.onHotkey = { [weak self] name, combo in self?.changeHotkey(name, to: combo) }
         settingsWindow.onResetAll = { [weak self] in self?.confirmResetAll() }
         settingsWindow.onQuit = { NSApp.terminate(nil) }

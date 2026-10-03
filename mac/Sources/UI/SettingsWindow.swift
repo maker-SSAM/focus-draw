@@ -377,6 +377,7 @@ struct SettingsView: View {
     var onResetAll: () -> Void
     var onClose: () -> Void
     var onQuit: () -> Void
+    var onShowKeyboard: () -> Void = {}
     var onHotkey: (String, HotkeyNotation.Combo?) -> String? = { _, _ in nil } // 이름, 새 조합(nil = 기본값) → 거절 이유(없으면 nil)
     var startTab = 0 // 자체 점검이 탭마다 그림을 뽑으려고
     @State private var tab = -1
@@ -495,9 +496,7 @@ struct SettingsView: View {
                 Text("글자·숫자는 ⌃(Control)를 함께 눌러야 합니다. 드로잉 중에 쓰는 키와 macOS가 쓰는 조합은 바꿀 수 없습니다.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            Card(title: "드로잉 중에 쓰는 키") {
-                Text(Self.keyHelp).font(.callout).foregroundStyle(.secondary)
-            }
+            HStack { Button("드로잉 모드 단축키 보기", action: onShowKeyboard); Spacer(minLength: 0) }
         }
     }
 
@@ -518,16 +517,6 @@ struct SettingsView: View {
             }
         }
     }
-
-    static let keyHelp = """
-    드래그: 자유선 · Shift+드래그: 사각형 · Control+드래그: 원
-    Z / X / C 누른 채 드래그: 직선 / 물결 / 화살표 (Shift를 더하면 0°·45°·90°)
-    A: 사라지는 펜 · S: 무지개 펜 · 1~9: 색 · 0: 기본 색
-    Q / W / E / R: 칠판 (투명 / 흰색 / 초록 / 검정)
-    + / −: 굵게 / 가늘게 · 휠(두 손가락 스크롤): 진하게 / 연하게
-    오른쪽 버튼 드래그 또는 ⌥ Option+드래그: 지우개 (⌥ +/−: 지우개 크기)
-    ⌘Z: 실행 취소 · delete: 전부 지우기 · Esc: 지우고 끝내기
-    """
 }
 
 // settings.ini의 AHK 표기("^!1")를 맥 기호("⌃⌥1")로 보여 준다
@@ -548,6 +537,7 @@ enum HotkeyDisplay {
     var onResetAll: () -> Void = {}
     var onHotkey: (String, HotkeyNotation.Combo?) -> String? = { _, _ in nil }
     var onQuit: () -> Void = {}
+    var onShowKeyboard: () -> Void = {}
 
     func show() {
         if window == nil {
@@ -561,6 +551,7 @@ enum HotkeyDisplay {
                                                                  onResetAll: { self.onResetAll() },
                                                                  onClose: { [weak self] in self?.window?.performClose(nil) },
                                                                  onQuit: { self.onQuit() },
+                                                                 onShowKeyboard: { self.onShowKeyboard() },
                                                                  onHotkey: { self.onHotkey($0, $1) }))
             w.center()
             window = w
