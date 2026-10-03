@@ -97,6 +97,8 @@ extension AppDelegate {
     }
 
     private func showStatusMenu() {
+        // 드로잉 판이 메뉴 위를 덮어 메뉴가 눌리지 않고 드로잉도 먹통이 되므로, 메뉴를 열기 전에 드로잉을 끈다(그림은 남김)
+        if draw.isOn { draw.turnOff(.settings) }
         statusItem.menu = statusMenu
         statusItem.button?.performClick(nil)
         statusItem.menu = Settings.shared.showTrayIcons ? nil : statusMenu // 기본 모드에서는 메뉴를 붙여 둬야 다음 클릭도 먹는다
