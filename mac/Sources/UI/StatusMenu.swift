@@ -22,6 +22,7 @@ extension AppDelegate {
         }
         let menu = NSMenu()
         menu.delegate = self
+        statusMenu = menu
         statusItem.menu = menu
     }
 
@@ -43,7 +44,7 @@ extension AppDelegate {
         add("드로잉 모드 단축키 보기", #selector(menuKeyboard))
         menu.addItem(.separator())
         add("위젯 표시", #selector(menuWidget), on: Settings.shared.showWidget)
-        add("메뉴 막대에 강조·드로잉 아이콘 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
+        add("메뉴 막대 아이콘에 강조·드로잉도 합쳐 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
         add("설정...", #selector(openSettings), key: ",")
         menu.addItem(.separator())
         add("진단 기록", #selector(menuDiag), on: Log.isOn)
@@ -70,60 +71,69 @@ extension AppDelegate {
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
     @objc func menuTray() { Settings.shared.showTrayIcons.toggle() }
-    // 눌린 자리가 왼쪽 반이면 강조, 오른쪽 반이면 드로잉
+    // 합친 아이콘(주 아이콘 | 강조 | 드로잉)에서 눌린 자리: 왼쪽 셋 중 첫째 = 메뉴, 가운데 = 강조, 오른쪽 = 드로잉. 오른쪽 클릭·⌃클릭은 늘 메뉴.
     @objc func trayClicked(_ sender: NSStatusBarButton) {
         guard let w = sender.window else { return }
-        if NSEvent.mouseLocation.x - w.frame.minX < w.frame.width / 2 { toggleSpotlight() } else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+        let e = NSApp.currentEvent
+        let menuClick = e?.type == .rightMouseUp || e?.modifierFlags.contains(.control) == true
+        let third = (NSEvent.mouseLocation.x - w.frame.minX) / max(1, w.frame.width) * 3
+        if menuClick || third < 1 { showStatusMenu() }
+        else if third < 2 { toggleSpotlight() }
+        else { draw.isOn ? draw.turnOff(.widgetButton) : draw.turnOn() }
+    }
+
+    private func showStatusMenu() {
+        statusItem.menu = statusMenu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    // ---------- 합친 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
+    // 켜면 한 칸에 주 아이콘 · 강조 · 드로잉을 나란히 그려 메뉴 막대 자리를 아낀다. 꺼진 것은 메뉴 막대 색, 켜진 것은 파랑(0A84FF).
+    func updateTrayIcons() {
+        guard let item = statusItem, let button = item.button else { return }
+        func load(_ name: String) -> NSImage? {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "png"), let img = NSImage(contentsOf: url) else { return nil }
+            img.size = NSSize(width: 18, height: 18)
+            return img
+        }
+        guard Settings.shared.showTrayIcons else {
+            item.length = NSStatusItem.squareLength
+            item.menu = statusMenu
+            button.action = nil; button.target = nil; button.toolTip = nil
+            if let img = load("icon_menubar") { img.isTemplate = true; button.image = img }
+            return
+        }
+        item.length = NSStatusItem.variableLength
+        item.menu = nil
+        button.target = self
+        button.action = #selector(trayClicked(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.toolTip = "왼쪽 메뉴 · 가운데 강조 · 오른쪽 드로잉"
+        let spotOn = state.spotOn, drawOn = draw.isOn
+        let all = NSImage(size: NSSize(width: 62, height: 18), flipped: false) { _ in
+            // 템플릿 이미지는 한 장이 한 색이라, 켜진 것만 파랑으로 칠하려면 직접 칠한다. 색은 그리는 중인 메뉴 막대의 밝기를 따른다.
+            let base = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black
+            func glyph(_ name: String, on: Bool) -> NSImage? { tintedIcon(name, on ? color(ON_COLOR) : base) }
+            for (i, g) in [glyph("icon_menubar", on: false), glyph("icon_spotlight_dark", on: spotOn), glyph("icon_draw_dark", on: drawOn)].enumerated() {
+                g?.draw(in: NSRect(x: CGFloat(i) * 22, y: 0, width: 18, height: 18))
+            }
+            return true
+        }
+        all.isTemplate = !spotOn && !drawOn // 둘 다 꺼졌으면 시스템이 메뉴 막대 색으로 칠한다(가장 확실)
+        button.image = all
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.logStatusItems() }
     }
 
     // 어느 아이콘이 어디 있고 시스템이 보이게 두었는지 (노치·메뉴 막대 넘침으로 가려졌는지 찾으려고)
     func logStatusItems() {
-        for (n, i) in [("main", statusItem), ("tray", spotTray)] {
+        for (n, i) in [("main", statusItem)] {
             guard let i else { continue }
             let f = i.button?.window?.frame ?? .zero
             AppLog.write("STATUSITEM", "\(n) visible=\(i.isVisible) x=\(Int(f.minX)) w=\(Int(f.width)) image=\(i.button?.image != nil) screenW=\(Int(i.button?.window?.screen?.frame.width ?? 0)) notchLeftInset=\(i.button?.window?.screen?.auxiliaryTopLeftArea.map { Int($0.width) } ?? -1) rightArea=\(i.button?.window?.screen?.auxiliaryTopRightArea.map { Int($0.minX) } ?? -1)")
         }
     }
 
-    // ---------- 강조·드로잉 전용 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
-    // 메뉴 막대 자리를 아끼려고 한 칸에 두 아이콘(강조 | 드로잉)을 나란히 그린다. 왼쪽 반을 누르면 강조, 오른쪽 반이면 드로잉.
-    // 꺼져 있으면 메뉴 막대 색을 따르고, 켜져 있으면 파랑(0A84FF).
-    func updateTrayIcons() {
-        guard Settings.shared.showTrayIcons else {
-            if let t = spotTray { NSStatusBar.system.removeStatusItem(t) }
-            spotTray = nil
-            return
-        }
-        let item: NSStatusItem
-        if let t = spotTray { item = t } else {
-            item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            item.autosaveName = "FocusDrawTrayItem"
-            item.behavior = .removalAllowed
-            item.button?.target = self
-            item.button?.action = #selector(trayClicked(_:))
-            item.button?.toolTip = "왼쪽 강조 · 오른쪽 드로잉 (누를 때마다 켜고 끔)"
-            spotTray = item
-        }
-        func part(_ name: String, on: Bool) -> NSImage? {
-            let img = on ? tintedIcon(name, color(ON_COLOR))
-                         : Bundle.main.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
-            img?.size = NSSize(width: 18, height: 18)
-            return img
-        }
-        let spotOn = state.spotOn, drawOn = draw.isOn
-        let both = NSImage(size: NSSize(width: 40, height: 18), flipped: false) { _ in
-            // 꺼진 쪽은 메뉴 막대 색을 따라야 하므로 따로 칠하지 않고, 켜진 쪽만 파랑 그림을 쓴다.
-            // 템플릿 이미지는 한 장 전체가 한 색이라, 꺼진 쪽은 현재 메뉴 막대에 맞는 색으로 칠해 둔다.
-            let base = NSAppearance.currentDrawing().bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor.white : NSColor.black // 메뉴 막대가 그리는 중의 밝기(앱 창 모양이 아니라)
-            let off: (String) -> NSImage? = { n in tintedIcon(n, base) }
-            (spotOn ? part("icon_spotlight_dark", on: true) : off("icon_spotlight_dark"))?.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
-            (drawOn ? part("icon_draw_dark", on: true) : off("icon_draw_dark"))?.draw(in: NSRect(x: 22, y: 0, width: 18, height: 18))
-            return true
-        }
-        both.isTemplate = !spotOn && !drawOn // 둘 다 꺼졌으면 시스템이 메뉴 막대 색으로 칠한다(가장 확실)
-        item.button?.image = both
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.logStatusItems() }
-    }
     @objc func menuFirstRun() { Notice.show(Notice.firstRun()) }
 
     // 문제가 생겼을 때 붙여 보낼 글을 클립보드에 복사한다 (이름·컴퓨터 이름은 들어 있지 않다)

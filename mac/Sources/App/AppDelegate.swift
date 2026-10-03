@@ -13,7 +13,7 @@ import Combine
     let keyboardWindow = KeyboardWindowController()
     var widget: Widget!
     var statusItem: NSStatusItem!
-    var spotTray: NSStatusItem?   // 선택: 강조·드로잉 전용 메뉴 막대 아이콘 (한 칸에 둘)
+    var statusMenu: NSMenu?       // 메뉴 막대 메뉴 (합친 아이콘 모드에서는 누를 때마다 꺼내 보인다)
     var changes: AnyCancellable?
     var statusVisibility: NSKeyValueObservation?
 

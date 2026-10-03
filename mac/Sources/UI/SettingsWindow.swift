@@ -484,8 +484,8 @@ struct SettingsView: View {
                 ForEach(SettingsLayout.widget.fields, id: \.id) { FieldView(f: $0) }
                 Button("처음 자리로 되돌리기", action: onResetWidget)
             }
-            Card(title: "메뉴 막대에 강조·드로잉 아이콘 표시", toggle: flagBinding(SettingsLayout.trayShow)) {
-                Text("켜면 메뉴 막대에 강조와 드로잉 아이콘이 따로 생겨, 누를 때마다 켜고 끕니다. 켜져 있는 동안은 파랗게 보입니다.")
+            Card(title: "메뉴 막대 아이콘에 강조·드로잉도 합쳐 표시", toggle: flagBinding(SettingsLayout.trayShow)) {
+                Text("켜면 메뉴 막대 아이콘 한 칸에 앱 · 강조 · 드로잉이 나란히 보입니다. 앱을 누르면 메뉴, 강조·드로잉을 누르면 켜고 끕니다(켜진 것은 파랑).")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
