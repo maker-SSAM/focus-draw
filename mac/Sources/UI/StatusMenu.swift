@@ -114,7 +114,7 @@ extension AppDelegate {
         // NSStatusBar.thickness(22)는 옛 값이다. 노치 맥북의 실제 메뉴 막대는 더 높아(약 37) 칸 창 높이를 따라 테두리를 키운다.
         // 아이콘은 폭 때문에 키울 수 없다 — 폭은 노치와 오른쪽 이웃 아이콘 사이에 들어가야 하고(너무 넓으면 시스템이 통째로 숨긴다), 사이 여백 2, 양끝 여백 3.5
         let imgH = max(NSStatusBar.system.thickness, (button.window?.frame.height ?? 0) - 6)
-        let icon: CGFloat = 23, gap: CGFloat = 2, margin: CGFloat = 3.5
+        let icon: CGFloat = 21, gap: CGFloat = 2, margin: CGFloat = 3.5
         let imgW = 3 * icon + 2 * gap + 2 * margin
         let all = NSImage(size: NSSize(width: imgW, height: imgH), flipped: false) { r in
             // 템플릿 이미지는 한 장이 한 색이라, 켜진 것만 파랑으로 칠하려면 직접 칠한다. 색은 그리는 중인 메뉴 막대의 밝기를 따른다.
