@@ -74,7 +74,6 @@ func valueBinding(_ id: String) -> Binding<Double> {
     let k = settingKeys[id]!
     return Binding(get: { k.read(Settings.shared) },
                    set: { v in
-                       Settings.shared.objectWillChange.send() // 배열에 든 값(숫자키 색 등)도 화면과 저장 표시가 알게
                        // 색은 16진 글자가 아니라 숫자 그대로 자른다 (글자로 바꿔 읽으면 못 읽어 기본값으로 돌아간다)
                        let w: Double
                        switch k.kind {
@@ -82,8 +81,9 @@ func valueBinding(_ id: String) -> Binding<Double> {
                        case .flag: w = v >= 1 ? 1 : 0
                        case .color: w = max(0, min(16_777_215, v.rounded()))
                        }
-                       k.write(Settings.shared, w)
-                       DispatchQueue.main.async { Settings.shared.objectWillChange.send() } // 바뀐 뒤에도 한 번 더: 칸이 새 값을 읽도록
+                       k.write(Settings.shared, w) // 일반 값은 Settings의 @Published가 알린다
+                       // 배열에 든 값(숫자키 색 등)은 @Published가 모르므로 바뀐 뒤 한 번만 알린다
+                       if k.section == "DrawKeys" || k.section == "Boards" { DispatchQueue.main.async { Settings.shared.objectWillChange.send() } }
                    })
 }
 
@@ -193,14 +193,19 @@ final class HotkeyCaptureView: NSView {
     var display = ""
     var onCapture: (HotkeyNotation.Combo) -> Void = { _ in }
     private(set) var recording = false
+    static var onRecording: (Bool) -> Void = { _ in } // 녹화 시작·끝 (앱 단축키를 내리고 올리는 데 쓴다)
 
     // 눌렀을 때만 초점을 받는다 (창이 열릴 때 첫 칸이 저절로 "키를 누르세요" 상태가 되지 않게)
     private var armed = false
     override var acceptsFirstResponder: Bool { armed }
     override var intrinsicContentSize: NSSize { NSSize(width: 160, height: 28) }
     override func mouseDown(with event: NSEvent) { armed = true; window?.makeFirstResponder(self) }
-    override func becomeFirstResponder() -> Bool { recording = true; needsDisplay = true; return true }
-    override func resignFirstResponder() -> Bool { recording = false; armed = false; needsDisplay = true; return true }
+    override func becomeFirstResponder() -> Bool { recording = true; needsDisplay = true; Self.onRecording(true); return true }
+    override func resignFirstResponder() -> Bool {
+        if recording { Self.onRecording(false) }
+        recording = false; armed = false; needsDisplay = true
+        return true
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool { recording ? handle(event) : false }
     override func keyDown(with event: NSEvent) { if !handle(event) { super.keyDown(with: event) } }
@@ -569,6 +574,9 @@ enum HotkeyDisplay {
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
     }
+
+    // 창이 키를 잃거나(다른 앱으로 감) 닫히면 녹화 중이던 칸을 풀어 앱 단축키를 되살린다
+    func windowDidResignKey(_ notification: Notification) { window?.makeFirstResponder(nil) }
 
     // 닫으면 색 패널도 함께 닫고, 앞 앱으로 초점을 돌려준다 (발표 앱에서 바로 이어 쓰도록)
     func windowWillClose(_ notification: Notification) {

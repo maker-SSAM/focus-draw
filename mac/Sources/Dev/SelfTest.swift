@@ -434,6 +434,11 @@ import AppKit
         d.toggleSpotlightOffIfOn()
         check("드로잉·강조가 모두 꺼지면 도는 타이머가 없음", !c.watch.isRunning && c.laserTimer == nil && !d.spotlight.isRunning, "")
         check("깨어난 뒤 앱 단축키가 그대로이고 진단 한 줄을 남김", d.checkAfterWake(), "")
+        let keysBefore = HotKeyRegistry.shared.count(.app)
+        d.setHotkeyRecording(true)
+        let during = HotKeyRegistry.shared.count(.app)
+        d.setHotkeyRecording(false)
+        check("단축키 녹화 중에는 앱 단축키가 내려가고 끝나면 그대로 돌아옴", keysBefore > 0 && during == 0 && HotKeyRegistry.shared.count(.app) == keysBefore, "\(keysBefore)/\(during)/\(HotKeyRegistry.shared.count(.app))")
     }
 
     static func snapshot(_ v: NSView, to url: URL) {

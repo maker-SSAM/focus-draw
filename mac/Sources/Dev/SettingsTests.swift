@@ -107,6 +107,27 @@ enum SettingsTests {
             check("Windows 고정 파일 점검을 건너뜀 (--fixtures 없음)", true, "INFO")
         }
 
+        // ---- S11: 빈 파일, 잘린 파일, 아주 큰 파일 ----
+        do {
+            func tryLoad(_ name: String, _ data: Data) -> (Settings, Settings.LoadResult, URL) {
+                let path = dir.appendingPathComponent("s11-\(name)/settings.ini")
+                try? fm.createDirectory(at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try? data.write(to: path)
+                let s = Settings()
+                return (s, s.load(from: path), path)
+            }
+            let (e, er, ep) = tryLoad("empty", Data())
+            var emptyOK = false; if case .loaded = er { emptyOK = true }
+            check("빈 파일: 기본값으로 시작하고 저장하면 정상 파일이 됨", emptyOK && e.spotSize == 130 && e.save(to: ep) == nil && (bytes(ep)?.isEmpty == false))
+            let (_, tr, tp) = tryLoad("trunc16", Data([0xFF, 0xFE, 0x5B, 0x00, 0x43])) // UTF-16이 홀수 바이트에서 잘림
+            var truncUnreadable = false; if case .unreadable = tr { truncUnreadable = true }
+            check("잘린 UTF-16 파일: 읽을 수 없는 파일로 다루고 원본은 그대로", truncUnreadable && bytes(tp) == Data([0xFF, 0xFE, 0x5B, 0x00, 0x43]))
+            let big = Data(repeating: 0x41, count: Settings.maxIniBytes + 1)
+            let (bs, br, bp) = tryLoad("huge", big)
+            var hugeUnreadable = false; if case .unreadable = br { hugeUnreadable = true }
+            check("아주 큰 파일: 통째로 읽지 않고 읽을 수 없는 파일로 다루며 원본은 그대로", hugeUnreadable && bs.spotSize == 130 && bytes(bp) == big)
+        }
+
         // ---- 읽을 수 없는 파일은 덮어쓰지 않는다 ----
         do {
             let path = dir.appendingPathComponent("broken/settings.ini")

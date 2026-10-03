@@ -126,9 +126,11 @@ func missionControlShowing(_ windows: [WindowInfo], boardLayer: Int, nearDockEdg
     }
 }
 
-@MainActor func currentPointerTarget(boards: Set<Int>) -> PointerTarget {
+// statusItemFrame: 우리 메뉴 막대 아이콘 칸의 화면 자리(AppKit 좌표). 드로잉 판(레벨 1000)이 메뉴 막대 칸보다 늘 앞이라 창 목록으로는 아이콘 위를 가려낼 수 없어서 따로 본다.
+@MainActor func currentPointerTarget(boards: Set<Int>, statusItemFrame: CGRect? = nil) -> PointerTarget {
     guard let primary = NSScreen.screens.first else { return .board }
     let mouse = NSEvent.mouseLocation
+    if let f = statusItemFrame, f.contains(mouse) { return .widget }
     let pt = CGPoint(x: mouse.x, y: primary.frame.height - mouse.y)
     let infos = currentWindowInfos()
     return pointerTarget(at: pt, windows: infos, boards: boards, boardLayer: OVERLAY_LEVEL.rawValue, widgetLayer: WIDGET_LEVEL.rawValue)

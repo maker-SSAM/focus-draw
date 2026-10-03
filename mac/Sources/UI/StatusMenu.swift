@@ -66,7 +66,11 @@ extension AppDelegate {
         add("Focus & Draw 종료", #selector(menuQuit), key: "q")
     }
 
-    @objc func menuKeyboard() { keyboardWindow.show() }
+    // 드로잉 중이면 먼저 끈다(그림은 남김): 판 아래에 뜨면 보이지도 눌리지도 않고, Esc가 드로잉으로 가 그림을 지운다
+    @objc func menuKeyboard() {
+        if draw.isOn { draw.turnOff(.settings) }
+        keyboardWindow.show()
+    }
     @objc func menuSpot() { toggleSpotlight() }
     @objc func menuDraw() { draw.toggle() }
     @objc func menuWidget() { Settings.shared.showWidget.toggle() }
@@ -95,7 +99,7 @@ extension AppDelegate {
     private func showStatusMenu() {
         statusItem.menu = statusMenu
         statusItem.button?.performClick(nil)
-        statusItem.menu = nil
+        statusItem.menu = Settings.shared.showTrayIcons ? nil : statusMenu // 기본 모드에서는 메뉴를 붙여 둬야 다음 클릭도 먹는다
     }
 
     // ---------- 합친 메뉴 막대 아이콘 (선택, 기본 꺼짐) ----------
@@ -131,6 +135,8 @@ extension AppDelegate {
                 AppDelegate.trayRetries += 1
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.updateTrayIcons() }
             }
+        } else {
+            AppDelegate.trayRetries = 0 // 실제 높이를 읽었으니 다음에 높이를 못 읽어도 다시 5번 시도한다
         }
         let k = barH / 37
         let imgH = (28 * k).rounded()

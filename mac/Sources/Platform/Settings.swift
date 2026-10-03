@@ -77,10 +77,15 @@ final class Settings: ObservableObject {
         return v
     }
 
+    static let maxIniBytes = 1_000_000
+
     // 파일 → IniFile. 없으면 (nil, missing), 읽을 수 없으면 (nil, 이유)
     static func readIni(_ url: URL) -> (ini: IniFile?, problem: String?, missing: Bool) {
         guard FileManager.default.fileExists(atPath: url.path) else { return (nil, nil, true) }
         do {
+            // 설정 파일은 보통 몇 KB다. 아주 큰 파일은 통째로 메모리에 올리지 않고 읽을 수 없는 파일로 다룬다(원본은 지키고 .bak으로 복사).
+            let size = (try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            if size > Settings.maxIniBytes { return (nil, "파일이 너무 큽니다(\(size / 1024)KB)", false) }
             let data = try Data(contentsOf: url)
             return (try IniFile(data: data), nil, false)
         } catch {

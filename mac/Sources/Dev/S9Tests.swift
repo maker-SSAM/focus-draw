@@ -50,7 +50,8 @@ import AppKit
         func target(_ x: CGFloat, _ wins: [WindowInfo]) -> PointerTarget {
             pointerTarget(at: CGPoint(x: x, y: 10), windows: wins, boards: [1], boardLayer: OVERLAY_LEVEL.rawValue, widgetLayer: WIDGET_LEVEL.rawValue)
         }
-        check("메뉴 막대: 판이 덮어도 우리 아이콘 위에서는 화살표, 다른 앱 아이콘·빈 곳은 판",
+        // (실제로는 판이 늘 앞이라 창 목록으로는 [tray, board] 순서가 생기지 않는다. 우리 아이콘 위는 currentPointerTarget이 아이콘 칸 자리로 먼저 가린다)
+        check("메뉴 막대: 창 목록 규칙은 그대로, 다른 앱 아이콘·빈 곳은 판",
               target(820, [board, tray, other]) == .board && target(820, [tray, board]) == .widget && target(920, [other, board]) == .board)
 
         // ---- 접근성 이름 ----

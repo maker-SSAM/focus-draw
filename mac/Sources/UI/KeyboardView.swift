@@ -118,7 +118,7 @@ private final class KeyboardWindow: NSWindow {
     override var canBecomeKey: Bool { true }
 }
 
-@MainActor final class KeyboardWindowController: NSObject, NSWindowDelegate {
+@MainActor final class KeyboardWindowController: NSObject {
     private var window: NSWindow?
 
     // 화면에 맞추되 원래 크기보다 키우지 않는다
@@ -143,7 +143,6 @@ private final class KeyboardWindow: NSWindow {
                                styleMask: [.titled, .closable], backing: .buffered, defer: false)
         w.title = "드로잉 단축키"
         w.isReleasedWhenClosed = false
-        w.delegate = self
         w.contentView = NSHostingView(rootView: Self.makeView(settings: Settings.shared, scale: scale, onClick: { [weak w] in w?.close() }))
         w.center()
         window = w

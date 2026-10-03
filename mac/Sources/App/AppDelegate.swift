@@ -67,6 +67,7 @@ import Combine
         applied = Applied(Settings.shared)
         AppLog.write("SESSION", "start version=\(AppInfo.version) macOS=\(ProcessInfo.processInfo.operatingSystemVersionString) app=\((Bundle.main.bundlePath as NSString).abbreviatingWithTildeInPath)")
         widget = Widget(state: state)
+        draw.controller.statusItemFrame = { [weak self] in self?.statusItem?.button?.window?.frame }
         draw.controller.statusClick = { [weak self] menuClick in self?.handleClickOverStatusItem(menuClick: menuClick) ?? false }
         widget.view.onAction = { [weak self] part in self?.widgetAction(part) }
         widget.view.contextMenu = { [weak self] in
@@ -95,6 +96,7 @@ import Combine
             if let o = self?.widget.window.frame.origin { Settings.shared.saveWidgetPosition(o) }
         }
         settingsWindow.onShowKeyboard = { [weak self] in self?.keyboardWindow.show() }
+        HotkeyCaptureView.onRecording = { [weak self] on in self?.setHotkeyRecording(on) }
         settingsWindow.onHotkey = { [weak self] name, combo in self?.changeHotkey(name, to: combo) }
         settingsWindow.onResetAll = { [weak self] in self?.confirmResetAll() }
         settingsWindow.onQuit = { NSApp.terminate(nil) }
@@ -134,6 +136,14 @@ import Combine
     }
 
     var appHotkeyCount = 0
+
+    // 설정 창의 단축키 녹화 칸이 키를 기다리는 동안은 앱 단축키(F8·F9 등)를 내려 둔다 (눌러도 강조·드로잉이 켜지지 않고 그 키가 녹화되게)
+    func setHotkeyRecording(_ on: Bool) {
+        HotKeyRegistry.shared.unregisterGroup(.app)
+        if on { return }
+        registerAppHotkeys()
+        appHotkeyCount = HotKeyRegistry.shared.count(.app)
+    }
 
     // 깨어난 뒤: 앱 단축키가 그대로인지 확인한다. 드로잉·강조는 잠자기 때 꺼졌으므로 쉬는 상태여야 한다.
     @discardableResult
