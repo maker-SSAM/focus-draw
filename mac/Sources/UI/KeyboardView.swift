@@ -4,8 +4,21 @@ import SwiftUI
 // "드로잉 모드 단축키 보기": 맥 자판 그림. 줄마다 역할이 같다 — 숫자 줄 = 색, Q 줄 = 칠판, A 줄 = 특수 펜, Z 줄 = 도형.
 // 색은 늘 지금 설정의 색이다 (설정에서 3번을 바꾸고 다시 열면 새 색). 키 표(KeyMap)와 설정이 바뀌면 이 그림도 따라가도록
 // 역할 글은 한곳(KeyboardLayout)에 모았다.
+//
+// [Windows 판에서 가져온 것] 기능 묶음마다 키 테두리 색을 달리하고(색 파랑·칠판 초록·도형 보라·굵기 주황·지우기 빨강·펜 분홍) 맨 위에
+// 같은 색의 범례 띠를 둔 것, 아래 설명을 "키 → 하는 일" 두 칸 표로 묶은 것. (Windows는 키보드 그림이 고정 PNG라
+// 키 위에는 기본 색을 그려 두고 "지금 설정된 색"은 그림 아래 띠로 따로 보여 준다. 맥은 키 위 색 막대가 지금 설정을 그대로 따라간다.)
 
 enum KeyboardLayout {
+    enum Group: CaseIterable {
+        case color, board, shape, size, clear, pen
+        var title: String { switch self { case .color: "색 바꾸기"; case .board: "칠판"; case .shape: "도형"; case .size: "선 굵기"; case .clear: "지우기"; case .pen: "특수 펜" } }
+        var keys: String { switch self { case .color: "0 ~ 9"; case .board: "Q W E R"; case .shape: "Z X C · ⇧ ⌃"; case .size: "− ="; case .clear: "delete · esc · ⌥"; case .pen: "A S" } }
+        var tint: Color { switch self {
+            case .color: Color(red: 0.25, green: 0.56, blue: 0.95); case .board: Color(red: 0.2, green: 0.7, blue: 0.45)
+            case .shape: Color(red: 0.62, green: 0.4, blue: 0.9); case .size: Color(red: 0.92, green: 0.62, blue: 0.2)
+            case .clear: Color(red: 0.95, green: 0.38, blue: 0.33); case .pen: Color(red: 0.9, green: 0.4, blue: 0.65) } }
+    }
     enum Bar { case checker, laser, rainbow, line, wave, arrow, rect, ellipse, eraser }
     struct Cap: Identifiable {
         let id = UUID()
@@ -18,6 +31,19 @@ enum KeyboardLayout {
         var active = true            // 드로잉에서 쓰는 키면 true
         var height: CGFloat = 1      // 1 = 보통 키 (기능 줄·위아래 화살표는 더 낮다)
         var subs: [Cap] = []         // 위아래 화살표처럼 세로로 쌓은 칸
+        // 기능 묶음 (쓰는 키만): 테두리 색과 범례
+        var group: Group? {
+            guard active else { return nil }
+            switch label {
+            case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9": return .color
+            case "Q", "W", "E", "R": return .board
+            case "Z", "X", "C", "shift", "control": return .shape
+            case "−", "=": return .size
+            case "delete", "esc", "option": return .clear
+            case "A", "S": return .pen
+            default: return nil
+            }
+        }
     }
 
     // 맥북 자판(ANSI) 배열과 키 폭을 그대로 옮긴다. 한 줄은 폭 15칸.
@@ -50,7 +76,7 @@ enum KeyboardLayout {
                          mod("←"), Cap(label: "", active: false, height: 1, subs: [Cap(label: "↑", active: false, height: 0.5), Cap(label: "↓", active: false, height: 0.5)]), mod("→")]
         return [fn, r1, r2, r3, r4, r5]
     }
-    static let natural = CGSize(width: 980, height: 540)
+    static let natural = CGSize(width: 980, height: 700)
 }
 
 // 투명 칠판 = 체크무늬, 레이저 펜 = 지금 펜 색이 꼬리처럼 사라지는 띠, 무지개 펜 = 무지개 띠
@@ -138,9 +164,45 @@ private struct CapView: View {
             Text(cap.role).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
         }
         .frame(width: w, height: cap.subs.isEmpty ? h : (unit - 6) / 2)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(cap.active ? 0.14 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(cap.active ? 0.35 : 0.12)))
+        .background(RoundedRectangle(cornerRadius: 8).fill(cap.group.map { $0.tint.opacity(0.14) } ?? Color.white.opacity(cap.active ? 0.14 : 0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(cap.group.map { $0.tint.opacity(0.9) } ?? Color.primary.opacity(cap.active ? 0.35 : 0.12), lineWidth: cap.group == nil ? 1 : 1.5))
         }
+    }
+}
+
+// 설명 카드: "키 → 하는 일" 두 칸 표
+private struct GuideCard: View {
+    let title: String
+    let dot: Color
+    let rows: [(keys: [String], what: String)]
+    var note = ""
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) { Circle().fill(dot).frame(width: 8, height: 8); Text(title).font(.system(size: 14, weight: .semibold)) }
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                HStack(spacing: 8) {
+                    HStack(spacing: 4) {
+                        ForEach(Array(r.keys.enumerated()), id: \.offset) { _, k in
+                            if k == "+" || k == "·" { Text(k).foregroundStyle(.secondary) } else {
+                                Text(k).font(.system(size: 12, weight: .medium))
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.white.opacity(0.1)))
+                                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.3), lineWidth: 0.5))
+                            }
+                        }
+                    }
+                    .frame(width: 200, alignment: .leading)
+                    Text("→").foregroundStyle(.tertiary)
+                    Text(r.what).font(.system(size: 13, weight: .semibold))
+                    Spacer(minLength: 0)
+                }
+            }
+            if !note.isEmpty { Text(note).font(.system(size: 11)).foregroundStyle(.secondary) }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.white.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.15)))
     }
 }
 
@@ -148,8 +210,22 @@ struct KeyboardView: View {
     let settings: Settings
     var body: some View {
         let unit: CGFloat = 56
-        VStack(alignment: .leading, spacing: 14) {
-            Text("드로잉 모드 단축키").font(.title3.weight(.semibold))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("드로잉 모드 단축키").font(.title3.weight(.semibold))
+                Text("드로잉을 켜 둔 동안에만 동작합니다. 끄면 모든 키가 평소대로 돌아갑니다.").font(.callout).foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                ForEach(KeyboardLayout.Group.allCases, id: \.self) { g in
+                    HStack(spacing: 5) {
+                        Text(g.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(g.tint)
+                        Text(g.keys).font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Capsule().fill(g.tint.opacity(0.14)))
+                    .overlay(Capsule().stroke(g.tint.opacity(0.7), lineWidth: 1))
+                }
+            }
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(Array(KeyboardLayout.rows(settings).enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 6) {
@@ -157,12 +233,23 @@ struct KeyboardView: View {
                     }
                 }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text("마우스: 드래그 = 자유선 · ⇧ + 드래그 = 사각형 · ⌃ + 드래그 = 원 · Z/X/C를 누른 채 드래그 = 직선/물결/화살표 (⇧를 더하면 0°·45°·90°)")
-                Text("지우개: 오른쪽 버튼 드래그 또는 ⌥ + 드래그 · ⌥ + (+/−) = 지우개 크기 · 두 손가락 스크롤 = 진하게/연하게")
-                Text("⌘Z = 실행 취소 · Esc = 지우고 끝내기 · 글자 숫자 키 중 쓰지 않는 키는 눌러도 아무 일도 하지 않습니다")
+            HStack(alignment: .top, spacing: 12) {
+                GuideCard(title: "마우스로 그리기", dot: Color(red: 0.25, green: 0.56, blue: 0.95), rows: [
+                    (["드래그"], "자유선 그리기"),
+                    (["⇧", "+", "드래그"], "사각형"),
+                    (["⌃", "+", "드래그"], "원"),
+                    (["Z X C", "+", "드래그"], "직선 · 물결 · 화살표"),
+                    (["Z X C", "+", "⇧", "+", "드래그"], "0° · 45° · 90°로 맞춤"),
+                    (["두 손가락 스크롤"], "진하게 · 연하게"),
+                ])
+                GuideCard(title: "되돌리기 · 지우기", dot: Color(red: 0.95, green: 0.38, blue: 0.33), rows: [
+                    (["⌥", "+", "드래그"], "지우개 (오른쪽 버튼 드래그도 같음)"),
+                    (["⌥", "+", "− ="], "지우개 크기"),
+                    (["⌘", "+", "Z"], "실행 취소"),
+                    (["delete"], "그린 것 전부 지우기"),
+                    (["esc"], "지우고 드로잉 끄기"),
+                ])
             }
-            .font(.callout).foregroundStyle(.secondary)
             Text("Esc나 클릭으로 닫기").font(.caption).foregroundStyle(.tertiary)
         }
         .padding(24)
