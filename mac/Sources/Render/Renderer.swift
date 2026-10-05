@@ -117,8 +117,10 @@ let LASER_GLOW_LAYERS: [(CGFloat, CGFloat, CGFloat)] = {
 
 // 빨리 움직여 점이 듬성듬성해도 선이 꺾이거나 끊겨 보이지 않게, 점 사이를 부드러운 곡선(Catmull-Rom)으로 이어
 // 약 3pt 간격의 점으로 채운다. 시각·색조는 양 끝에서 이어 준다.
-func smoothLaser(_ s: [LaserPt], step: CGFloat = 5) -> [LaserPt] {
+func smoothLaser(_ s: [LaserPt], step: CGFloat = 5, force: Bool = false) -> [LaserPt] {
     guard s.count > 2 else { return s }
+    // 도형(직선·사각형·원·화살표 등)은 모든 점이 같은 시각이다. 모서리가 있는 도형을 곡선으로 이으면 사각형 변이 휘고 모서리가 둥글어지므로 그대로 둔다.
+    if !force && s.first!.t == s.last!.t { return s }
     var out: [LaserPt] = [s[0]]
     for i in 0..<(s.count - 1) {
         let p0 = s[max(0, i - 1)].p, p1 = s[i].p, p2 = s[i + 1].p, p3 = s[min(s.count - 1, i + 2)].p
@@ -141,6 +143,19 @@ func smoothLaser(_ s: [LaserPt], step: CGFloat = 5) -> [LaserPt] {
         out.append(s[i + 1])
     }
     return out
+}
+
+// 레이저로 그리는 도형의 점. 원·물결은 곡선이라 점 사이를 부드럽게 이어 다각형처럼 보이지 않게 하고, 모서리가 있는 직선·사각형·화살표는 그대로 둔다.
+func laserShape(_ mode: ShapeMode, _ a: CGPoint, _ b: CGPoint, width: CGFloat, t: TimeInterval, rgb: UInt32?) -> [LaserPt] {
+    let pts = shapePoints(mode, a, b, width: width).map { LaserPt(p: $0, t: t, hue: nil, rgb: rgb) }
+    if mode == .wave { return smoothLaser(pts, force: true) }
+    guard mode == .ellipse, pts.count > 4 else { return pts }
+    // 원은 닫힌 곡선이라 시작·끝 이음매도 부드럽게: 이웃 점을 양끝에 덧붙여 곡선을 만든 뒤 덧붙인 부분을 잘라 낸다
+    let padded = [pts[pts.count - 2]] + pts + [pts[1]]
+    let sm = smoothLaser(padded, force: true)
+    guard let lo = sm.indices.dropFirst().first(where: { sm[$0].p == pts[0].p }),
+          let hi = sm.indices.last(where: { sm[$0].p == pts[pts.count - 1].p }), hi > lo else { return smoothLaser(pts, force: true) }
+    return Array(sm[lo...hi])
 }
 
 func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now: TimeInterval, in ctx: CGContext) {
@@ -186,7 +201,7 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
             path.closeSubpath()
             if let d = prevDir {
                 let turn = abs(atan2(d.x * uy - d.y * ux, d.x * ux + d.y * uy))   // 꺾인 각도
-                if ha * turn > 0.6 { dot(idx[n - 1]) }
+                if ha * turn > 0.4 { dot(idx[n - 1]) }
             }
             prevDir = CGPoint(x: ux, y: uy)
         }

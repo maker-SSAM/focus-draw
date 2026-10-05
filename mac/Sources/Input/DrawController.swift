@@ -263,7 +263,7 @@ enum PenKind { case normal, laser, rainbow }
                 laserLive!.append(LaserPt(p: p, t: now, hue: nil, rgb: rgb))
             } else {
                 let end = shapeEnd(p, e.modifierFlags)
-                laserLive = shapePoints(mode, start, end, width: laserWidth).map { LaserPt(p: $0, t: now, hue: nil, rgb: rgb) }
+                laserLive = laserShape(mode, start, end, width: laserWidth, t: now, rgb: rgb)
             }
             lastPoint = p
             return

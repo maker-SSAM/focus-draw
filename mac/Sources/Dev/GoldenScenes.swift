@@ -129,15 +129,18 @@ extension Golden {
         }
 
         // 레이저
-        func laserPoints(_ pts: [CGPoint], t: TimeInterval = 0) -> [LaserPt] { pts.map { LaserPt(p: $0, t: t, hue: nil) } }
+        // 도형은 모든 점이 같은 시각, 자유선은 점마다 조금씩 늦은 시각 (실제 그을 때와 같다 — 레이저 곡선 보간은 둘을 이 차이로 구별한다)
+        func laserPoints(_ pts: [CGPoint], t: TimeInterval = 0, freehand: Bool = false) -> [LaserPt] {
+            pts.enumerated().map { LaserPt(p: $0.element, t: t + (freehand ? Double($0.offset) * 0.003 : 0), hue: nil) }
+        }
         func laserImage(now: TimeInterval, shapes: Bool = false) -> CGImage? {
             let s = Sim(size: small)
-            var strokes = [laserPoints(s.wiggle(30, 60, 260, amp: 25)), laserPoints(s.wiggle(30, 140, 260, amp: 12))]
+            var strokes = [laserPoints(s.wiggle(30, 60, 260, amp: 25), freehand: true), laserPoints(s.wiggle(30, 140, 260, amp: 12), freehand: true)]
             if shapes {
-                strokes = [laserPoints(shapePoints(.rect, s.P(30, 30), s.P(130, 90), width: 8)),
-                           laserPoints(shapePoints(.ellipse, s.P(160, 30), s.P(290, 90), width: 8)),
-                           laserPoints(shapePoints(.arrow, s.P(30, 130), s.P(150, 175), width: 8)),
-                           laserPoints(shapePoints(.wave, s.P(170, 130), s.P(290, 175), width: 8))]
+                strokes = [laserShape(.rect, s.P(30, 30), s.P(130, 90), width: 8, t: 0, rgb: nil),
+                           laserShape(.ellipse, s.P(160, 30), s.P(290, 90), width: 8, t: 0, rgb: nil),
+                           laserShape(.arrow, s.P(30, 130), s.P(150, 175), width: 8, t: 0, rgb: nil),
+                           laserShape(.wave, s.P(170, 130), s.P(290, 175), width: 8, t: 0, rgb: nil)]
             }
             let laser = LaserScene(strokes: strokes, color: color(0xFF0000).cgColor, width: max(penPx(5), LASER_MIN_WIDTH))
             return renderScene(items: [], board: nil, opacity: 100, size: small, scale: 1, laser: laser, now: now)
