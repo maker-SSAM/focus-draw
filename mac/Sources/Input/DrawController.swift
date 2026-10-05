@@ -230,12 +230,9 @@ enum PenKind { case normal, laser, rainbow }
         }
         mode = currentShape(e.modifierFlags)
         if activePen == .laser {
-            if mode == .free {
-                laserLive = [LaserPt(p: p, t: Date.timeIntervalSinceReferenceDate, hue: nil, rgb: rgb)]
-                startLaserTimer()
-            } else {
-                laserLive = []
-            }
+            // 누르기만 해서는 레이저가 시작되지 않는다: 첫 이동 때 시작점부터 한꺼번에 시작한다. 누른 뒤 움직이기까지 걸리는 시간 동안
+            // 점이 먼저 늙어 있으면 줄어드는 속도가 선 이어짐에서 달라져 보인다. (클릭만 하면 아무것도 남지 않는다)
+            laserLive = []
             return
         }
         let w = penPx(penStep)
@@ -259,6 +256,10 @@ enum PenKind { case normal, laser, rainbow }
         if activePen == .laser, laserLive != nil {
             let now = Date.timeIntervalSinceReferenceDate
             if mode == .free {
+                if laserLive!.isEmpty {
+                    laserLive = [LaserPt(p: start, t: now, hue: nil, rgb: rgb)]   // 시작점을 첫 이동 시각으로
+                    startLaserTimer()
+                }
                 laserLive!.append(LaserPt(p: p, t: now, hue: nil, rgb: rgb))
             } else {
                 let end = shapeEnd(p, e.modifierFlags)

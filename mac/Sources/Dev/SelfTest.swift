@@ -107,6 +107,24 @@ import AppKit
         d.draw.controller.keyDown(key(6, "z", [.command, .shift]))
         check("⌘⇧Z는 실행 취소가 아님", d.draw.controller.items.count == beforeShiftUndo)
 
+        // 레이저: 누르기만 하면 시작하지 않고, 움직이는 순간부터 시작 (시작점도 그때 시각으로)
+        do {
+            let c = d.draw.controller
+            c.handleKey(0, [], isRepeat: false, source: "hk") // A: 레이저
+            let before = c.laser.count
+            let p0 = P(600, 500)
+            c.down(p0, mouse(.leftMouseDown, p0), right: false)
+            check("레이저: 누르기만 해서는 시작하지 않음", c.laserLive?.isEmpty == true)
+            c.up(p0)
+            check("레이저: 클릭만 하면 아무것도 남지 않음", c.laser.count == before && c.laserLive == nil)
+            c.down(p0, mouse(.leftMouseDown, p0), right: false)
+            let p1 = P(640, 500)
+            c.drag(p1, mouse(.leftMouseDragged, p1))
+            check("레이저: 움직이는 순간 시작점부터 시작", c.laserLive?.count == 2 && c.laserLive?.first?.p == p0 && c.laserLive?.first?.t == c.laserLive?.last?.t)
+            c.up(p1)
+            c.handleKey(18, [], isRepeat: false, source: "hk") // 1: 일반 펜으로 되돌림
+        }
+
         // H2: 위젯을 숨긴 채 드로잉을 두 번 켜고 꺼도 계속 숨어 있어야 한다
         Settings.shared.showWidget = false
         d.applySettings()
