@@ -143,6 +143,9 @@ import AppKit
             c.drag(p1, mouse(.leftMouseDragged, p1)); c.drag(p2, mouse(.leftMouseDragged, p2))
             let hues = (c.laserLive ?? []).compactMap(\.hue)
             check("무지개 레이저: S 다음 A로 그으면 점마다 색이 돈다", c.pen == .laser && hues.count == 3 && hues.last != hues.first, "\(hues)")
+            let glows = (c.laserLive ?? []).map(\.glow)
+            check("무지개 레이저: 모든 점이 시작한 색의 빛을 들고 있음 (줄어들며 앞 점이 지워져도 빛 색이 그대로)",
+                  glows.count == 3 && glows.allSatisfy { $0 != nil && $0 == hues.first })
             c.up(p2)
             c.handleKey(20, [], isRepeat: false, source: "hk") // 3
             check("무지개 레이저 다음 숫자키: 그 색의 일반 펜, 무지개 풀림", c.pen == .normal && !c.rainbowColor)

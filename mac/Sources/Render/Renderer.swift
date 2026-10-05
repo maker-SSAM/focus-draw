@@ -86,7 +86,9 @@ private func strokePoints(_ pts: [CGPoint], width: CGFloat, in ctx: CGContext) {
 
 // ---------- 사라지는 펜 (레이저) ----------
 // rgb: 그은 때의 색 — 꼬리가 사라지는 동안 펜 색을 바꿔도 이 획은 자기 색 그대로 (nil이면 그리는 쪽이 넘긴 기본색)
-struct LaserPt { var p: CGPoint; var t: TimeInterval; var hue: CGFloat?; var rgb: UInt32? = nil }
+// glow: 무지개 레이저의 둘레 빛 색조 — 획을 시작한 색을 모든 점이 함께 들고 있다. 줄어드는 동안 사라진 앞쪽 점을 목록에서 지워도
+// 빛 색이 바뀌지 않게 하려는 것 (첫 점에서 읽으면 줄어들면서 빛 색이 번쩍이며 바뀌었다).
+struct LaserPt { var p: CGPoint; var t: TimeInterval; var hue: CGFloat?; var rgb: UInt32? = nil; var glow: CGFloat? = nil }
 
 func laserLife(_ t: TimeInterval, _ now: TimeInterval) -> CGFloat {
     let age = now - t
@@ -140,7 +142,7 @@ func smoothLaser(_ s: [LaserPt], step: CGFloat = 5, force: Bool = false) -> [Las
                     return h < 0 ? h + 360 : h
                 }()
                 out.append(LaserPt(p: CGPoint(x: c(p0.x, p1.x, p2.x, p3.x), y: c(p0.y, p1.y, p2.y, p3.y)),
-                                   t: s[i].t + (s[i + 1].t - s[i].t) * Double(t), hue: hue, rgb: s[i].rgb))
+                                   t: s[i].t + (s[i + 1].t - s[i].t) * Double(t), hue: hue, rgb: s[i].rgb, glow: s[i].glow))
             }
         }
         out.append(s[i + 1])
@@ -156,14 +158,14 @@ func rainbowize(_ raw: [LaserPt], from hue: CGFloat) -> [LaserPt] {
         if i > 0 {
             let a = raw[i - 1].p
             let n = Int(hypot(pt.p.x - a.x, pt.p.y - a.y) / 5)
-            if n > 1 { for k in 1..<n { let t = CGFloat(k) / CGFloat(n); pts.append(LaserPt(p: CGPoint(x: a.x + (pt.p.x - a.x) * t, y: a.y + (pt.p.y - a.y) * t), t: pt.t, hue: nil, rgb: pt.rgb)) } }
+            if n > 1 { for k in 1..<n { let t = CGFloat(k) / CGFloat(n); pts.append(LaserPt(p: CGPoint(x: a.x + (pt.p.x - a.x) * t, y: a.y + (pt.p.y - a.y) * t), t: pt.t, hue: nil, rgb: pt.rgb, glow: pt.glow)) } }
         }
         pts.append(pt)
     }
     var h = hue
     return pts.enumerated().map { i, pt in
         if i > 0 { h = (h + hypot(pt.p.x - pts[i - 1].p.x, pt.p.y - pts[i - 1].p.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
-        return LaserPt(p: pt.p, t: pt.t, hue: h, rgb: pt.rgb)
+        return LaserPt(p: pt.p, t: pt.t, hue: h, rgb: pt.rgb, glow: hue)
     }
 }
 
@@ -254,7 +256,7 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
     // 한 번 긋는 동안 빛 색은 그대로이고, 다음 획은 이어지는 색에서 시작하므로 선을 그을 때마다 빛 색이 바뀌어 무지개를 느끼게 한다.
     // 빛을 점마다 다른 색으로 칠하면 겹치거나 되돌아오는 곳에서 나중 색이 앞 빛을 덮고 경계가 잘려 보였다.
     func renderRainbow(_ s: [LaserPt]) {
-        let glow = colorOf(s[0])
+        let glow = s[0].glow.map(hueColor) ?? colorOf(s[0])
         for (mul, alpha, mix) in LASER_GLOW_LAYERS {
             if mix > 0 {                                   // 흰 심
                 ctx.setAlpha(alpha * mix)

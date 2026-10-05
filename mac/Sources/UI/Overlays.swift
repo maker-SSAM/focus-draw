@@ -8,7 +8,7 @@ extension DrawController {
         let now = Date.timeIntervalSinceReferenceDate
         var strokes = laser
         if let l = laserLive, !l.isEmpty {
-            strokes.append(mode == .free ? l : l.map { LaserPt(p: $0.p, t: now, hue: $0.hue, rgb: $0.rgb) })
+            strokes.append(mode == .free ? l : l.map { LaserPt(p: $0.p, t: now, hue: $0.hue, rgb: $0.rgb, glow: $0.glow) })
         }
         if !strokes.isEmpty {
             renderLaser(strokes, baseColor: color(rgb).cgColor, width: laserWidth, now: now, in: ctx)
