@@ -28,6 +28,9 @@ enum PenKind { case normal, laser, rainbow }
     // activePen대로 그려지고(hues·points 길이가 어긋나 죽는 일이 없다), 새 pen은 다음 획부터 적용된다.
     var activePen: PenKind = .normal
     var rainbowHue: CGFloat = 0
+    // 마지막으로 고른 "색"이 무지개(S)인가. A(레이저)를 눌러도 유지되어 무지개 레이저가 되고, 숫자키를 누르면 풀린다.
+    var rainbowColor = false
+    var activeLaserRainbow = false   // 누른 순간에 잠근 값 (긋는 도중 키를 바꿔도 이번 획은 그대로)
     var board = 0 // 0 = 투명(Q), 1~3 = W/E/R
 
     // 긋는 중
@@ -133,6 +136,7 @@ enum PenKind { case normal, laser, rainbow }
         rgb = config.drawColor; alpha = 1
         penStep = config.drawStep; eraserStep = config.eraserStep
         pen = .normal
+        rainbowColor = false
     }
 
     func expireUndoIfNeeded() { cancelExpiry(); model.expireIfNeeded() }
@@ -218,6 +222,7 @@ enum PenKind { case normal, laser, rainbow }
         moveMouse(p)
         start = p; lastPoint = p
         activePen = pen
+        activeLaserRainbow = pen == .laser && rainbowColor
         if right { rightDown = true }
         if right || e.modifierFlags.contains(.option) {
             // 지우개: 오른쪽 버튼으로 문지르기 (트랙패드에서는 ⌥ Option을 누른 채 끌기)
@@ -257,13 +262,21 @@ enum PenKind { case normal, laser, rainbow }
             let now = Date.timeIntervalSinceReferenceDate
             if mode == .free {
                 if laserLive!.isEmpty {
-                    laserLive = [LaserPt(p: start, t: now, hue: nil, rgb: rgb)]   // 시작점을 첫 이동 시각으로
+                    laserLive = [LaserPt(p: start, t: now, hue: activeLaserRainbow ? rainbowHue : nil, rgb: rgb)]   // 시작점을 첫 이동 시각으로
                     startLaserTimer()
+                    // 무지개 레이저 커서의 둘레 빛은 이 획이 시작하는 색으로 맞춘다. 손을 뗄 때 바꾸면 방금 그은 선 끝에서 빛 색이 깜빡여 보였다.
+                    if activeLaserRainbow { updateCursor() }
                 }
-                laserLive!.append(LaserPt(p: p, t: now, hue: nil, rgb: rgb))
+                var hue: CGFloat? = nil
+                if activeLaserRainbow { // 무지개 레이저: 무지개 펜과 같은 빠르기로 색이 돈다
+                    rainbowHue = (rainbowHue + hypot(p.x - lastPoint.x, p.y - lastPoint.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360)
+                    hue = rainbowHue
+                }
+                laserLive!.append(LaserPt(p: p, t: now, hue: hue, rgb: rgb))
             } else {
                 let end = shapeEnd(p, e.modifierFlags)
                 laserLive = laserShape(mode, start, end, width: laserWidth, t: now, rgb: rgb)
+                if activeLaserRainbow { laserLive = rainbowize(laserLive!, from: rainbowHue) }
                 // 미리보기도 다시 그리는 박자(레이저 타이머)가 있어야 지난 미리보기가 지워지고 새 모양이 그려진다.
                 // (없으면 커서 둘레처럼 다른 이유로 다시 그려지는 곳에만 조각조각 보였다)
                 startLaserTimer()
@@ -307,6 +320,7 @@ enum PenKind { case normal, laser, rainbow }
             // 도형은 손을 뗀 순간부터 함께 사라진다
             let now = Date.timeIntervalSinceReferenceDate
             if !pts.isEmpty { laser.append(mode == .free ? pts : pts.map { LaserPt(p: $0.p, t: now, hue: $0.hue, rgb: $0.rgb) }) }
+            if activeLaserRainbow, mode != .free, let h = pts.last?.hue { rainbowHue = h } // 다음 획은 이어서 (무지개 펜 도형과 같다)
             laserLive = nil
             startLaserTimer()
             return

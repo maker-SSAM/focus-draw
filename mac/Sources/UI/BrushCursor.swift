@@ -13,13 +13,13 @@ extension DrawController {
             img = eraserRingImage(diameter: d, ring: currentEraserRing)
         } else if pen == .laser {
             d = max(penPx(penStep), LASER_MIN_WIDTH) * 3
-            img = laserCursorImage(side: d, base: color(rgb))
+            img = laserCursorImage(side: d, base: color(rgb), rainbowGlowHue: rainbowColor ? rainbowHue : nil)
         } else {
             d = penPx(penStep)
             // 붓 동그라미의 진하기 = 색별 진하기 × 전체 진하기: 지금 그으면 나올 선과 같은 모양
             let a = alpha * CGFloat(config.drawOpacity) / 100
-            let fill = pen == .rainbow ? NSColor(cgColor: hueColor(rainbowHue))!.withAlphaComponent(a) : color(rgb, a)
-            img = brushCursorImage(diameter: d, fill: fill)
+            // 무지개 펜은 점 자체를 무지개 그라데이션으로 칠해 한눈에 무지개 모드인 줄 알게 한다 (가만히 있다, 타이머 없음)
+            img = pen == .rainbow ? rainbowDotImage(diameter: d, alpha: a) : brushCursorImage(diameter: d, fill: color(rgb, a))
         }
         surface.invalidate(cursorRect)
         cursorImage = img
@@ -79,14 +79,50 @@ func eraserRingImage(diameter d: CGFloat, ring: NSColor) -> NSImage {
     }
 }
 
-func laserCursorImage(side d: CGFloat, base: NSColor) -> NSImage {
+// 원 하나를 무지개 부채꼴로 칠한다 (빨강이 위, 시계 방향). 부채꼴끼리 겹쳐도 진해지지 않게 불투명하게 칠한 층을 alpha로 한 번에 얹는다.
+func fillRainbowDisc(_ r: NSRect, alpha: CGFloat, mix: CGFloat = 0) {
+    guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+    ctx.saveGState()
+    ctx.setAlpha(alpha)
+    ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+    ctx.addEllipse(in: r)
+    ctx.clip()
+    let c = CGPoint(x: r.midX, y: r.midY), rad = r.width / 2 + 1
+    let n = 72
+    for i in 0..<n {
+        let a0 = .pi / 2 - CGFloat(i) / CGFloat(n) * 2 * .pi, a1 = .pi / 2 - CGFloat(i + 1) / CGFloat(n) * 2 * .pi - 0.01
+        ctx.setFillColor(tint(hueColor(CGFloat(i) * 360 / CGFloat(n)), mix))
+        ctx.move(to: c)
+        ctx.addArc(center: c, radius: rad, startAngle: a0, endAngle: a1, clockwise: true)
+        ctx.closePath()
+        ctx.fillPath()
+    }
+    ctx.endTransparencyLayer()
+    ctx.restoreGState()
+}
+
+func rainbowDotImage(diameter d: CGFloat, alpha: CGFloat) -> NSImage {
+    let side = max(ceil(d) + 2, 4)
+    return NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
+        fillRainbowDisc(NSRect(x: (side - d) / 2, y: (side - d) / 2, width: d, height: d), alpha: alpha)
+        return true
+    }
+}
+
+func laserCursorImage(side d: CGFloat, base: NSColor, rainbowGlowHue: CGFloat? = nil) -> NSImage {
     // d = 가장 바깥 번짐의 지름. 그림 크기는 그보다 2pt 크게 잡아야 바깥 원이 사각형으로 잘리지 않는다
     let side = ceil(d) + 2
     return NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
         for (mul, a, mix) in LASER_GLOW_LAYERS {
             let dd = d / 3 * mul
+            let r = NSRect(x: (side - dd) / 2, y: (side - dd) / 2, width: dd, height: dd)
+            if let h = rainbowGlowHue { // 무지개 레이저 (S 다음 A): 둘레 빛은 다음 획이 시작할 색, 본체는 무지개 원판, 흰 심
+                if mix == 0 && a < 1 { NSColor(cgColor: hueColor(h))!.withAlphaComponent(a).setFill(); NSBezierPath(ovalIn: r).fill() }
+                else { fillRainbowDisc(r, alpha: a, mix: mix) }
+                continue
+            }
             NSColor(cgColor: tint(base.cgColor, mix))!.withAlphaComponent(a).setFill()
-            NSBezierPath(ovalIn: NSRect(x: (side - dd) / 2, y: (side - dd) / 2, width: dd, height: dd)).fill()
+            NSBezierPath(ovalIn: r).fill()
         }
         return true
     }

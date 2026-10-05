@@ -134,7 +134,10 @@ func smoothLaser(_ s: [LaserPt], step: CGFloat = 5, force: Bool = false) -> [Las
                 }
                 let hue: CGFloat? = {
                     guard let h1 = s[i].hue, let h2 = s[i + 1].hue else { return s[i].hue }
-                    return h1 + (h2 - h1) * t
+                    var d = h2 - h1                        // 359° → 1°는 2°만 간다 (한 바퀴 거꾸로 돌지 않게)
+                    if d > 180 { d -= 360 } else if d < -180 { d += 360 }
+                    let h = (h1 + d * t).truncatingRemainder(dividingBy: 360)
+                    return h < 0 ? h + 360 : h
                 }()
                 out.append(LaserPt(p: CGPoint(x: c(p0.x, p1.x, p2.x, p3.x), y: c(p0.y, p1.y, p2.y, p3.y)),
                                    t: s[i].t + (s[i + 1].t - s[i].t) * Double(t), hue: hue, rgb: s[i].rgb))
@@ -143,6 +146,25 @@ func smoothLaser(_ s: [LaserPt], step: CGFloat = 5, force: Bool = false) -> [Las
         out.append(s[i + 1])
     }
     return out
+}
+
+// 무지개 레이저 도형: 처음 점부터 그은 거리만큼 색이 돈다 (무지개 펜과 같은 빠르기)
+func rainbowize(_ raw: [LaserPt], from hue: CGFloat) -> [LaserPt] {
+    // 사각형·직선·화살표는 꼭짓점만 있어서 변 하나가 한 색이 되고 모서리에서 색이 뚝 바뀐다 → 변을 따라 약 5pt마다 점을 채워 색이 고르게 돌게 한다
+    var pts: [LaserPt] = []
+    for (i, pt) in raw.enumerated() {
+        if i > 0 {
+            let a = raw[i - 1].p
+            let n = Int(hypot(pt.p.x - a.x, pt.p.y - a.y) / 5)
+            if n > 1 { for k in 1..<n { let t = CGFloat(k) / CGFloat(n); pts.append(LaserPt(p: CGPoint(x: a.x + (pt.p.x - a.x) * t, y: a.y + (pt.p.y - a.y) * t), t: pt.t, hue: nil, rgb: pt.rgb)) } }
+        }
+        pts.append(pt)
+    }
+    var h = hue
+    return pts.enumerated().map { i, pt in
+        if i > 0 { h = (h + hypot(pt.p.x - pts[i - 1].p.x, pt.p.y - pts[i - 1].p.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
+        return LaserPt(p: pt.p, t: pt.t, hue: h, rgb: pt.rgb)
+    }
 }
 
 // 레이저로 그리는 도형의 점. 원·물결은 곡선이라 점 사이를 부드럽게 이어 다각형처럼 보이지 않게 하고, 모서리가 있는 직선·사각형·화살표는 그대로 둔다.
@@ -167,7 +189,9 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
     // 한 획을 "리본"(점마다 굵기가 다른 띠)으로 만들어 한 번에 채운다. 선분마다 따로 그으면 이음매가 점처럼 보이고(둥근 끝이 겹침)
     // 느리다. 층 사이는 투명 층(transparency layer)을 쓰지 않고 차례로 얹는다 — 층마다 큰 그림을 만드는 비용이 가장 컸다.
     // 색이 점마다 달라지는 획(색조·획마다 다른 색)만 색이 같은 구간별로 나눈다.
-    func ribbon(_ s: [LaserPt], _ lo: Int, _ hi: Int, _ mul: CGFloat) -> CGPath {
+    // first/last: 이 구간이 획의 맨 앞·맨 끝인가 (둥근 끝은 거기에만). 색이 바뀌는 이음매에서는 앞 구간 쪽으로 0.75pt 겹쳐
+    // 가는 틈이 보이지 않게 한다 (겹친 띠는 아주 얇아 진하기 차이가 눈에 띄지 않는다).
+    func ribbon(_ s: [LaserPt], _ lo: Int, _ hi: Int, _ mul: CGFloat, first: Bool, last: Bool) -> CGPath {
         let path = CGMutablePath()
         // 보이는 점만 (사라진 꼬리 앞쪽 점과 겹친 점은 뺀다)
         var idx: [Int] = []
@@ -189,11 +213,12 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
         }
         var prevDir: CGPoint?
         for n in 1..<idx.count {
-            let a = s[idx[n - 1]].p, b = s[idx[n]].p
-            let dx = b.x - a.x, dy = b.y - a.y
+            let a0 = s[idx[n - 1]].p, b = s[idx[n]].p
+            let dx = b.x - a0.x, dy = b.y - a0.y
             let len = hypot(dx, dy)
             let ux = dx / len, uy = dy / len
             let ha = half(idx[n - 1]), hb = half(idx[n])
+            let a = (n == 1 && !first) ? CGPoint(x: a0.x - ux * 0.75, y: a0.y - uy * 0.75) : a0
             path.move(to: CGPoint(x: a.x - uy * ha, y: a.y + ux * ha))
             path.addLine(to: CGPoint(x: b.x - uy * hb, y: b.y + ux * hb))
             path.addLine(to: CGPoint(x: b.x + uy * hb, y: b.y - ux * hb))
@@ -201,17 +226,66 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
             path.closeSubpath()
             if let d = prevDir {
                 let turn = abs(atan2(d.x * uy - d.y * ux, d.x * ux + d.y * uy))   // 꺾인 각도
-                if ha * turn > 0.4 { dot(idx[n - 1]) }
+                if ha * turn > 2 { dot(idx[n - 1]) }   // 크게 꺾인 곳(모서리)은 둥글게
+                else if ha * turn > 0.1 {
+                    // 조금 꺾인 곳은 앞뒤 사각형 사이 바깥쪽 틈(쐐기)만 메운다 — 원보다 훨씬 가볍다. 띠와 같은 감는 방향(시계 방향)으로 넣는다.
+                    for side: CGFloat in [1, -1] {
+                        let p = a0
+                        let q1 = CGPoint(x: p.x - d.y * ha * side, y: p.y + d.x * ha * side)
+                        let q2 = CGPoint(x: p.x - uy * ha * side, y: p.y + ux * ha * side)
+                        let area = (q1.x - p.x) * (q2.y - p.y) - (q2.x - p.x) * (q1.y - p.y)
+                        guard abs(area) > 0.0001 else { continue }
+                        path.move(to: p)
+                        if area < 0 { path.addLine(to: q1); path.addLine(to: q2) } else { path.addLine(to: q2); path.addLine(to: q1) }
+                        path.closeSubpath()
+                    }
+                }
             }
             prevDir = CGPoint(x: ux, y: uy)
         }
-        dot(idx[0])
-        dot(idx[idx.count - 1])
+        if first { dot(idx[0]) }
+        if last { dot(idx[idx.count - 1]) }
         return path
     }
+    // 무지개 레이저(점마다 색이 다른 획): 색이 바뀔 때마다 띠를 나누면 이음매마다 줄무늬가 보이므로,
+    // ① 빛·본체의 모양을 흰색 한 장으로 그리고 ② 그 위에 색 조각을 "모양 안에만"(sourceAtop) 불투명하게 덮어 색을 입힌 뒤
+    // ③ 흰 심은 흰빛을 얹어 만든다 (색 c 위에 흰색을 진하기 mix로 얹으면 tint(c, mix)와 같다).
+    // 무지개 레이저(점마다 색이 다른 획): 본체만 무지개로 돌고, 둘레 빛은 그 획의 **시작점 색** 한 가지로 고정한다 (선생님 결정, 2026-10-06).
+    // 한 번 긋는 동안 빛 색은 그대로이고, 다음 획은 이어지는 색에서 시작하므로 선을 그을 때마다 빛 색이 바뀌어 무지개를 느끼게 한다.
+    // 빛을 점마다 다른 색으로 칠하면 겹치거나 되돌아오는 곳에서 나중 색이 앞 빛을 덮고 경계가 잘려 보였다.
+    func renderRainbow(_ s: [LaserPt]) {
+        let glow = colorOf(s[0])
+        for (mul, alpha, mix) in LASER_GLOW_LAYERS {
+            if mix > 0 {                                   // 흰 심
+                ctx.setAlpha(alpha * mix)
+                ctx.setFillColor(CGColor(gray: 1, alpha: 1))
+                ctx.addPath(ribbon(s, 0, s.count - 1, mul, first: true, last: true))
+                ctx.fillPath(using: .winding)
+            } else if alpha < 1 {                          // 둘레 빛: 시작점 색
+                ctx.setAlpha(alpha)
+                ctx.setFillColor(glow)
+                ctx.addPath(ribbon(s, 0, s.count - 1, mul, first: true, last: true))
+                ctx.fillPath(using: .winding)
+            } else {                                       // 본체: 색이 같은 구간별로. 불투명이라 구간 양끝을 둥글게 겹쳐도 진해지지 않는다
+                ctx.setAlpha(1)
+                var lo = 0
+                while lo < s.count - 1 {
+                    var hi = lo + 1
+                    let k = colorKey(s[lo + 1])
+                    while hi + 1 < s.count && colorKey(s[hi + 1]) == k { hi += 1 }
+                    ctx.setFillColor(colorOf(s[lo + 1]))
+                    ctx.addPath(ribbon(s, lo, hi, mul, first: true, last: true))
+                    ctx.fillPath(using: .winding)
+                    lo = hi
+                }
+            }
+        }
+    }
+    let rainbow = strokes.filter { $0.count > 1 && $0.contains { $0.hue != nil } }
+    let plain = strokes.filter { !($0.count > 1 && $0.contains { $0.hue != nil }) }
     for (mul, alpha, mix) in LASER_GLOW_LAYERS {
         ctx.setAlpha(alpha)
-        for s in strokes {
+        for s in plain {
             if s.count == 1 {
                 let life = laserLife(s[0].t, now)
                 let d = width * mul * life
@@ -225,12 +299,13 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
                 let k = colorKey(s[lo + 1])
                 while hi + 1 < s.count && colorKey(s[hi + 1]) == k { hi += 1 }
                 ctx.setFillColor(tint(colorOf(s[lo + 1]), mix))
-                ctx.addPath(ribbon(s, lo, hi, mul))
+                ctx.addPath(ribbon(s, lo, hi, mul, first: lo == 0, last: hi == s.count - 1))
                 ctx.fillPath(using: .winding)
                 lo = hi
             }
         }
     }
+    for s in rainbow { renderRainbow(s) }
 }
 
 // 판에 그림을 합치는 순서: 칠판 색을 깔고, 잉크는 층 하나로 묶어 전체 진하기를 한 번에 곱한다.

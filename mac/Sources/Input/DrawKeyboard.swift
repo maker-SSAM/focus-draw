@@ -22,7 +22,7 @@ extension DrawController {
         case 51, 117: clearAll()                                   // delete / 앞으로 지우기
         case 6, 7, 8: if !isRepeat { held.insert(k) }              // Z X C: 누르고 있는 동안 도형
         case 0: pen = .laser; updateCursor()                       // A
-        case 1: pen = .rainbow; updateCursor()                     // S
+        case 1: pen = .rainbow; rainbowColor = true; updateCursor() // S (이 뒤에 A를 누르면 무지개 레이저)
         case 12: board = 0; surface.invalidateAll(); updateCursor()        // Q
         case 13: board = 1; surface.invalidateAll(); updateCursor()        // W
         case 14: board = 2; surface.invalidateAll(); updateCursor()        // E
@@ -35,6 +35,7 @@ extension DrawController {
                     rgb = config.drawKeyColors[d - 1]; alpha = CGFloat(config.drawKeyAlphas[d - 1]) / 100
                 }
                 pen = .normal
+                rainbowColor = false
                 updateCursor()
             }
         }

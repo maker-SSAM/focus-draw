@@ -64,6 +64,109 @@ import AppKit
             let rep = NSBitmapImageRep(cgImage: all)
             try? rep.representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("laser-now.png"))
         }
+        // 무지개: 자유선 레이저(보통·가장 굵게), 도형, 커서(무지개 펜 점·무지개 레이저)
+        do {
+            let W = 520.0, H = 420.0
+            let ctx = CGContext(data: nil, width: Int(W * scale), height: Int(H * scale), bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.scaleBy(x: scale, y: scale)
+            ctx.setFillColor(NSColor(white: 0.16, alpha: 1).cgColor); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+            func free(_ y: CGFloat) -> [LaserPt] {
+                var h: CGFloat = 0
+                var out: [LaserPt] = []
+                for i in 0..<70 {
+                    let u = CGFloat(i) / 69
+                    let p = CGPoint(x: 30 + u * 460, y: y + sin(u * 6.28) * 30)
+                    if let l = out.last { h = (h + hypot(p.x - l.p.x, p.y - l.p.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
+                    out.append(LaserPt(p: p, t: Double(i) / 70, hue: h, rgb: nil))
+                }
+                return out
+            }
+            renderLaser([free(360)], baseColor: color(0xFF0000).cgColor, width: width, now: 1.0, in: ctx)
+            renderLaser([free(270)], baseColor: color(0xFF0000).cgColor, width: max(penPx(STEP_MAX), LASER_MIN_WIDTH), now: 1.0, in: ctx)
+            let shapes = [rainbowize(laserShape(.rect, CGPoint(x: 40, y: 120), CGPoint(x: 160, y: 190), width: width, t: 0, rgb: nil), from: 0),
+                          rainbowize(laserShape(.ellipse, CGPoint(x: 190, y: 120), CGPoint(x: 330, y: 190), width: width, t: 0, rgb: nil), from: 120),
+                          rainbowize(laserShape(.wave, CGPoint(x: 360, y: 130), CGPoint(x: 490, y: 180), width: width, t: 0, rgb: nil), from: 240)]
+            renderLaser(shapes, baseColor: color(0xFF0000).cgColor, width: width, now: 0.1, in: ctx)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: false)
+            for (i, img) in [rainbowDotImage(diameter: penPx(5), alpha: 1), rainbowDotImage(diameter: penPx(STEP_MAX), alpha: 1),
+                             laserCursorImage(side: width * 3, base: .red, rainbowGlowHue: 200),
+                             laserCursorImage(side: max(penPx(STEP_MAX), LASER_MIN_WIDTH) * 3, base: .red, rainbowGlowHue: 200)].enumerated() {
+                let cx = 70 + CGFloat(i) * 120
+                img.draw(in: NSRect(x: cx - img.size.width / 2, y: 55 - img.size.height / 2, width: img.size.width, height: img.size.height))
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            if let img = ctx.makeImage() {
+                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("rainbow.png"))
+            }
+        }
+        // 겹쳐 긋기: 같은 자리를 좌우로 여러 번 오가는 획과, 고리처럼 자기 자신을 가로지르는 획 (보통 레이저·무지개 레이저)
+        do {
+            let W = 520.0, H = 300.0
+            let ctx = CGContext(data: nil, width: Int(W * scale), height: Int(H * scale), bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.scaleBy(x: scale, y: scale)
+            ctx.setFillColor(NSColor(white: 0.16, alpha: 1).cgColor); ctx.fill(CGRect(x: 0, y: 0, width: W, height: H))
+            func zig(_ x0: CGFloat, _ y: CGFloat) -> [LaserPt] {
+                var out: [LaserPt] = []
+                for i in 0..<160 {
+                    let u = CGFloat(i) / 40                       // 4번 오감
+                    let f = u.truncatingRemainder(dividingBy: 2)
+                    let x = x0 + (f < 1 ? f : 2 - f) * 180
+                    out.append(LaserPt(p: CGPoint(x: x, y: y + CGFloat(i) * 0.15), t: Double(i) / 160, hue: nil, rgb: nil))
+                }
+                return out
+            }
+            func loop(_ cx: CGFloat, _ cy: CGFloat) -> [LaserPt] {
+                (0..<120).map { i in
+                    let u = CGFloat(i) / 119 * 2.2 * .pi
+                    return LaserPt(p: CGPoint(x: cx + CGFloat(i) * 0.9 - 50 + cos(u) * 45, y: cy + sin(u) * 45), t: Double(i) / 120, hue: nil, rgb: nil)
+                }
+            }
+            func hue(_ s: [LaserPt]) -> [LaserPt] {
+                var h: CGFloat = 0
+                return s.enumerated().map { i, pt in
+                    if i > 0 { h = (h + hypot(pt.p.x - s[i - 1].p.x, pt.p.y - s[i - 1].p.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
+                    return LaserPt(p: pt.p, t: pt.t, hue: h, rgb: nil)
+                }
+            }
+            let big = max(penPx(8), LASER_MIN_WIDTH)
+            renderLaser([zig(40, 225)], baseColor: color(0xFF0000).cgColor, width: big, now: 1.0, in: ctx)
+            renderLaser([hue(zig(290, 225))], baseColor: color(0xFF0000).cgColor, width: big, now: 1.0, in: ctx)
+            renderLaser([loop(130, 80)], baseColor: color(0xFF0000).cgColor, width: big, now: 1.0, in: ctx)
+            renderLaser([hue(loop(380, 80))], baseColor: color(0xFF0000).cgColor, width: big, now: 1.0, in: ctx)
+            // 무지개 레이저로 선 4개를 차례로 겹쳐 긋기 (색은 획마다 이어진다 → 둘레 빛이 획마다 다르다)
+            do {
+                let ctx2 = CGContext(data: nil, width: Int(W * scale), height: Int(H * scale), bitsPerComponent: 8, bytesPerRow: 0,
+                                     space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                ctx2.scaleBy(x: scale, y: scale)
+                ctx2.setFillColor(NSColor(white: 0.16, alpha: 1).cgColor); ctx2.fill(CGRect(x: 0, y: 0, width: W, height: H))
+                var h: CGFloat = 0
+                var strokes: [[LaserPt]] = []
+                let paths: [[CGPoint]] = [
+                    (0..<60).map { CGPoint(x: 40 + CGFloat($0) * 7, y: 150 + sin(CGFloat($0) / 9) * 60) },
+                    (0..<60).map { CGPoint(x: 80 + CGFloat($0) * 6, y: 60 + CGFloat($0) * 3.5) },
+                    (0..<60).map { CGPoint(x: 460 - CGFloat($0) * 6, y: 70 + CGFloat($0) * 2.8) },
+                    (0..<70).map { i in let u = CGFloat(i) / 69 * 2 * .pi; return CGPoint(x: 260 + cos(u) * 70, y: 150 + sin(u) * 70) },
+                ]
+                for (k, ps) in paths.enumerated() {
+                    var st: [LaserPt] = []
+                    for (i, p) in ps.enumerated() {
+                        if i > 0 { h = (h + hypot(p.x - ps[i - 1].x, p.y - ps[i - 1].y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
+                        st.append(LaserPt(p: p, t: Double(k) * 0.05 + Double(i) * 0.002, hue: h, rgb: nil))
+                    }
+                    strokes.append(st)
+                }
+                renderLaser(strokes, baseColor: color(0xFF0000).cgColor, width: big, now: 0.4, in: ctx2)
+                if let img = ctx2.makeImage() {
+                    try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("rainbow-strokes.png"))
+                }
+            }
+            if let img = ctx.makeImage() {
+                try? NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:])?.write(to: dir.appendingPathComponent("overlap.png"))
+            }
+        }
         // 속도: 120점(1초) 획 하나를 그리는 데 걸리는 시간 (움직이는 동안 매 프레임 불린다)
         let ctx2 = CGContext(data: nil, width: 3024, height: 1964, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
         ctx2.scaleBy(x: 2, y: 2)
@@ -79,7 +182,21 @@ import AppKit
             ms.append((CFAbsoluteTimeGetCurrent() - t) * 1000)
         }
         ms.sort()
-        try? String(format: "renderLaser 120점 획(상자 1100×240pt만): p50=%.2fms p95=%.2fms max=%.2fms\n", ms[30], ms[57], ms[59]).write(to: dir.appendingPathComponent("laser-speed.txt"), atomically: true, encoding: .utf8)
+        var ms2: [Double] = []
+        var hh: CGFloat = 0
+        let longR = long.enumerated().map { i, pt -> LaserPt in
+            if i > 0 { hh = (hh + hypot(pt.p.x - long[i - 1].p.x, pt.p.y - long[i - 1].p.y) * 360 / RAINBOW_CYCLE_PX).truncatingRemainder(dividingBy: 360) }
+            return LaserPt(p: pt.p, t: pt.t, hue: hh, rgb: nil)
+        }
+        for _ in 0..<30 {
+            let t = CFAbsoluteTimeGetCurrent()
+            ctx2.saveGState(); ctx2.clip(to: CGRect(x: 100, y: 380, width: 1100, height: 240))
+            renderLaser([longR], baseColor: color(0xFF0000).cgColor, width: width, now: 1.0, in: ctx2)
+            ctx2.restoreGState()
+            ms2.append((CFAbsoluteTimeGetCurrent() - t) * 1000)
+        }
+        ms2.sort()
+        try? String(format: "renderLaser 120점 획(상자 1100×240pt만): p50=%.2fms p95=%.2fms max=%.2fms / 무지개 p50=%.2fms max=%.2fms\n", ms[30], ms[57], ms[59], ms2[15], ms2[29]).write(to: dir.appendingPathComponent("laser-speed.txt"), atomically: true, encoding: .utf8)
         NSApp.terminate(nil)
     }
 }

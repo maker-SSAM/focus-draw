@@ -186,6 +186,28 @@ extension Golden {
                 }
             }
         }
+        // 무지개: S 다음 A로 긋는 무지개 레이저(자유선·사각형·원), 무지개 펜 점과 무지개 레이저 커서
+        addImage("laser-rainbow", note: "무지개 레이저") {
+            let s = Sim(size: small)
+            let w = max(penPx(5), LASER_MIN_WIDTH)
+            let free = rainbowize(laserPoints(s.wiggle(30, 60, 260, amp: 20), freehand: true), from: 0)
+            let shapes = [rainbowize(laserShape(.rect, s.P(30, 110), s.P(140, 175), width: w, t: 0, rgb: nil), from: 60),
+                          rainbowize(laserShape(.ellipse, s.P(170, 110), s.P(290, 175), width: w, t: 0, rgb: nil), from: 200)]
+            return renderScene(items: [], board: nil, opacity: 100, size: small, scale: 1,
+                               laser: LaserScene(strokes: [free] + shapes, color: color(0xFF0000).cgColor, width: w), now: 0.3)
+        }
+        addImage("cursor-rainbow") {
+            bitmap(CGSize(width: 360, height: 130)) { ctx in
+                withNS(ctx) {
+                    let imgs = [rainbowDotImage(diameter: penPx(5), alpha: 1), rainbowDotImage(diameter: penPx(10), alpha: 1),
+                                laserCursorImage(side: max(penPx(10), LASER_MIN_WIDTH) * 3, base: color(0xFF0000), rainbowGlowHue: 200)]
+                    for (i, img) in imgs.enumerated() {
+                        let cx = 65 + CGFloat(i) * 115
+                        img.draw(in: NSRect(x: cx - img.size.width / 2, y: 65 - img.size.height / 2, width: img.size.width, height: img.size.height))
+                    }
+                }
+            }
+        }
         addImage("click-rings-f0-10-20") { // 클릭 링 0·10·20프레임 (강조 원 크기 130, 두께 7, 진하기 50%)
             bitmap(CGSize(width: 3 * 160, height: 160)) { ctx in
                 for (i, frame) in [0, 10, 20].enumerated() {

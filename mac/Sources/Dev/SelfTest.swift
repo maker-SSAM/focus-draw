@@ -132,6 +132,27 @@ import AppKit
             check("레이저 도형: 미리보기를 다시 그리는 타이머가 돈다", c.laserTimer != nil && (c.laserLive?.count ?? 0) >= 2)
             c.up(p1)
             c.held.remove(6)
+            c.mode = .free
+            c.laserTimer?.invalidate(); c.laserTimer = nil
+            c.laser = []
+            // 무지개: S 다음 A = 무지개 레이저(점마다 색), 숫자키를 누르면 그 색의 일반 펜으로 돌아가고 무지개가 풀린다
+            c.handleKey(1, [], isRepeat: false, source: "hk")  // S
+            c.handleKey(0, [], isRepeat: false, source: "hk")  // A
+            c.down(p0, mouse(.leftMouseDown, p0), right: false)
+            let p2 = P(700, 500)
+            c.drag(p1, mouse(.leftMouseDragged, p1)); c.drag(p2, mouse(.leftMouseDragged, p2))
+            let hues = (c.laserLive ?? []).compactMap(\.hue)
+            check("무지개 레이저: S 다음 A로 그으면 점마다 색이 돈다", c.pen == .laser && hues.count == 3 && hues.last != hues.first, "\(hues)")
+            c.up(p2)
+            c.handleKey(20, [], isRepeat: false, source: "hk") // 3
+            check("무지개 레이저 다음 숫자키: 그 색의 일반 펜, 무지개 풀림", c.pen == .normal && !c.rainbowColor)
+            c.handleKey(0, [], isRepeat: false, source: "hk")  // A → 이제는 3번 색 레이저
+            c.down(p0, mouse(.leftMouseDown, p0), right: false)
+            c.drag(p1, mouse(.leftMouseDragged, p1))
+            check("숫자키 다음 A: 색 레이저(무지개 아님)", (c.laserLive ?? []).allSatisfy { $0.hue == nil })
+            c.up(p1)
+            c.laserTimer?.invalidate(); c.laserTimer = nil
+            c.laser = []
             c.handleKey(18, [], isRepeat: false, source: "hk") // 1: 일반 펜으로 되돌림
         }
 
