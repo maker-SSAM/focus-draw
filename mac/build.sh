@@ -37,7 +37,7 @@ mkdir -p build "$APP/Contents/MacOS" "$APP/Contents/Resources"
 # 애플 실리콘(M1~)과 인텔 맥 둘 다에서 돌도록 두 번 만들어 하나로 합친다
 BINS=()
 for arch in $ARCHS; do
-  swiftc -O -swift-version 5 -target "$arch-apple-macos13.0" ${FLAGS[@]+"${FLAGS[@]}"} $(find Sources -name "*.swift" | sort) -o "$STAGE/FocusDraw-$arch"
+  swiftc -O -swift-version 5 -target "$arch-apple-macos15.0" ${FLAGS[@]+"${FLAGS[@]}"} $(find Sources -name "*.swift" | sort) -o "$STAGE/FocusDraw-$arch"
   BINS+=("$STAGE/FocusDraw-$arch")
 done
 lipo -create -output "$APP/Contents/MacOS/FocusDraw" "${BINS[@]}"
@@ -134,7 +134,7 @@ if [ "$MODE" = --test ]; then
   # 인텔 조각은 Rosetta가 이미 깔려 있을 때만 (Rosetta 설치는 선생님 결정)
   INTEL="건너뜀"
   if [ -z "${FD_HEADLESS:-}" ] && [ "$(uname -m)" = arm64 ] && arch -x86_64 /usr/bin/true 2>/dev/null; then
-    swiftc -O -swift-version 5 -target "x86_64-apple-macos13.0" -D EXPERIMENTS $(find Sources -name "*.swift" | sort) -o "$STAGE/FocusDraw-intel"
+    swiftc -O -swift-version 5 -target "x86_64-apple-macos15.0" -D EXPERIMENTS $(find Sources -name "*.swift" | sort) -o "$STAGE/FocusDraw-intel"
     IAPP="$STAGE/intel/Focus & Draw.app"
     mkdir -p "$STAGE/intel" && ditto "$APP" "$IAPP"
     cp "$STAGE/FocusDraw-intel" "$IAPP/Contents/MacOS/FocusDraw"
