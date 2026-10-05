@@ -38,9 +38,9 @@ import Combine
             guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }
             return args[i + 1]
         }
-        let selftest = arg("--selftest"), bench = arg("--bench"), soak = arg("--soak")
+        let selftest = arg("--selftest"), bench = arg("--bench"), soak = arg("--soak"), laserpic = arg("--laserpic")
         // 자체 점검·속도 측정은 사용자가 고른 실험 스위치와 진단 기록을 건드리지 않는다
-        let normalRun = selftest == nil && bench == nil && soak == nil
+        let normalRun = selftest == nil && bench == nil && soak == nil && laserpic == nil
         // 점검·측정·진단 실행은 로그인 항목(SMAppService)을 건드리지 않는다
         if !normalRun || args.contains("--diag") { LoginItem.allowed = false }
         if !normalRun {
@@ -134,6 +134,7 @@ import Combine
         if let out = selftest { DispatchQueue.main.async { SelfTest.run(self, out: out) } }
         if let out = bench { DispatchQueue.main.async { Bench.run(self, out: out) } }
         if let out = soak { DispatchQueue.main.async { Soak.run(self, out: out) } }
+        if let out = laserpic { DispatchQueue.main.async { LaserPic.run(out: out) } }
     }
 
     var appHotkeyCount = 0
