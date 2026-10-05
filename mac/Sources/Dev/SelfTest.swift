@@ -122,6 +122,16 @@ import AppKit
             c.drag(p1, mouse(.leftMouseDragged, p1))
             check("레이저: 움직이는 순간 시작점부터 시작", c.laserLive?.count == 2 && c.laserLive?.first?.p == p0 && c.laserLive?.first?.t == c.laserLive?.last?.t)
             c.up(p1)
+            c.laserTimer?.invalidate(); c.laserTimer = nil
+            c.laser = []
+            // 레이저 도형(Z 직선): 끄는 동안 미리보기를 다시 그리는 박자가 돈다
+            c.down(p0, mouse(.leftMouseDown, p0), right: false)
+            c.held.insert(6) // Z를 누르고 있는 것처럼
+            c.mode = .line
+            c.drag(p1, mouse(.leftMouseDragged, p1))
+            check("레이저 도형: 미리보기를 다시 그리는 타이머가 돈다", c.laserTimer != nil && (c.laserLive?.count ?? 0) >= 2)
+            c.up(p1)
+            c.held.remove(6)
             c.handleKey(18, [], isRepeat: false, source: "hk") // 1: 일반 펜으로 되돌림
         }
 

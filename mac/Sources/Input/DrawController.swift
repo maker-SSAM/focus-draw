@@ -264,6 +264,9 @@ enum PenKind { case normal, laser, rainbow }
             } else {
                 let end = shapeEnd(p, e.modifierFlags)
                 laserLive = laserShape(mode, start, end, width: laserWidth, t: now, rgb: rgb)
+                // 미리보기도 다시 그리는 박자(레이저 타이머)가 있어야 지난 미리보기가 지워지고 새 모양이 그려진다.
+                // (없으면 커서 둘레처럼 다른 이유로 다시 그려지는 곳에만 조각조각 보였다)
+                startLaserTimer()
             }
             lastPoint = p
             return
