@@ -99,32 +99,122 @@ func tint(_ c: CGColor, _ mix: CGFloat) -> CGColor {
     return CGColor(srgbRed: m(comp.redComponent), green: m(comp.greenComponent), blue: m(comp.blueComponent), alpha: 1)
 }
 
+// 빛 번짐: 바깥쪽을 겹친 층 몇 장이 아니라 촘촘한 층 여러 장으로 그려서 가장자리가 계단 없이 부드럽게 옅어진다.
+// (굵기 배율, 진하기, 흰빛 섞기). 바깥에서 안쪽으로 갈수록 좁고 진하다. 붓 동그라미(BrushCursor)도 이 층을 쓴다. (옛 LASER_LAYERS는 Windows 판과 같은 값을 확인하는 점검에만 남겨 둔다)
+let LASER_GLOW_LAYERS: [(CGFloat, CGFloat, CGFloat)] = {
+    var l: [(CGFloat, CGFloat, CGFloat)] = []
+    let n = 9
+    for i in 0..<n {
+        let u = CGFloat(i) / CGFloat(n - 1)              // 0 = 가장 바깥, 1 = 번짐의 안쪽 끝
+        let mul = 3.0 - (3.0 - 1.0) * u                   // 3.0 → 1.0
+        let alpha = 0.045 + 0.10 * u * u                  // 안쪽으로 갈수록 진해지는 완만한 곡선
+        l.append((mul, alpha, 0))
+    }
+    l.append((0.75, 1.0, 0))                              // 본체
+    l.append((0.3, 0.9, 0.6))                             // 흰 심
+    return l
+}()
+
+// 빨리 움직여 점이 듬성듬성해도 선이 꺾이거나 끊겨 보이지 않게, 점 사이를 부드러운 곡선(Catmull-Rom)으로 이어
+// 약 3pt 간격의 점으로 채운다. 시각·색조는 양 끝에서 이어 준다.
+func smoothLaser(_ s: [LaserPt], step: CGFloat = 5) -> [LaserPt] {
+    guard s.count > 2 else { return s }
+    var out: [LaserPt] = [s[0]]
+    for i in 0..<(s.count - 1) {
+        let p0 = s[max(0, i - 1)].p, p1 = s[i].p, p2 = s[i + 1].p, p3 = s[min(s.count - 1, i + 2)].p
+        let dist = hypot(p2.x - p1.x, p2.y - p1.y)
+        let n = min(40, max(1, Int((dist / step).rounded(.up))))
+        if n > 1 {
+            for k in 1..<n {
+                let t = CGFloat(k) / CGFloat(n), t2 = t * t, t3 = t2 * t
+                func c(_ a: CGFloat, _ b: CGFloat, _ cc: CGFloat, _ d: CGFloat) -> CGFloat {
+                    0.5 * ((2 * b) + (-a + cc) * t + (2 * a - 5 * b + 4 * cc - d) * t2 + (-a + 3 * b - 3 * cc + d) * t3)
+                }
+                let hue: CGFloat? = {
+                    guard let h1 = s[i].hue, let h2 = s[i + 1].hue else { return s[i].hue }
+                    return h1 + (h2 - h1) * t
+                }()
+                out.append(LaserPt(p: CGPoint(x: c(p0.x, p1.x, p2.x, p3.x), y: c(p0.y, p1.y, p2.y, p3.y)),
+                                   t: s[i].t + (s[i + 1].t - s[i].t) * Double(t), hue: hue, rgb: s[i].rgb))
+            }
+        }
+        out.append(s[i + 1])
+    }
+    return out
+}
+
 func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now: TimeInterval, in ctx: CGContext) {
     ctx.saveGState()
     defer { ctx.restoreGState() }
-    ctx.setLineCap(.round)
-    for (mul, alpha, mix) in LASER_LAYERS {
+    let strokes = strokes.map { smoothLaser($0) }
+    func colorOf(_ p: LaserPt) -> CGColor { p.hue.map(hueColor) ?? p.rgb.map { color($0).cgColor } ?? baseColor }
+    func colorKey(_ p: LaserPt) -> Int { p.hue.map { Int($0 / 3) } ?? p.rgb.map { Int($0) } ?? -1 }
+    // 한 획을 "리본"(점마다 굵기가 다른 띠)으로 만들어 한 번에 채운다. 선분마다 따로 그으면 이음매가 점처럼 보이고(둥근 끝이 겹침)
+    // 느리다. 층 사이는 투명 층(transparency layer)을 쓰지 않고 차례로 얹는다 — 층마다 큰 그림을 만드는 비용이 가장 컸다.
+    // 색이 점마다 달라지는 획(색조·획마다 다른 색)만 색이 같은 구간별로 나눈다.
+    func ribbon(_ s: [LaserPt], _ lo: Int, _ hi: Int, _ mul: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        // 보이는 점만 (사라진 꼬리 앞쪽 점과 겹친 점은 뺀다)
+        var idx: [Int] = []
+        for i in lo...hi where laserLife(s[i].t, now) > 0 {
+            if let l = idx.last, hypot(s[i].p.x - s[l].p.x, s[i].p.y - s[l].p.y) < 0.05 { continue }
+            idx.append(i)
+        }
+        guard idx.count >= 2 else { return path }
+        // 굵기는 남은 수명을 부드럽게(smoothstep) 바꾼 값을 쓴다: 머무는 시간이 끝나는 순간 굵기가 일정한 비율로 줄기 시작하면
+        // 그 자리에서 꺾여 "뚝 끊기는" 느낌이 나므로, 줄기 시작할 때는 천천히 시작해 서서히 빨라지게 한다.
+        func half(_ i: Int) -> CGFloat { let l = laserLife(s[i].t, now); return max(0.25, width * mul * l * l * (3 - 2 * l) / 2) }
+        // 선분마다 굵기가 이어지는 사각형(앞 점 굵기 → 뒤 점 굵기)을 놓고, 크게 꺾이는 점에는 원을 얹어 바깥쪽 틈을 메운다.
+        // 모두 같은 감는 방향이라 한 길로 채우면 합집합이 된다 — 겹쳐도 진해지지 않고, 위로 긋다 급히 내려올 때처럼 뾰족하게
+        // 되꺾이는 곳도 끊기지 않는다. (양쪽 가장자리 두 줄을 이어 한 띠로 만드는 방식은 굵기가 꺾이는 반지름보다 크면 꼬여 뚝 끊겨 보였다)
+        func dot(_ i: Int) {
+            let r = half(i)
+            path.addEllipse(in: CGRect(x: -r, y: -r, width: 2 * r, height: 2 * r),
+                            transform: CGAffineTransform(translationX: s[i].p.x, y: s[i].p.y).scaledBy(x: 1, y: -1))
+        }
+        var prevDir: CGPoint?
+        for n in 1..<idx.count {
+            let a = s[idx[n - 1]].p, b = s[idx[n]].p
+            let dx = b.x - a.x, dy = b.y - a.y
+            let len = hypot(dx, dy)
+            let ux = dx / len, uy = dy / len
+            let ha = half(idx[n - 1]), hb = half(idx[n])
+            path.move(to: CGPoint(x: a.x - uy * ha, y: a.y + ux * ha))
+            path.addLine(to: CGPoint(x: b.x - uy * hb, y: b.y + ux * hb))
+            path.addLine(to: CGPoint(x: b.x + uy * hb, y: b.y - ux * hb))
+            path.addLine(to: CGPoint(x: a.x + uy * ha, y: a.y - ux * ha))
+            path.closeSubpath()
+            if let d = prevDir {
+                let turn = abs(atan2(d.x * uy - d.y * ux, d.x * ux + d.y * uy))   // 꺾인 각도
+                if ha * turn > 0.6 { dot(idx[n - 1]) }
+            }
+            prevDir = CGPoint(x: ux, y: uy)
+        }
+        dot(idx[0])
+        dot(idx[idx.count - 1])
+        return path
+    }
+    for (mul, alpha, mix) in LASER_GLOW_LAYERS {
         ctx.setAlpha(alpha)
-        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         for s in strokes {
             if s.count == 1 {
                 let life = laserLife(s[0].t, now)
                 let d = width * mul * life
-                ctx.setFillColor(tint(s[0].hue.map(hueColor) ?? s[0].rgb.map { color($0).cgColor } ?? baseColor, mix))
+                ctx.setFillColor(tint(colorOf(s[0]), mix))
                 ctx.fillEllipse(in: CGRect(x: s[0].p.x - d / 2, y: s[0].p.y - d / 2, width: d, height: d))
                 continue
             }
-            for i in 1..<max(1, s.count) {
-                let life = laserLife(s[i - 1].t, now)
-                guard life > 0 else { continue }
-                ctx.setLineWidth(max(0.5, width * mul * life))
-                ctx.setStrokeColor(tint(s[i].hue.map(hueColor) ?? s[i].rgb.map { color($0).cgColor } ?? baseColor, mix))
-                ctx.move(to: s[i - 1].p)
-                ctx.addLine(to: s[i].p)
-                ctx.strokePath()
+            var lo = 0
+            while lo < s.count - 1 {
+                var hi = lo + 1
+                let k = colorKey(s[lo + 1])
+                while hi + 1 < s.count && colorKey(s[hi + 1]) == k { hi += 1 }
+                ctx.setFillColor(tint(colorOf(s[lo + 1]), mix))
+                ctx.addPath(ribbon(s, lo, hi, mul))
+                ctx.fillPath(using: .winding)
+                lo = hi
             }
         }
-        ctx.endTransparencyLayer()
     }
 }
 

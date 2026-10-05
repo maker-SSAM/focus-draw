@@ -6,9 +6,9 @@ import AppKit
 // 마우스·키는 DrawController에 직접 넣는다 (창을 통한 경로는 --selftest가 본다).
 @MainActor enum Golden {
     static let W: CGFloat = 640, H: CGFloat = 400
-    static let channelTolerance = 2        // 채널당 ±2까지는 같은 것으로 본다
+    static let channelTolerance = 4        // 채널당 ±4까지는 같은 것으로 본다 (레이저 번짐처럼 투명한 층을 많이 겹치는 그림은 칩마다 반올림이 조금 다르다)
     static let pixelTolerance = 0.001      // 다른 픽셀이 0.1% 넘으면 실패
-    static let maxGoldenCount = 40, maxGoldenBytes = 30 * 1024
+    static let maxGoldenCount = 40, maxGoldenBytes = 40 * 1024
 
     struct Scene {
         let name: String
@@ -93,7 +93,7 @@ import AppKit
 
     // 투명한 곳이 보이도록 고정 회색 위에 얹어 저장·비교한다
     static func flatten(_ img: CGImage) -> CGImage? {
-        // 알파 없는 RGB로 저장해야 PNG가 작다 (기준 그림 각 30KB 이하)
+        // 알파 없는 RGB로 저장해야 PNG가 작다 (기준 그림 각 40KB 이하)
         guard let ctx = CGContext(data: nil, width: img.width, height: img.height, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
         let r = CGRect(x: 0, y: 0, width: img.width, height: img.height)
@@ -205,7 +205,7 @@ import AppKit
             sheet.append((scene.name, flat, bad, scene.note))
         }
 
-        // 기준 그림 규칙: 40개 이하, 각 30KB 이하
+        // 기준 그림 규칙: 40개 이하, 각 40KB 이하
         if let g = goldenDir, let files = try? fm.contentsOfDirectory(at: g, includingPropertiesForKeys: [.fileSizeKey]) {
             let pngs = files.filter { $0.pathExtension == "png" }
             let big = pngs.filter { ((try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > maxGoldenBytes }

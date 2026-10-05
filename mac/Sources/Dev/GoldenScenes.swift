@@ -5,7 +5,7 @@ extension Golden {
     // ---------- 장면 ----------
     static func scenes() -> [Scene] {
         var list: [Scene] = []
-        let small = CGSize(width: 320, height: 200) // 색이 부드러운 장면은 작게 (기준 그림 30KB 이하)
+        let small = CGSize(width: 320, height: 200) // 색이 부드러운 장면은 작게 (기준 그림 40KB 이하)
         func add(_ name: String, size: CGSize = CGSize(width: W, height: H), scale: CGFloat = 1, note: String = "",
                  _ body: @escaping (Sim) -> Void) {
             list.append(Scene(name: name, scale: scale, note: note) {

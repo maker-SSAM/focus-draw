@@ -3,7 +3,7 @@
 맥 세션에서 하고, Windows가 따라갈 것은 [windows-todo.md](windows-todo.md)에 줄을 남긴다. 한 묶음씩 세션을 나눈다.
 
 ## 묶음 A: 레이저·무지개 그리기 (지금 진행)
-1. **레이저 테두리 정교하게** — 움직임(머묾 → 사라짐)은 그대로. 기준 그림은 [images/laser-before.png](images/laser-before.png)
+1. **레이저 테두리 정교하게** (2026-10-05 맥 구현·선생님 확인: 번짐·빨리 긋기·굵기 최대 개선, 줄기 시작할 때 smoothstep 적용은 선생님 재확인 대기) — 움직임(머묾 → 사라짐)은 그대로. 기준 그림은 [images/laser-before.png](images/laser-before.png)
    (`FocusDraw --laserpic <폴더>`로 앱의 그리기 코드가 직접 뽑은 그림; 화면 캡처 없이 모양을 본다).
    - 확인한 어색함: 번짐이 겹친 4개의 층(`LASER_LAYERS`)이라 층 사이 경계가 단계로 보임 / 끝점이 둥근 덩어리로 보임 /
      흰 바탕에서는 가운데 흰 심(mix 0.6)이 구멍처럼 보임.
