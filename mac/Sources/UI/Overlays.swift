@@ -69,7 +69,7 @@ extension DrawController {
             }
             var box = CGRect.null
             for s in self.laser + [self.laserLive ?? []] { for p in s { box = box.union(CGRect(origin: p.p, size: .zero)) } }
-            let pad = self.laserWidth * 3 + 4
+            let pad = self.laserWidth * max(3, laserGlowMaxMul) + 4
             box = box.isNull ? box : box.insetBy(dx: -pad, dy: -pad)
             self.surface.invalidate(lastBox.union(box))
             lastBox = box

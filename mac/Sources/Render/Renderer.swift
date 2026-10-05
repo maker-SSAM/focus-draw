@@ -92,7 +92,7 @@ struct LaserPt { var p: CGPoint; var t: TimeInterval; var hue: CGFloat?; var rgb
 
 func laserLife(_ t: TimeInterval, _ now: TimeInterval) -> CGFloat {
     let age = now - t
-    return age <= LASER_HOLD ? 1 : CGFloat(max(0, 1 - (age - LASER_HOLD) / LASER_FADE))
+    return age <= laserHold ? 1 : CGFloat(max(0, 1 - (age - laserHold) / laserFade))
 }
 
 func tint(_ c: CGColor, _ mix: CGFloat) -> CGColor {
@@ -103,19 +103,36 @@ func tint(_ c: CGColor, _ mix: CGFloat) -> CGColor {
 
 // 빛 번짐: 바깥쪽을 겹친 층 몇 장이 아니라 촘촘한 층 여러 장으로 그려서 가장자리가 계단 없이 부드럽게 옅어진다.
 // (굵기 배율, 진하기, 흰빛 섞기). 바깥에서 안쪽으로 갈수록 좁고 진하다. 붓 동그라미(BrushCursor)도 이 층을 쓴다. (옛 LASER_LAYERS는 Windows 판과 같은 값을 확인하는 점검에만 남겨 둔다)
-let LASER_GLOW_LAYERS: [(CGFloat, CGFloat, CGFloat)] = {
+// glow: 빛 번짐 정도 (설정 [Draw] LaserGlow / 100). 1 = 기본, 0 = 번짐 없이 본체와 흰 심만, 2 = 두 배로 넓게.
+func makeLaserGlowLayers(_ glow: CGFloat) -> [(CGFloat, CGFloat, CGFloat)] {
     var l: [(CGFloat, CGFloat, CGFloat)] = []
     let n = 9
-    for i in 0..<n {
-        let u = CGFloat(i) / CGFloat(n - 1)              // 0 = 가장 바깥, 1 = 번짐의 안쪽 끝
-        let mul = 3.0 - (3.0 - 1.0) * u                   // 3.0 → 1.0
-        let alpha = 0.045 + 0.10 * u * u                  // 안쪽으로 갈수록 진해지는 완만한 곡선
-        l.append((mul, alpha, 0))
+    if glow > 0 {
+        for i in 0..<n {
+            let u = CGFloat(i) / CGFloat(n - 1)              // 0 = 가장 바깥, 1 = 번짐의 안쪽 끝
+            let mul = 1 + (3.0 - 1.0) * (1 - u) * glow      // 기본 3.0 → 1.0 (glow만큼 넓어지거나 좁아진다)
+            let alpha = (0.045 + 0.10 * u * u) * min(1, glow)  // 안쪽으로 갈수록 진해지는 완만한 곡선 (줄일 때는 옅게도)
+            l.append((mul, alpha, 0))
+        }
     }
     l.append((0.75, 1.0, 0))                              // 본체
     l.append((0.3, 0.9, 0.6))                             // 흰 심
     return l
-}()
+}
+
+// 레이저 설정값 (설정 창 드로잉 탭: 머무는 시간·사라지는 시간·빛 번짐). 드로잉 설정이 바뀌면 DrawController가 applyLaserTuning으로 바꾼다.
+// 기본값은 Windows 판과 같은 LASER_HOLD·LASER_FADE, 번짐 100%.
+private(set) var laserHold: TimeInterval = LASER_HOLD
+private(set) var laserFade: TimeInterval = LASER_FADE
+private(set) var LASER_GLOW_LAYERS = makeLaserGlowLayers(1)
+var laserGlowMaxMul: CGFloat { LASER_GLOW_LAYERS.map(\.0).max() ?? 1 }   // 가장 바깥 빛의 굵기 배율 (다시 그릴 자리·커서 크기에 쓴다)
+private var laserGlowNow: CGFloat = 1
+func applyLaserTuning(holdMs: Double, fadeMs: Double, glowPercent: Double) {
+    laserHold = max(0, holdMs) / 1000
+    laserFade = max(0.05, fadeMs / 1000)
+    let g = CGFloat(max(0, glowPercent) / 100)
+    if g != laserGlowNow { laserGlowNow = g; LASER_GLOW_LAYERS = makeLaserGlowLayers(g) }
+}
 
 // 빨리 움직여 점이 듬성듬성해도 선이 꺾이거나 끊겨 보이지 않게, 점 사이를 부드러운 곡선(Catmull-Rom)으로 이어
 // 약 3pt 간격의 점으로 채운다. 시각·색조는 양 끝에서 이어 준다.

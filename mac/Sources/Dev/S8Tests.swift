@@ -14,9 +14,13 @@ import AppKit
               "칸 없음: \(schemaIDs.subtracting(ui).sorted()) / 표에 없음: \(ui.subtracting(schemaIDs).sorted())")
         let all = SettingsLayout.focus.flatMap(\.fields) + SettingsLayout.draw.fields + SettingsLayout.widget.fields
         let stepWrong = all.filter { f in
-            switch f.suffix { case "%": return f.step != (f.id == "Common.WidgetScale" ? 10 : 5); case "px": return f.step != 5; default: return f.step != 1 }
+            switch f.suffix {
+            case "%": return f.step != (f.id == "Common.WidgetScale" || f.id == "Draw.LaserGlow" ? 10 : 5)
+            case "px": return f.step != 5
+            case "ms": return f.step != 100
+            default: return f.step != 1 }
         }.map(\.id)
-        check("설정 창: 슬라이더 간격은 크기·진하기 5, 위젯 크기 10, 나머지 1", stepWrong.isEmpty, stepWrong.joined(separator: ", "))
+        check("설정 창: 슬라이더 간격은 크기·진하기 5, 위젯 크기·레이저 번짐 10, 시간(ms) 100, 나머지 1", stepWrong.isEmpty, stepWrong.joined(separator: ", "))
         check("설정 창: 켬·끔 키는 모두 상자 제목이나 위젯 표시에 있음",
               SettingsLayout.focus.compactMap(\.toggle) == ["Highlight.ClickEffect", "Highlight.RClickEffect"]
               && SettingsLayout.widgetShow == "Common.ShowWidget" && SettingsLayout.trayShow == "Common.ShowTrayIcons"

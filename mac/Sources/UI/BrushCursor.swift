@@ -12,7 +12,7 @@ extension DrawController {
             d = eraserPx(eraserStep)
             img = eraserRingImage(diameter: d, ring: currentEraserRing)
         } else if pen == .laser {
-            d = max(penPx(penStep), LASER_MIN_WIDTH) * 3
+            d = max(penPx(penStep), LASER_MIN_WIDTH) * laserGlowMaxMul
             img = laserCursorImage(side: d, base: color(rgb), rainbowGlowHue: rainbowColor ? rainbowHue : nil)
         } else {
             d = penPx(penStep)
@@ -114,7 +114,7 @@ func laserCursorImage(side d: CGFloat, base: NSColor, rainbowGlowHue: CGFloat? =
     let side = ceil(d) + 2
     return NSImage(size: NSSize(width: side, height: side), flipped: false) { _ in
         for (mul, a, mix) in LASER_GLOW_LAYERS {
-            let dd = d / 3 * mul
+            let dd = d / laserGlowMaxMul * mul
             let r = NSRect(x: (side - dd) / 2, y: (side - dd) / 2, width: dd, height: dd)
             if let h = rainbowGlowHue { // 무지개 레이저 (S 다음 A): 둘레 빛은 다음 획이 시작할 색, 본체는 무지개 원판, 흰 심
                 if mix == 0 && a < 1 { NSColor(cgColor: hueColor(h))!.withAlphaComponent(a).setFill(); NSBezierPath(ovalIn: r).fill() }

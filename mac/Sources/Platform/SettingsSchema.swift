@@ -83,6 +83,9 @@ enum SettingsSchema {
             color("Draw", "Color", \.drawColor, 0xFF0000),
             num("Draw", "ThicknessStep", \.drawStep, 5, 1...Double(STEP_MAX)),
             num("Draw", "EraserStep", \.eraserStep, 5, 1...Double(STEP_MAX)),
+            num("Draw", "LaserHold", \.laserHold, LASER_HOLD * 1000, 0...3000),
+            num("Draw", "LaserFade", \.laserFade, LASER_FADE * 1000, 100...3000),
+            num("Draw", "LaserGlow", \.laserGlow, 100, 0...200),
             flag("Common", "ShowWidget", \.showWidget, true),
             flag("Common", "ShowTrayIcons", \.showTrayIcons, false),
             num("Common", "WidgetScale", \.widgetScale, 100, 60...250),
@@ -105,6 +108,9 @@ enum SettingsSchema {
     static let positionKeys: [(section: String, key: String)] = [("Common", "WidgetX"), ("Common", "WidgetY")]
 
     // Windows 판만 쓰는 키: 맥은 읽지도 지우지도 않는다(IniFile이 그대로 보존한다)
+    // 맥에서 먼저 넣은 키 (Windows 판은 mac/design/windows-todo.md를 보고 같은 이름으로 따라온다).
+    // 파일에 없고 기본값이면 쓰지 않는다 — Windows 파일에 맥 전용 줄을 공연히 늘리지 않는다 ([Hotkeys]와 같은 규칙).
+    static let macFirst: Set<String> = ["Draw.LaserHold", "Draw.LaserFade", "Draw.LaserGlow"]
     static let windowsOnly: Set<String> = ["Highlight.HideCursor"]
     // ahk가 예전 파일을 읽으려고 받아 주는 옛 키
     static let windowsLegacy: Set<String> = ["Common.Color", "Draw.Thickness", "Draw.EraserSize"]

@@ -60,5 +60,18 @@ import AppKit
               names.allSatisfy { !$0.isEmpty } && Set(names).count == 5
               && WidgetView.accessibilityName(.spot, spotOn: true, drawOn: false) == "강조 끄기"
               && WidgetView.accessibilityName(.draw, spotOn: false, drawOn: true) == "드로잉 끄기")
+
+        // ---- 레이저 옵션 (LaserHold·LaserFade·LaserGlow) ----
+        applyLaserTuning(holdMs: 1000, fadeMs: 2000, glowPercent: 0)
+        let tuned = laserLife(0, 1.0) == 1 && abs(laserLife(0, 2.0) - 0.5) < 0.001 && LASER_GLOW_LAYERS.count == 2
+        applyLaserTuning(holdMs: 500, fadeMs: 500, glowPercent: 200)
+        let wide = abs(laserGlowMaxMul - 5) < 0.001
+        applyLaserTuning(holdMs: LASER_HOLD * 1000, fadeMs: LASER_FADE * 1000, glowPercent: 100)
+        check("레이저 옵션: 머묾·사라짐 시간이 수명에, 번짐 0%는 빛 없음·200%는 두 배 넓게, 기본값으로 되돌림",
+              tuned && wide && abs(laserGlowMaxMul - 3) < 0.001 && laserLife(0, LASER_HOLD) == 1)
+        let st = Settings()
+        st.laserHold = 800; st.laserFade = 1200; st.laserGlow = 150
+        let cfg = DrawConfig(st)
+        check("레이저 옵션: 설정 → 드로잉 설정으로 전달", cfg.laserHold == 800 && cfg.laserFade == 1200 && cfg.laserGlow == 150)
     }
 }

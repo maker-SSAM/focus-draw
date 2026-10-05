@@ -103,4 +103,7 @@ struct DrawConfig: Equatable {
     var drawKeyAlphas: [Double] = Array(repeating: 100, count: 9)
     var boardColors: [UInt32] = BOARD_COLORS
     var boardAlphas: [Double] = [100, 100, 100]
+    var laserHold: Double = LASER_HOLD * 1000   // ms
+    var laserFade: Double = LASER_FADE * 1000   // ms
+    var laserGlow: Double = 100                 // %
 }

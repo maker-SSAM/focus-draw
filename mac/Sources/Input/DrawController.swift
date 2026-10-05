@@ -11,7 +11,9 @@ enum PenKind { case normal, laser, rainbow }
     let state: AppState
     let surface = InkSurface()
     let model = InkModel()
-    var config = DrawConfig()
+    var config = DrawConfig() {
+        didSet { applyLaserTuning(holdMs: config.laserHold, fadeMs: config.laserFade, glowPercent: config.laserGlow) }
+    }
     var requestOff: (OffReason) -> Void = { _ in } // Esc가 들어오면 DrawSession에 끄기를 부탁한다
 
     var isOn: Bool { state.drawOn }

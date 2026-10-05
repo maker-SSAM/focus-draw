@@ -14,7 +14,7 @@ enum SettingsSchemaTests {
 
         // ---- 표 자체 ----
         check("항목표: 키가 겹치지 않고 절·키가 모두 있음 (\(keys.count)개)",
-              Set(keys.map(\.id)).count == keys.count && keys.count == 22 + 18 + 6 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
+              Set(keys.map(\.id)).count == keys.count && keys.count == 22 + 18 + 6 + 3 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
         do {
             let f = Settings()
             let bad = keys.filter { $0.read(f) != $0.defaultValue }.map(\.id)
@@ -100,7 +100,7 @@ enum SettingsSchemaTests {
         read.formUnion(matches("ReadIniColor\\(\"(\\w+)\", \"(\\w+)\"[,)]").map { "\($0[0]).\($0[1])" })
         let positions = Set(SettingsSchema.positionKeys.map { "\($0.section).\($0.key)" })
         let known = Set(keys.filter { !indexed.contains($0.section) }.map(\.id))
-        let missing = known.subtracting(read).sorted()
+        let missing = known.subtracting(read).subtracting(SettingsSchema.macFirst).sorted()
         let extra = read.subtracting(known).subtracting(positions).subtracting(SettingsSchema.windowsOnly).subtracting(SettingsSchema.windowsLegacy).sorted()
         check("Windows와 같은 키 목록: 표의 키가 모두 ahk에 있음", missing.isEmpty, missing.joined(separator: ", "))
         check("Windows와 같은 키 목록: ahk가 읽는 키가 모두 표·위젯 자리·Windows 전용 목록에 있음", extra.isEmpty, extra.joined(separator: ", "))

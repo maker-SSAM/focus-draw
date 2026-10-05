@@ -42,7 +42,10 @@ enum SettingsLayout {
         Field(id: "Draw.Color", label: "기본 색상"),
         Field(id: "Draw.ThicknessStep", label: "드로잉 굵기", suffix: "단계"),
         Field(id: "Draw.Opacity", label: "전체 진하기", suffix: "%", step: 5),
-        Field(id: "Draw.EraserStep", label: "지우개 크기", suffix: "단계")])
+        Field(id: "Draw.EraserStep", label: "지우개 크기", suffix: "단계"),
+        Field(id: "Draw.LaserHold", label: "레이저 머묾", suffix: "ms", step: 100),
+        Field(id: "Draw.LaserFade", label: "레이저 사라짐", suffix: "ms", step: 100),
+        Field(id: "Draw.LaserGlow", label: "레이저 빛 번짐", suffix: "%", step: 10)])
 
     static let drawKeys: [KeyRow] =
         (1...9).map { KeyRow(label: "\($0)", color: "DrawKeys.Color\($0)", opacity: "DrawKeys.Opacity\($0)") }
@@ -140,11 +143,13 @@ struct NumberRow: View {
         // 이름·−·슬라이더·+·숫자·단위를 한 줄에. 간격과 안쪽 여백은 4의 배수(4·8·16)로 맞춘다.
         HStack(spacing: 8) {
             if !f.label.isEmpty { Text(f.label).frame(width: labelWidth, alignment: .leading) }
-            StepButton(symbol: "−") { value = max(range.lowerBound, value - 1) }
+            // −/+는 1씩, 시간(ms)은 1ms로는 차이를 느낄 수 없어 슬라이더 간격(100ms)씩
+            let tick: Double = f.suffix == "ms" ? f.step : 1
+            StepButton(symbol: "−") { value = max(range.lowerBound, value - tick) }
             SliderBar(value: Binding(get: { value },
                                      set: { value = (f.step > 1 ? ($0 / f.step).rounded() * f.step : $0).clamped(to: range) }),
                       range: range)
-            StepButton(symbol: "+") { value = min(range.upperBound, value + 1) }
+            StepButton(symbol: "+") { value = min(range.upperBound, value + tick) }
             NumberBox(value: $value)
                 .frame(width: 60, height: 28)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))

@@ -34,6 +34,9 @@ final class Settings: ObservableObject {
     @Published var drawColor: UInt32 = 0xFF0000
     @Published var drawStep: Double = 5
     @Published var eraserStep: Double = 5
+    @Published var laserHold: Double = LASER_HOLD * 1000   // 레이저가 그대로 있는 시간 (ms)
+    @Published var laserFade: Double = LASER_FADE * 1000   // 그 뒤 사라지는 데 걸리는 시간 (ms)
+    @Published var laserGlow: Double = 100                 // 빛 번짐 정도 (%)
     // [Common]
     @Published var showWidget = true
     @Published var showTrayIcons = false // 메뉴 막대에 강조·드로잉 아이콘을 따로 둔다
@@ -177,6 +180,8 @@ final class Settings: ObservableObject {
         for (s, k, v) in pairs() {
             // [Hotkeys]는 기본값이고 파일에도 없으면 쓰지 않는다 (Windows 파일에 맥 전용 줄을 공연히 늘리지 않는다)
             if s == "Hotkeys", f.value(s, k) == nil, v == SettingsSchema.hotkeyDefaults[k] { continue }
+            if SettingsSchema.macFirst.contains("\(s).\(k)"), f.value(s, k) == nil,
+               let key = SettingsSchema.keys.first(where: { $0.section == s && $0.key == k }), v == key.format(key.defaultValue) { continue }
             f.set(s, k, v)
         }
         if let x = widgetX, let y = widgetY {
@@ -219,6 +224,7 @@ extension DrawConfig {
     init(_ s: Settings) {
         self.init(drawOpacity: s.drawOpacity, drawColor: s.drawColor, drawStep: Int(s.drawStep), eraserStep: Int(s.eraserStep),
                   drawKeyColors: s.drawKeyColors, drawKeyAlphas: s.drawKeyAlphas,
-                  boardColors: s.boardColors, boardAlphas: s.boardAlphas)
+                  boardColors: s.boardColors, boardAlphas: s.boardAlphas,
+                  laserHold: s.laserHold, laserFade: s.laserFade, laserGlow: s.laserGlow)
     }
 }
