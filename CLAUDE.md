@@ -16,6 +16,12 @@ Windows 판(`focus-draw.ahk`)과 맥 판(`mac/`)을 한 저장소에서 같이 �
 - 모든 설정은 **기본값이어도 늘 파일에 쓴다**. "기본값이면 생략" 같은 예외를 새로 만들지 않는다.
 - 한쪽에 설정을 먼저 넣으면 다른 쪽 할 일을 `mac/design/windows-todo.md`(또는 HANDOFF)에 남긴다.
 
+## 새 버전 확인 (배포판 2.0, 2026-10-07 결정)
+
+- 2.0부터 두 판 모두 설정 창에 **"새 버전 확인" 단추 하나만** 둔다. 누를 때만 저장소 맨 위 `version.txt`를 읽는다.
+- **자동 업데이트·자동 확인·알림은 넣지 않는다.** 자세한 동작은 [mac/design/update-check.md](mac/design/update-check.md).
+- 맥 판도 곧 GitHub에 배포한다 (두 판이 같은 저장소의 릴리스를 쓴다).
+
 ## git
 
 - `.git/config`에 `core.autocrlf`는 **절대 설정하지 않는다** — OneDrive로 Windows PC와 공유되어 그쪽 CRLF 규칙을 깬다.
