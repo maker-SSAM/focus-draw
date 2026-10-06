@@ -315,12 +315,15 @@ ReadIniColor(section, key, fallback) {
 ; "칠판" 절에서 만들어지는데, LoadSettings()는 그보다 먼저 불린다. 그래서 배열을 만든 직후에
 ; 이 함수를 따로 부른다.
 LoadPalette() {
-    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS
+    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS, DRAW_STEPS, DRAW_STEP_DEFAULT, STEP_MAX
     global BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, BOARD_KEYS
     loop DRAW_COLORS.Length {
         DRAW_COLORS[A_Index] := ReadIniColor("DrawKeys", "Color" A_Index, DRAW_COLOR_DEFAULTS[A_Index])
         ; 0%까지 내려가면 "안 그려지는 펜"이 되어 고장으로 보인다. 5%를 바닥으로 둔다.
         DRAW_ALPHAS[A_Index] := Max(5, Min(100, IniRead(SETTINGS_PATH, "DrawKeys", "Opacity" A_Index, 100)))
+        ; 숫자가 아닌 글자가 들어 있으면 기본값(5단계)으로 본다.
+        step := IniRead(SETTINGS_PATH, "DrawKeys", "Step" A_Index, DRAW_STEP_DEFAULT)
+        DRAW_STEPS[A_Index] := (IsInteger(step) && step >= 1) ? Min(STEP_MAX, Integer(step)) : DRAW_STEP_DEFAULT ; 0 이하(시험판이 쓰던 값)도 기본값
     }
     loop BOARD_COLORS.Length {
         if (BOARD_COLOR_DEFAULTS[A_Index] < 0) ; Q(투명)는 칠판을 걷는 자리라 색이 없다
@@ -332,10 +335,11 @@ LoadPalette() {
 }
 
 SavePalette() {
-    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, BOARD_KEYS
+    global SETTINGS_PATH, DRAW_COLORS, DRAW_ALPHAS, DRAW_STEPS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, BOARD_KEYS
     loop DRAW_COLORS.Length {
         IniWrite(HexColor(DRAW_COLORS[A_Index]), SETTINGS_PATH, "DrawKeys", "Color" A_Index)
         IniWrite(DRAW_ALPHAS[A_Index], SETTINGS_PATH, "DrawKeys", "Opacity" A_Index)
+        IniWrite(DRAW_STEPS[A_Index], SETTINGS_PATH, "DrawKeys", "Step" A_Index) 
     }
     loop BOARD_COLORS.Length {
         if (BOARD_COLOR_DEFAULTS[A_Index] < 0)
@@ -402,6 +406,10 @@ DRAW_COLORS := DRAW_COLOR_DEFAULTS.Clone()
 ;  선 하나하나**의 값이다. 둘 다 낮추면 둘이 곱해져 더 옅어진다)
 DRAW_ALPHA_DEFAULT := 100
 DRAW_ALPHAS := [100, 100, 100, 100, 100, 100, 100, 100, 100]
+; 숫자키마다의 굵기 단계(1~STEP_MAX). 그 숫자키를 누르면 색·투명도와 함께 굵기도 이 단계로 바뀐다.
+; 기본값은 설정 창의 기본 드로잉 굵기와 같은 5단계다.
+DRAW_STEP_DEFAULT := 5
+DRAW_STEPS := [5, 5, 5, 5, 5, 5, 5, 5, 5]
 
 ; 드로잉 중 "누른 채 드래그"로 도형을 고르는 키 (위에 있는 것이 우선).
 ; 수식키(Shift/Ctrl)만 쓰면 자리가 네 개뿐이라 도형을 늘릴 수 없는데, 드로잉 모드에서는
@@ -3291,7 +3299,8 @@ ClearDrawing(*) {
 ; **0은 설정 창의 기본 색으로 되돌아오는 자리다** — 그 색은 투명도를 따로 갖지 않으므로 100%로 본다.
 ; 숫자키는 **보통 펜으로 돌아오는 키**이기도 하다 — A·S로 고른 특수 펜을 여기서 푼다(SetPenKind 참고).
 SetDrawColor(index) {
-    global DRAW_COLORS, DRAW_ALPHAS, activeDrawColor, activeDrawAlpha, drawColor, penKind, rainbowColor
+    global DRAW_COLORS, DRAW_ALPHAS, DRAW_STEPS, activeDrawColor, activeDrawAlpha, drawColor, penKind, rainbowColor
+    global activeDrawStep, activeDrawThickness
     penKind := "" ; 레이저 점은 LaserTick이 다음 프레임에 걷는다
     rainbowColor := false ; 무지개도 풀린다 — 그 뒤 A는 이 색의 레이저
     if (index = 0) {
@@ -3303,6 +3312,8 @@ SetDrawColor(index) {
     if (index >= 1 && index <= DRAW_COLORS.Length) {
         activeDrawColor := DRAW_COLORS[index]
         activeDrawAlpha := DRAW_ALPHAS[index]
+        activeDrawStep := DRAW_STEPS[index] ; 굵기도 그 숫자키의 단계로
+        activeDrawThickness := PenPx(activeDrawStep)
         RedrawBrushCursor()
     }
 }
@@ -3574,25 +3585,34 @@ SetPaletteAlpha(kind, index, value) {
 
 ; 색 한 줄: [키] [견본] [색 고르기] [투명도 슬라이더] [숫자] %
 AddPaletteRow(gui, y, label, kind, index) {
-    global sliderEditHandlers
+    global sliderEditHandlers, DRAW_STEPS, STEP_MAX
     lbl := gui.AddText("x6 y" (y + 4) " w24 h22", label)
     lbl.SetFont("s11 Bold")
     ; 견본은 AddColorRow와 같은 방식 — 색이 확실히 반영되는 Progress 컨트롤을 꽉 채워 쓰고,
     ; 한 겹 큰 회색 막대를 뒤에 깔아 테두리로 삼는다 (흰색 견본도 보이게 하려고)
     gui.AddProgress("x32 y" (y - 2) " w48 h28 Range0-100 -Smooth c808080", 100)
     swatch := gui.AddProgress("x34 y" y " w44 h24 Range0-100 -Smooth c" HexColor(PaletteColor(kind, index)), 100)
-    btn := gui.AddButton("x86 y" (y - 2) " w80 h28", "색 고르기")
+    isDraw := (kind = "draw") ; 숫자키 줄에는 오른쪽에 두께 칸이 더 있어 앞의 칸들을 좁힌다
+    btn := gui.AddButton("x86 y" (y - 2) (isDraw ? " w72" : " w80") " h28", "색 고르기")
     btn.OnEvent("Click", (*) => (
         picked := ChooseColorDialog(PaletteColor(kind, index), gui.Hwnd),
         (picked >= 0) ? (SetPaletteColor(kind, index, picked), swatch.Opt("c" HexColor(picked))) : ""
     ))
-    sl := gui.AddSlider("x174 y" (y + 2) " w142 Range5-100", PaletteAlpha(kind, index))
-    ed := gui.AddEdit("x322 y" y " w44 h24 Center Number", PaletteAlpha(kind, index))
-    gui.AddText("x370 y" (y + 4) " w24", "%")
+    sl := gui.AddSlider((isDraw ? "x162" : "x174") " y" (y + 2) (isDraw ? " w98" : " w142") " Range5-100", PaletteAlpha(kind, index))
+    ed := gui.AddEdit((isDraw ? "x264" : "x322") " y" y " w44 h24 Center Number", PaletteAlpha(kind, index))
+    gui.AddText((isDraw ? "x312" : "x370") " y" (y + 4) " w20", "%")
     apply := (v) => (v := Max(5, Min(100, Round(v))), sl.Value := v, ed.Text := v, SetPaletteAlpha(kind, index, v))
     sl.OnEvent("Change", (ctrl, *) => apply(Round(ctrl.Value / 5) * 5))
     ed.OnEvent("LoseFocus", (*) => apply(ed.Text = "" ? 5 : Integer(ed.Text)))
     sliderEditHandlers[ed.Hwnd] := () => apply(ed.Text = "" ? 5 : Integer(ed.Text))
+    if isDraw {
+        ; 두께 단계(1~STEP_MAX). 위아래 화살표로도 바꾼다.
+        edStep := gui.AddEdit("x342 y" y " w52 h24 Center Number", DRAW_STEPS[index])
+        gui.AddUpDown("Range1-" STEP_MAX, DRAW_STEPS[index])
+        applyStep := (*) => (edStep.Text = "" ? "" : DRAW_STEPS[index] := Max(1, Min(STEP_MAX, Integer(edStep.Text)))) ; 비워 둔 채로는 이전 값 유지
+        edStep.OnEvent("Change", applyStep)
+        edStep.OnEvent("LoseFocus", (*) => (applyStep(), edStep.Text := DRAW_STEPS[index]))
+    }
 }
 
 ; 열두 줄을 만들고 창문에 끼운다. 설정 창을 만들 때 한 번만 부른다.
@@ -3622,7 +3642,7 @@ BuildPalettePanel(parentGui) {
     paletteBody.SetFont("s10", "Malgun Gothic")
 
     y := 6
-    head := paletteBody.AddText("x6 y" y " w400", "단축키(드로잉)")
+    head := paletteBody.AddText("x6 y" y " w400", "단축키(드로잉)               투명도                          두께(1~10)")
     head.SetFont("s9 c666666")
     y += 24
     loop DRAW_COLORS.Length {
