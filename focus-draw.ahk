@@ -2093,6 +2093,47 @@ DrawRainbowPolyline(gr, pPen, alphaMask, pts, hue) {
     return hue
 }
 
+; 자유선 곡선: 10ms마다 받은 점을 직선으로 이으면 빨리 그을 때 꺾인 선처럼 보인다. 앞 토막이 끝난
+; 방향으로 출발해 이 토막의 방향으로 닿는 곡선(에르미트)으로 이으면 이음매가 꺾이지 않는다.
+; 다음 점을 기다리지 않으므로 선 끝이 늦지 않고, 토막마다 호출 한 번이라 가볍다.
+freeDirX := 0, freeDirY := 0 ; 앞 토막의 방향(단위벡터). 0이면 이어받을 방향이 없다 (StrokeBegin에서 비움)
+FREE_CURVE_MIN_PX := 5 ; 이보다 짧은 토막은 곡선으로 해도 달라 보이지 않아 직선으로 둔다
+FREE_CURVE_STEP_PX := 4 ; 곡선을 이만큼씩 끊은 직선으로 그린다
+
+; 곡선 위의 점들 [[x, y], ...] (화면 좌표). 곡선으로 할 수 없으면 두 점만 돌려준다.
+FreehandCurve(x1, y1, x2, y2) {
+    global freeDirX, freeDirY, FREE_CURVE_MIN_PX, FREE_CURVE_STEP_PX
+    dx := x2 - x1, dy := y2 - y1
+    L := Sqrt(dx * dx + dy * dy)
+    if (L < 2)
+        return [[x1, y1], [x2, y2]] ; 떨림 같은 아주 작은 움직임은 방향을 갱신하지 않는다
+    cx := dx / L, cy := dy / L
+    px := freeDirX, py := freeDirY
+    freeDirX := cx, freeDirY := cy
+    ; 방향이 90°넘게 꺾이면(되돌아 긋기) 곡선이 고리를 만들 수 있어 직선으로 둔다
+    if (L < FREE_CURVE_MIN_PX || (px = 0 && py = 0) || px * cx + py * cy < 0)
+        return [[x1, y1], [x2, y2]]
+    k := L / 3
+    ax := x1 + px * k, ay := y1 + py * k   ; 출발 조절점
+    bx := x2 - cx * k, by := y2 - cy * k   ; 도착 조절점
+    n := Min(24, Ceil(L / FREE_CURVE_STEP_PX))
+    pts := [[x1, y1]]
+    loop n {
+        t := A_Index / n, u := 1 - t
+        w0 := u * u * u, w1 := 3 * u * u * t, w2 := 3 * u * t * t, w3 := t * t * t
+        pts.Push([w0 * x1 + w1 * ax + w2 * bx + w3 * x2, w0 * y1 + w1 * ay + w2 * by + w3 * y2])
+    }
+    return pts
+}
+
+; 점 목록을 GDI+가 받는 float 쌍 버퍼로
+PointsBuffer(pts) {
+    buf := Buffer(pts.Length * 8)
+    for i, p in pts
+        NumPut("float", p[1], "float", p[2], buf, (i - 1) * 8)
+    return buf
+}
+
 DrawSegment(x1, y1, x2, y2) {
     global memDC, vx, vy, activeDrawThickness, activeDrawColor, activeDrawAlpha, pShapeGraphics
     global pInkGraphics, inkStrokeAlpha, strokeRainbow, RAINBOW_INK_STEP_PX
@@ -2100,7 +2141,8 @@ DrawSegment(x1, y1, x2, y2) {
     rgb := activeDrawColor
     ; 이번에 그을 조각들 [색, x1, y1, x2, y2]. 무지개 펜은 한 토막(10ms 동안 움직인 거리)을 한 색으로
     ; 칠하면 빨리 그을 때 색이 계단처럼 뚝뚝 바뀌므로, 약 RAINBOW_INK_STEP_PX씩 나눠 색을 조금씩 돌린다.
-    pieces := [[rgb, lx1, ly1, lx2, ly2]]
+    curve := FreehandCurve(lx1, ly1, lx2, ly2)
+    pieces := [[rgb, PointsBuffer(curve), curve.Length]]
     if strokeRainbow {
         dist := Sqrt((lx2 - lx1) ** 2 + (ly2 - ly1) ** 2)
         k := Max(1, Ceil(dist / RAINBOW_INK_STEP_PX))
@@ -2108,14 +2150,18 @@ DrawSegment(x1, y1, x2, y2) {
         loop k {
             a := (A_Index - 1) / k, b := A_Index / k
             rgb := NextRainbowColor(dist / k)
-            pieces.Push([rgb, lx1 + (lx2 - lx1) * a, ly1 + (ly2 - ly1) * a, lx1 + (lx2 - lx1) * b, ly1 + (ly2 - ly1) * b])
+            pieces.Push([rgb, PointsBuffer([[lx1 + (lx2 - lx1) * a, ly1 + (ly2 - ly1) * a], [lx1 + (lx2 - lx1) * b, ly1 + (ly2 - ly1) * b]]), 2])
         }
     }
     if pShapeGraphics {
         ; 도형과 같은 방식. GDI+가 투명도까지 채워주므로 그린 자리를 훑을 필요가 없고,
         ; 테두리도 도형과 똑같이 매끄럽게 나온다.
         DllCall("gdi32\GdiFlush") ; 지우개는 아직 GDI를 쓰므로 밀린 작업을 먼저 반영시킨다
-        box := PenDirtyBox(lx1, ly1, lx2, ly2)
+        ; 곡선이 두 점이 이루는 네모 밖으로 부풀 수 있어, 곡선 점 전체를 감싸는 범위로 잡는다
+        cx1 := Min(lx1, lx2), cy1 := Min(ly1, ly2), cx2 := Max(lx1, lx2), cy2 := Max(ly1, ly2)
+        for cp in curve
+            cx1 := Min(cx1, cp[1]), cy1 := Min(cy1, cp[2]), cx2 := Max(cx2, cp[1]), cy2 := Max(cy2, cp[2])
+        box := PenDirtyBox(cx1, cy1, cx2, cy2)
         ; 그리기 전 모습을 먼저 담아둔다. 한 획 안에서 같은 띠를 여러 번 지나가도 처음 한 번만 뜬다.
         CaptureUndoBands(box[2], box[4])
         if inkStrokeAlpha {
@@ -2123,7 +2169,7 @@ DrawSegment(x1, y1, x2, y2) {
             for pc in pieces {
                 pPen := GetFreehandPen(0xFF000000 | pc[1])
                 if pPen
-                    DllCall("gdiplus\GdipDrawLine", "ptr", pInkGraphics, "ptr", pPen, "float", pc[2], "float", pc[3], "float", pc[4], "float", pc[5])
+                    DllCall("gdiplus\GdipDrawLines", "ptr", pInkGraphics, "ptr", pPen, "ptr", pc[2], "int", pc[3])
             }
             InkMarkDirty(box)
             InkCompose(box)
@@ -2138,7 +2184,7 @@ DrawSegment(x1, y1, x2, y2) {
             for pc in pieces {
                 pPen := GetFreehandPen((ActiveARGB() & 0xFF000000) | pc[1])
                 if pPen
-                    DllCall("gdiplus\GdipDrawLine", "ptr", pShapeGraphics, "ptr", pPen, "float", pc[2], "float", pc[3], "float", pc[4], "float", pc[5])
+                    DllCall("gdiplus\GdipDrawLines", "ptr", pShapeGraphics, "ptr", pPen, "ptr", pc[2], "int", pc[3])
             }
             if translucent {
                 DllCall("gdiplus\GdipSetCompositingMode", "ptr", pShapeGraphics, "int", 0) ; 다시 겹쳐 그리기
@@ -2584,8 +2630,9 @@ OnMessage(0x0247, OnPointerUp)     ; WM_POINTERUP
 StrokeBegin(x, y) {
     global lastX, lastY, dragStartX, dragStartY, dragShapeMode, dragPenKind, penKind
     global dragOnOtherWindow, lastShapeBox, strokeRainbow, activeDrawAlpha, inkStrokeAlpha
-    global rainbowShapeHue, rainbowHue
+    global rainbowShapeHue, rainbowHue, freeDirX, freeDirY
     lastX := x, lastY := y
+    freeDirX := 0, freeDirY := 0 ; 새 획은 이어받을 방향이 없다 (FreehandCurve)
     dragStartX := x, dragStartY := y
     ; 도형은 긋기 시작하는 순간 눌려 있던 키로 정한다. **특수 펜은 도형에도 그대로 적용된다**
     ; (사용자 요청) — 무지개 펜이면 테두리를 따라 색이 바뀌고, 사라지는 펜이면 빛나는 도형이
@@ -2726,8 +2773,60 @@ DrawPoll() {
         dragOnOtherWindow := winUnder != drawGui.Hwnd
         StrokeBegin(mx, my)
     } else {
+        ; 일반·무지개 펜은 10ms 사이에 마우스가 실제로 지나간 점들도 이어서 긋는다 (MouseTrail 설명 참고)
+        if (dragShapeMode = "" && dragPenKind != "laser" && !dragOnOtherWindow)
+            for pt in MouseTrail(mx, my)
+                StrokeMove(pt[1], pt[2])
         StrokeMove(mx, my)
     }
+}
+
+; 지난번 확인한 자리(lastX, lastY)에서 지금 자리(mx, my)까지 마우스가 지나간 중간 점들(오래된 순,
+; 앞뒤 점은 빼고). 10ms마다 지금 자리만 보면 빨리 그을 때 점 사이가 멀어 선이 울퉁불퉁해진다.
+; 타이머를 더 짧게 돌리면 CPU만 더 쓰므로, Windows가 기록해 둔 마우스 이동 이력을 가져온다.
+; 가까운 점은 솎아(MOUSE_TRAIL_STEP_PX) 토막이 너무 잘아지지 않게 한다. 이력에서 지난 자리를 못
+; 찾으면(좌표 단위가 다르거나 이력이 모자랄 때) 아무것도 돌려주지 않아 예전처럼 직선으로 잇는다.
+MOUSE_TRAIL_STEP_PX := 4
+MouseTrail(mx, my) {
+    global lastX, lastY, MOUSE_TRAIL_STEP_PX
+    static cur := Buffer(24, 0), buf := Buffer(24 * 64, 0) ; MOUSEMOVEPOINT: x, y, time, extra (64비트에서 24바이트)
+    NumPut("int", mx, "int", my, "uint", 0, cur)
+    n := DllCall("GetMouseMovePointsEx", "uint", 24, "ptr", cur, "ptr", buf, "int", 64, "uint", 1, "int") ; 1 = 화면 좌표
+    if (n < 3)
+        return []
+    pts := []
+    found := false
+    loop n {
+        x := NumGet(buf, (A_Index - 1) * 24, "int"), y := NumGet(buf, (A_Index - 1) * 24 + 4, "int")
+        if (x > 32767) ; 이력의 좌표는 16비트라 왼쪽·위 모니터의 음수가 큰 양수로 온다
+            x -= 65536
+        if (y > 32767)
+            y -= 65536
+        if (A_Index = 1) {
+            if (x != mx || y != my)
+                return []
+            continue
+        }
+        if (x = lastX && y = lastY) {
+            found := true
+            break
+        }
+        pts.Push([x, y])
+    }
+    if !found
+        return []
+    ; pts는 새것부터라 거꾸로 훑으며, 앞 점에서 STEP 이상 떨어진 것만 남긴다 (지금 자리와도 그만큼 떨어지게)
+    out := []
+    px := lastX, py := lastY
+    loop pts.Length {
+        p := pts[pts.Length - A_Index + 1]
+        if ((p[1] - px) ** 2 + (p[2] - py) ** 2 >= MOUSE_TRAIL_STEP_PX ** 2
+            && (p[1] - mx) ** 2 + (p[2] - my) ** 2 >= MOUSE_TRAIL_STEP_PX ** 2) {
+            out.Push(p)
+            px := p[1], py := p[2]
+        }
+    }
+    return out
 }
 
 ; ================= 픽셀 단위 투명도를 가진 작은 그림판 =================
