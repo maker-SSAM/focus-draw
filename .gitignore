@@ -18,3 +18,7 @@ desktop.ini
 
 # 맥용 빌드 결과물 (mac/build.sh가 만든다)
 mac/build/
+
+# Claude Code: PC별 개인 설정과 임시 작업 사본은 공유하지 않음
+.claude/settings.local.json
+.claude/worktrees/
