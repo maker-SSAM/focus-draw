@@ -1,5 +1,7 @@
 # 맥용 배포 절차서 (RELEASE)
 
+**맥 시험판(0.x.x) 절차다.** 정식판은 윈도우와 함께 2.0.0 한 릴리스로 낸다 — `design/stages.md`의 S12 (2026-10-07 결정).
+
 새 Haiku 세션이 이 순서대로 한다. **게시(5~6번)는 늘 선생님이 "올려" 하고 승인한 뒤에만 한다.** 맥 세션이므로 `mac/**`만 고친다.
 
 1. **버전 올리기**: `mac/Info.plist`의 `CFBundleShortVersionString`(예 0.5.1)과 `CFBundleVersion`(1 올림), `mac/맥용 읽어주세요.txt` 첫 줄과 `mac/beta/한장안내.txt` 제목의 버전을 맞춘다.

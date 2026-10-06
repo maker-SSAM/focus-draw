@@ -36,7 +36,7 @@ GitHub "Latest" 릴리스는 한 판만 가리킬 수 있고(지금 `RELEASE.md`
   windows=2.0.0
   windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0
   mac=2.0.0
-  mac_url=https://github.com/maker-SSAM/focus-draw/releases/tag/mac-v2.0.0
+  mac_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0
   ```
 - 새 버전을 올릴 때 **릴리스를 만든 뒤 마지막에** 그 판의 두 줄을 고쳐 push한다(파일을 먼저 고치면 아직 없는 릴리스를 가리킨다). raw 주소는 몇 분 늦게 바뀔 수 있다.
 - `_url`이 없거나 이상하면 `https://github.com/maker-SSAM/focus-draw/releases`를 연다.
@@ -48,7 +48,8 @@ GitHub "Latest" 릴리스는 한 판만 가리킬 수 있고(지금 `RELEASE.md`
 - **윈도우**: `ComObject("WinHttp.WinHttpRequest.5.1")`을 비동기(`Open(..., true)` + `WaitForResponse(0)`를 타이머로 살핌)로 써서 설정 창이 굳지 않게. 받는 곳은 `Run(url)`. 지금 버전은 `APP_VERSION`.
 - 자체 점검(맥): 버전 비교 함수와 파일 읽기(줄 모양·주석·빠진 줄)는 글 점검으로. 실제 인터넷 접속은 점검에서 하지 않는다.
 
-## 아직 정할 것
+## 버전 번호 (2026-10-07 결정)
 
-- 맥 판의 GitHub 첫 정식 배포 버전 번호: 윈도우와 맞춰 **2.0.0**으로 낼지(배포판 2.0 목표), 아니면 맥 1.0부터 따로 셀지. 버전 파일은 두 판 번호가 달라도 동작한다.
-- 맥이 정식으로 올라가면 `RELEASE.md`의 "시험판(prerelease)·Latest는 윈도우" 규칙을 고친다(지금은 맥 시험판 기준).
+- 맥도 **2.0.0**으로 맞춘다. 두 판을 함께 진행해 같은 날 **한 릴리스 `v2.0.0`**에 두 zip을 올린다(맥 1.0은 따로 내지 않는다). 그래서 위 예시의 두 주소가 같다.
+- 그 뒤로도 두 판을 함께 내면 번호가 같게 유지된다. 한 판만 고쳐 내는 일이 생기면 `version.txt`의 그 판 줄만 바꾸면 된다(파일은 두 판 번호가 달라도 동작한다).
+- 2.0 전 맥 시험판(베타 2 `mac-v0.9.0` 등)은 지금 `RELEASE.md`대로 시험판·Latest 아님으로 올린다. 2.0 정식 배포 절차는 `stages.md`의 S12.
