@@ -788,9 +788,6 @@ LaserClearBox(box) {
     DllCall("gdiplus\GdipDeleteBrush", "ptr", pBrush)
 }
 
-; 옛 네 겹 [굵기 배율, 진하기 배율, 흰색을 섞는 비율] — 이제 그리는 데는 쓰지 않는다. 맥 판의 점검이
-; 이 값과 맥의 옛 LASER_LAYERS를 견주므로 남겨 둔다. 실제 겹은 LaserLayers()가 만든다.
-LASER_LAYERS := [[3.0, 0.16, 0], [1.7, 0.40, 0], [0.75, 1.0, 0], [0.3, 0.9, 0.6]]
 pLaserAttr := 0
 DllCall("gdiplus\GdipCreateImageAttributes", "ptr*", &pLaserAttr)
 
