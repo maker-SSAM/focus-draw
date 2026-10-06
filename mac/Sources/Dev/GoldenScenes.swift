@@ -107,11 +107,12 @@ extension Golden {
                 s.key(key); s.stroke(s.wiggle(60, 200, 480, amp: 60))
             }
         }
-        add("opacity-multiply") { s in // 전체 50% × 이 색 50% = 25%
+        add("opacity-multiply") { s in // 드로잉 진하기 50%: 1번 50%, 3번(50%) 25% — 겹친 곳은 진해짐, 휠로 100%까지 올린 선은 불투명
             Settings.shared.drawOpacity = 50
             Settings.shared.drawKeyAlphas[2] = 50
             s.key(K.n1); s.stroke([s.P(60, 120), s.P(560, 120)])
             s.key(K.n3); for _ in 0..<4 { s.key(K.plus) }; s.stroke([s.P(300, 40), s.P(300, 360)])
+            s.key(K.n1); s.wheel(10); s.stroke([s.P(60, 280), s.P(560, 280)])
         }
 
         // 실행 취소
@@ -143,7 +144,7 @@ extension Golden {
                            laserShape(.wave, s.P(170, 130), s.P(290, 175), width: 8, t: 0, rgb: nil)]
             }
             let laser = LaserScene(strokes: strokes, color: color(0xFF0000).cgColor, width: max(penPx(5), LASER_MIN_WIDTH))
-            return renderScene(items: [], board: nil, opacity: 100, size: small, scale: 1, laser: laser, now: now)
+            return renderScene(items: [], board: nil, size: small, scale: 1, laser: laser, now: now)
         }
         addImage("laser-t0.2", note: "S6: 레이저 꼬리 색") { laserImage(now: 0.2) }
         addImage("laser-t0.7", note: "S6: 레이저 꼬리 색") { laserImage(now: 0.7) }
@@ -193,7 +194,7 @@ extension Golden {
             let free = rainbowize(laserPoints(s.wiggle(30, 60, 260, amp: 20), freehand: true), from: 0)
             let shapes = [rainbowize(laserShape(.rect, s.P(30, 110), s.P(140, 175), width: w, t: 0, rgb: nil), from: 60),
                           rainbowize(laserShape(.ellipse, s.P(170, 110), s.P(290, 175), width: w, t: 0, rgb: nil), from: 200)]
-            return renderScene(items: [], board: nil, opacity: 100, size: small, scale: 1,
+            return renderScene(items: [], board: nil, size: small, scale: 1,
                                laser: LaserScene(strokes: [free] + shapes, color: color(0xFF0000).cgColor, width: w), now: 0.3)
         }
         addImage("cursor-rainbow") {

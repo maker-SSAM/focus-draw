@@ -111,7 +111,7 @@ final class InkView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        paintInkLayer(in: ctx, fill: dirtyRect, board: ctl.boardColor, opacity: ctl.config.drawOpacity) {
+        paintInkLayer(in: ctx, fill: dirtyRect, board: ctl.boardColor) {
             if let img = cacheImage { ctx.draw(img, in: bounds) }
             if let live = ctl.live, live.kind == .stroke, let l = strokeLayer {
                 // 긋는 중인 획 / 도형 미리보기: 전용 그림을 획 진하기로 얹는다

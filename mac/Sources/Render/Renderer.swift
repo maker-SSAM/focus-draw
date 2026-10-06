@@ -329,13 +329,13 @@ func renderLaser(_ strokes: [[LaserPt]], baseColor: CGColor, width: CGFloat, now
 
 // 판에 그림을 합치는 순서: 칠판 색을 깔고, 잉크는 층 하나로 묶어 전체 진하기를 한 번에 곱한다.
 // body 안에서 잉크를 그린다. (InkView.draw와 renderScene이 같이 쓴다)
-func paintInkLayer(in ctx: CGContext, fill: CGRect, board: CGColor?, opacity: Double, _ body: () -> Void) {
+// 잉크는 칠판 위 따로 된 층에 그린다 — 지우개(투명으로 칠하기)가 칠판까지 뚫지 않게. 층 전체에 곱하는 진하기는 없다(진하기는 획마다).
+func paintInkLayer(in ctx: CGContext, fill: CGRect, board: CGColor?, _ body: () -> Void) {
     if let b = board {
         ctx.setFillColor(b)
         ctx.fill(fill)
     }
     ctx.saveGState()
-    ctx.setAlpha(CGFloat(opacity) / 100)
     ctx.beginTransparencyLayer(auxiliaryInfo: nil)
     body()
     ctx.endTransparencyLayer()
@@ -349,13 +349,13 @@ struct LaserScene {
 }
 
 // 획 목록 → 그림 한 장. 좌표는 왼쪽 아래가 원점인 포인트, 픽셀은 scale로만 곱한다. 바탕은 투명.
-func renderScene(items: [InkItem], live: InkItem? = nil, board: CGColor? = nil, opacity: Double = 100,
+func renderScene(items: [InkItem], live: InkItem? = nil, board: CGColor? = nil,
                  size: CGSize, scale: CGFloat = 1, laser: LaserScene? = nil, now: TimeInterval = 0) -> CGImage? {
     guard let ctx = CGContext(data: nil, width: Int(size.width * scale), height: Int(size.height * scale),
                               bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                               bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
     ctx.scaleBy(x: scale, y: scale)
-    paintInkLayer(in: ctx, fill: CGRect(origin: .zero, size: size), board: board, opacity: opacity) {
+    paintInkLayer(in: ctx, fill: CGRect(origin: .zero, size: size), board: board) {
         for item in items { renderInk(item, in: ctx) }
         if let live { renderInk(live, in: ctx) }
     }

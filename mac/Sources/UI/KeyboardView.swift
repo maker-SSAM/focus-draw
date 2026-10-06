@@ -55,7 +55,7 @@ enum KeyboardLayout {
             + (1...12).map { Cap(label: "F\($0)", active: false, height: 0.8) } + [Cap(label: "", active: false, height: 0.8)]
         var r1: [Cap] = [Cap(label: "`", active: false)]
         r1 += (1...9).map(digit)
-        r1 += [Cap(label: "0", role: "기본 색", rgb: s.drawColor, alpha: s.drawOpacity / 100),
+        r1 += [Cap(label: "0", role: "기본 색", rgb: s.drawColor, alpha: 1),
                Cap(label: "−", role: "가늘게"), Cap(label: "=", role: "굵게"),
                Cap(label: "delete", role: "전부 지움", width: 2)]
         let r2: [Cap] = [mod("tab", 1.5),

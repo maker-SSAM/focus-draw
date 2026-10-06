@@ -136,10 +136,17 @@ enum PenKind { case normal, laser, rainbow }
 
     // 숫자키로 바꾼 색·굵기는 임시값 — 켤 때마다 설정 창의 값으로 돌아온다
     func resetTemporaries() {
-        rgb = config.drawColor; alpha = 1
+        rgb = config.drawColor; alpha = startAlpha(100)
         penStep = config.drawStep; eraserStep = config.eraserStep
         pen = .normal
         rainbowColor = false
+    }
+
+    // 설정 창의 드로잉 진하기([Draw] Opacity)는 판 전체에 곱하지 않고 **긋기 시작할 때의 선 진하기**로만 쓴다.
+    // 켤 때·숫자키를 누를 때 "설정 진하기 × 그 색의 진하기"로 시작하고, 휠은 그 뒤 숫자를 그대로 바꾼다(절대값,
+    // 100%면 정말 불투명). 5% 아래로는 내리지 않는다. Windows 판 StartAlpha와 같다.
+    func startAlpha(_ keyPercent: Double) -> CGFloat {
+        CGFloat(max(5, min(100, (config.drawOpacity * keyPercent / 100).rounded()))) / 100
     }
 
     func expireUndoIfNeeded() { cancelExpiry(); model.expireIfNeeded() }

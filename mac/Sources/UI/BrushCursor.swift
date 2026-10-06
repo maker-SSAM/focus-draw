@@ -16,8 +16,8 @@ extension DrawController {
             img = laserCursorImage(side: d, base: color(rgb), rainbowGlowHue: rainbowColor ? rainbowHue : nil)
         } else {
             d = penPx(penStep)
-            // 붓 동그라미의 진하기 = 색별 진하기 × 전체 진하기: 지금 그으면 나올 선과 같은 모양
-            let a = alpha * CGFloat(config.drawOpacity) / 100
+            // 붓 동그라미의 진하기 = 지금 그어질 선의 진하기 그대로 (판 전체에 곱하는 값은 없다)
+            let a = alpha
             // 무지개 펜은 점 자체를 무지개 그라데이션으로 칠해 한눈에 무지개 모드인 줄 알게 한다 (가만히 있다, 타이머 없음)
             img = pen == .rainbow ? rainbowDotImage(diameter: d, alpha: a) : brushCursorImage(diameter: d, fill: color(rgb, a))
         }

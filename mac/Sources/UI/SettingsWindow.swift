@@ -41,7 +41,7 @@ enum SettingsLayout {
     static let draw = Panel(title: "드로잉", fields: [
         Field(id: "Draw.Color", label: "기본 색상"),
         Field(id: "Draw.ThicknessStep", label: "드로잉 굵기", suffix: "단계"),
-        Field(id: "Draw.Opacity", label: "전체 진하기", suffix: "%", step: 5),
+        Field(id: "Draw.Opacity", label: "드로잉 진하기", suffix: "%", step: 5),
         Field(id: "Draw.EraserStep", label: "지우개 크기", suffix: "단계"),
         Field(id: "Draw.LaserHold", label: "레이저 유지됨", suffix: "ms", step: 100),
         Field(id: "Draw.LaserFade", label: "레이저 사라짐", suffix: "ms", step: 100),
@@ -500,7 +500,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                Text("전체 진하기는 색별 진하기에 곱해집니다. 예: 전체 100%에 3번 키 40%이면 40%로 그려집니다.")
+                Text("드로잉을 켜거나 숫자키를 누르면 \"드로잉 진하기 × 색별 진하기\"로 시작합니다(예: 50%에 3번 키 40%이면 20%). 그린 뒤 마우스 휠로 바꾸는 숫자가 실제 진하기입니다(100%면 불투명).")
                     .font(.callout).foregroundStyle(.secondary)
             }
         }

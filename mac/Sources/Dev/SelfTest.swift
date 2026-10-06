@@ -371,10 +371,20 @@ import AppKit
         c.config.drawOpacity = 50
         c.handleKey(18, [], isRepeat: false, source: "hk")
         let a50 = centerAlpha(c.cursorImage)
-        c.config.drawOpacity = 100
-        c.updateCursor()
+        for _ in 0..<10 { c.stepAlpha(1) }; c.updateCursor()   // 휠 위로 10칸: 50 → 100
+        let wheel100 = c.alpha, aWheel = centerAlpha(c.cursorImage)
+        c.config.drawKeyAlphas[2] = 40
+        c.handleKey(20, [], isRepeat: false, source: "hk")   // 3: 50% × 40% = 20%
+        let key3 = c.alpha
+        c.config.drawOpacity = 0
+        c.handleKey(29, [], isRepeat: false, source: "hk")   // 0: 0% × 100% → 바닥 5%
+        let floor = c.alpha
+        c.config.drawOpacity = 100; c.config.drawKeyAlphas[2] = 100
+        c.handleKey(18, [], isRepeat: false, source: "hk")
         let a100 = centerAlpha(c.cursorImage)
-        check("붓 동그라미 진하기 = 색별 진하기 × 전체 진하기", abs(a50 - 128) <= 3 && a100 >= 252, "전체 50% → \(a50), 100% → \(a100)")
+        check("드로잉 진하기는 시작값: 설정 50% → 시작 50%, 휠로 100%까지 올리면 붓 동그라미도 불투명 (판 전체에 곱하지 않음)",
+              abs(a50 - 128) <= 3 && wheel100 == 1 && aWheel >= 252 && a100 >= 252, "50% → \(a50), 휠 \(wheel100) → \(aWheel), 100% → \(a100)")
+        check("숫자키 시작 진하기 = 설정 × 그 색 (50% × 40% = 20%), 0%여도 5%가 바닥", abs(key3 - 0.2) < 1e-9 && abs(floor - 0.05) < 1e-9, "\(key3) \(floor)")
         c.syncPointer(.widget)
         check("위젯 위(포인터 아래가 위젯)에서는 화살표를 보임", !c.mouseInside && SystemCursor.hidden == d.state.highlightVisible, "")
         c.syncPointer(.board)

@@ -31,8 +31,8 @@ extension DrawController {
         case 27, 78: adjustSize(-1, eraser: rightDown || optionHeld || f.contains(.option)) // - (키패드 -)
         default:
             if let d = DrawController.digitKeys[k] {
-                if d == 0 { rgb = config.drawColor; alpha = 1 } else {
-                    rgb = config.drawKeyColors[d - 1]; alpha = CGFloat(config.drawKeyAlphas[d - 1]) / 100
+                if d == 0 { rgb = config.drawColor; alpha = startAlpha(100) } else {
+                    rgb = config.drawKeyColors[d - 1]; alpha = startAlpha(config.drawKeyAlphas[d - 1])
                     penStep = config.drawKeySteps[d - 1] // 굵기도 그 숫자키의 단계로 (0은 굵기를 그대로 둔다 — Windows와 같음)
                 }
                 pen = .normal
@@ -80,10 +80,15 @@ extension DrawController {
         while abs(scrollAccum) >= 1 {
             let dir: CGFloat = scrollAccum > 0 ? 1 : -1
             scrollAccum -= dir
-            alpha = max(0.05, min(1, ((alpha * 100).rounded() + 5 * dir) / 100))
+            stepAlpha(dir)
         }
         showBadge("\(Int((alpha * 100).rounded()))%")
         updateCursor()
+    }
+
+    // 휠 한 칸: 5%씩, 5~100%. 판 전체에 곱하는 값이 없으므로 이 숫자가 실제 진하기다.
+    func stepAlpha(_ dir: CGFloat) {
+        alpha = max(0.05, min(1, ((alpha * 100).rounded() + 5 * dir) / 100))
     }
 }
 

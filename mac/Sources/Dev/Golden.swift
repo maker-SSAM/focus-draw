@@ -31,6 +31,7 @@ import AppKit
         }
         func key(_ c: UInt16, _ f: NSEvent.ModifierFlags = []) { refresh(); d.handleKey(c, f, isRepeat: false, source: "golden") }
         func keyUp(_ c: UInt16) { d.handleKeyUp(c, source: "golden") }
+        func wheel(_ n: Int) { for _ in 0..<abs(n) { d.stepAlpha(n > 0 ? 1 : -1) } } // 휠 n칸 (위로 +)
         func hold(_ c: UInt16, _ body: () -> Void) { key(c); body(); keyUp(c) }
         func stroke(_ pts: [CGPoint], _ f: NSEvent.ModifierFlags = [], right: Bool = false) {
             d.down(pts[0], ev(right ? .rightMouseDown : .leftMouseDown, pts[0], f), right: right)
@@ -42,7 +43,7 @@ import AppKit
         }
         func image(scale: CGFloat = 1) -> CGImage? {
             refresh()
-            return renderScene(items: d.items, live: d.live, board: d.boardColor, opacity: d.config.drawOpacity,
+            return renderScene(items: d.items, live: d.live, board: d.boardColor,
                                size: size, scale: scale)
         }
     }
