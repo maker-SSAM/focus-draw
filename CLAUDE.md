@@ -10,6 +10,12 @@ Windows 판(`focus-draw.ahk`)과 맥 판(`mac/`)을 한 저장소에서 같이 �
 - **Windows 세션**만 `읽어주세요.txt`, `소개자료/build.ps1`, `터치펜-확인.ahk`를 고친다.
   이 세 파일은 맥 쪽 줄바꿈(CRLF/mixed)과 인코딩(UTF-8 BOM)이 달라도 **맥 세션에서 손대거나 되돌리지 않는다**.
 
+## 설정 파일은 두 판이 같게 (배포판 2.0 목표, 2026-10-06 결정)
+
+- `settings.ini`의 항목 이름·범위·기본값·쓰는 방식을 윈도우 판과 맥 판이 똑같이 한다.
+- 모든 설정은 **기본값이어도 늘 파일에 쓴다**. "기본값이면 생략" 같은 예외를 새로 만들지 않는다.
+- 한쪽에 설정을 먼저 넣으면 다른 쪽 할 일을 `mac/design/windows-todo.md`(또는 HANDOFF)에 남긴다.
+
 ## git
 
 - `.git/config`에 `core.autocrlf`는 **절대 설정하지 않는다** — OneDrive로 Windows PC와 공유되어 그쪽 CRLF 규칙을 깬다.
