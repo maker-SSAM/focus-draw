@@ -2575,7 +2575,7 @@ OnPointerDown(wp, lp, msg, hwnd) {
 }
 
 OnPointerUpdate(wp, lp, msg, hwnd) {
-    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY, dragShapeMode
+    global drawOn, drawGui, penStroke, penErasing, penLastX, penLastY, dragShapeMode, dragPenKind
     Critical ; 그리는 도중에 드로잉 끄기가 끼어들지 않게 (DrawPoll 설명 참고)
     if (!penStroke || !drawOn || hwnd != drawGui.Hwnd)
         return
@@ -2584,8 +2584,13 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
         return
     if penErasing
         EraseSegment(penLastX, penLastY, pt[1], pt[2])
-    else if (dragShapeMode = "")
+    else if (dragShapeMode = "") {
+        ; 일반·무지개 펜은 메시지 사이에 합쳐진 중간 점도 이어서 긋는다 (PointerTrail 설명 참고)
+        if (dragPenKind != "laser")
+            for tp in PointerTrail(wp & 0xFFFF, pt[1], pt[2])
+                StrokeMove(tp[1], tp[2])
         StrokeMove(pt[1], pt[2]) ; 자유선·사라지는 펜·무지개 펜은 오는 대로 바로 긋는다
+    }
     ; 도형은 여기서 그리지 않고 자리만 적어둔다 — DrawPoll이 10ms마다 마지막 자리로 다시 그린다.
     ; 도형은 한 번 그릴 때마다 전체를 다시 그리는데, 칠판은 포인터 메시지를 마우스보다 훨씬
     ; 자주 보내서 오는 대로 다 그리면 밀린 메시지가 쌓여 도형이 손을 늦게 따라온다.
@@ -2594,6 +2599,48 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
     ; 커서 노릇을 하는 원도 포인터 좌표로 옮긴다. 진짜 마우스 커서는 변환이 늦어 뒤처지므로
     ; MouseGetPos로 옮기면 원만 따로 놀게 된다.
     MoveBrushCursor(penLastX, penLastY)
+}
+
+; 터치·펜 메시지 하나에는 마지막 점만 실려 오는데, 시스템이 메시지를 합쳐 보내면 그 사이 점이
+; 사라져 선이 각진다. 합쳐진 점들은 포인터 이력으로 가져올 수 있다 (마우스의 MouseTrail과 같은 역할).
+; 지난 자리(penLastX, penLastY)부터 지금 자리 앞까지의 점을 오래된 순으로, 4px 이상 떨어진 것만 돌려준다.
+; POINTER_INFO의 크기를 확신할 수 없어, 항목마다 pointerId가 같은지 확인해 어긋나면 아무것도 돌려주지 않는다.
+POINTER_INFO_SIZE := 96 ; 64비트
+PointerTrail(id, x, y) {
+    global penLastX, penLastY, POINTER_INFO_SIZE, MOUSE_TRAIL_STEP_PX
+    static buf := Buffer(128 * 32, 0)
+    cnt := 32
+    if !DllCall("GetPointerInfoHistory", "uint", id, "uint*", &cnt, "ptr", buf, "int")
+        return []
+    if (cnt < 3)
+        return []
+    sz := POINTER_INFO_SIZE
+    pts := []
+    loop cnt {
+        o := (A_Index - 1) * sz
+        if (NumGet(buf, o + 4, "uint") != id)
+            return [] ; 구조체 크기가 다르다
+        px := NumGet(buf, o + 32, "int"), py := NumGet(buf, o + 36, "int") ; ptPixelLocation
+        if (A_Index = 1) {
+            if (px != x || py != y)
+                return []
+            continue
+        }
+        if (px = penLastX && py = penLastY)
+            break
+        pts.Push([px, py])
+    }
+    out := []
+    qx := penLastX, qy := penLastY
+    step2 := MOUSE_TRAIL_STEP_PX ** 2
+    loop pts.Length {
+        p := pts[pts.Length - A_Index + 1]
+        if ((p[1] - qx) ** 2 + (p[2] - qy) ** 2 >= step2 && (p[1] - x) ** 2 + (p[2] - y) ** 2 >= step2) {
+            out.Push(p)
+            qx := p[1], qy := p[2]
+        }
+    }
+    return out
 }
 
 OnPointerUp(wp, lp, msg, hwnd) {
