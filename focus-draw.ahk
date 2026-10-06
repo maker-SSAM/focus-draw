@@ -1806,7 +1806,8 @@ WavePoints(x1, y1, x2, y2) {
 }
 
 ; 도형 테두리를 따라가는 점들. 원은 크기에 맞춰 잘게 쪼개야 토막마다 훑는 네모가 작게 유지된다.
-ShapeOutlinePoints(mode, x1, y1, x2, y2) {
+; fine: 레이저용 — 원을 약 5px 간격으로 찍어 큰 원도 각져 보이지 않게 한다 (맥 레이저 도형과 같은 매끄러움)
+ShapeOutlinePoints(mode, x1, y1, x2, y2, fine := false) {
     if (mode = "line")
         return [[x1, y1], [x2, y2]]
     if (mode = "wave")
@@ -1824,6 +1825,8 @@ ShapeOutlinePoints(mode, x1, y1, x2, y2) {
     cx := (lx + rx) / 2, cy := (ty + by) / 2
     ax := (rx - lx) / 2, ay := (by - ty) / 2
     steps := Max(16, Min(160, Round((ax + ay) / 6)))
+    if fine
+        steps := Max(steps, Min(600, Ceil(6.283185307179586 * Sqrt((ax * ax + ay * ay) / 2) / 5)))
     pts := []
     loop steps + 1 {
         t := (A_Index - 1) * 6.283185307179586 / steps
@@ -2626,7 +2629,7 @@ StrokeMove(x, y) {
         if (dragPenKind = "laser") {
             ; 레이저 도형도 움직이기 전까지는 시작하지 않는다 (LaserBegin 설명 참고)
             if (LaserStarted() || x != dragStartX || y != dragStartY)
-                LaserSetShape(ShapeOutlinePoints(dragShapeMode, dragStartX, dragStartY, ex, ey))
+                LaserSetShape(ShapeOutlinePoints(dragShapeMode, dragStartX, dragStartY, ex, ey, true))
         } else
             DrawShapePreview(dragShapeMode, dragStartX, dragStartY, ex, ey)
         return
