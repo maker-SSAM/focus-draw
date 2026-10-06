@@ -20,7 +20,7 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **펜 개선 묶음 B-5 또는 S11 남은 일** | Sonnet · 기본, 새 세션 | 첫마디: "mac/ROADMAP.md를 읽고 ○○ 진행해줘." 고를 것 둘: ① **단축키 그림에서 키를 눌러 옵션 창**([design/pen-improvements-plan.md](design/pen-improvements-plan.md) 6번 — 숫자키별 굵기·휠 투명도 절대값은 2026-10-07에 끝남), ② **베타 2**(`mac-v0.9.0`, 선생님 배포 승인 후 [RELEASE.md](RELEASE.md)대로, 서명 없이 — 2026-10-05 결정). Windows가 따라올 것은 [design/windows-todo.md](design/windows-todo.md)에 쌓여 있다(Windows PC 세션에서 처리). 레이저 모양은 `FocusDraw --laserpic <폴더>`로 그림을 뽑아 본다(화면 캡처 불필요). 보류: 확대·타이머·핀조명(가능성만 확인), 노치 없는 맥 아이콘, 위젯 취소·지우기 버튼 |
+| **베타 2** | Sonnet · 기본, 새 세션 | 첫마디: "mac/ROADMAP.md를 읽고 ○○ 진행해줘." 펜 개선 묶음 A·B는 끝났다(숫자키별 굵기·휠 투명도 절대값 2026-10-07). **단축키 그림 옵션 창(묶음 C)은 보류**(선생님 결정 2026-10-07 — [design/pen-improvements-plan.md](design/pen-improvements-plan.md) 6번, 먼저 시작하지 않는다). 다음은 **베타 2**(`mac-v0.9.0`, 선생님 배포 승인 후 [RELEASE.md](RELEASE.md)대로, 서명 없이 — 2026-10-05 결정). Windows가 따라올 것은 [design/windows-todo.md](design/windows-todo.md)에 쌓여 있다(Windows PC 세션에서 처리). 레이저 모양은 `FocusDraw --laserpic <폴더>`로 그림을 뽑아 본다(화면 캡처 불필요). 보류: 확대·타이머·핀조명(가능성만 확인), 노치 없는 맥 아이콘, 위젯 취소·지우기 버튼 |
 
 **남은 디자인 메모**: 설정 창의 항목 이름 칸 폭(96)이 짧은 이름에서는 `−`까지 빈 칸이 남는다 — 거슬리면 줄인다. 색 칸은 맥 기본 색 칸(NSColorWell)이라 색 창 모양은 시스템 것이다. 위젯 버튼 테두리는 배경색의 50% 진하게(어두운 배경은 50% 연하게), 두께 1px 고정.
 
