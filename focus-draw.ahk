@@ -196,7 +196,7 @@ LoadSettings() {
         , legacyThickness != "" ? PxToStep(legacyThickness, PEN_BASE_PX, PEN_STEP_RATIO) : DEFAULT_DRAW_STEP)))
     EraserStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "EraserStep"
         , legacyEraser != "" ? PxToStep(legacyEraser, ERASER_BASE_PX, ERASER_STEP_RATIO) : DEFAULT_ERASER_STEP)))
-    ; 사라지는 펜(레이저): 그어진 뒤 그대로 있는 시간(ms), 그 뒤 사라지는 데 걸리는 시간(ms), 빛 번짐(%).
+    ; 레이저 펜(레이저): 그어진 뒤 그대로 있는 시간(ms), 그 뒤 사라지는 데 걸리는 시간(ms), 빛 번짐(%).
     ; 맥 판과 같은 이름·범위다 (기본값은 LASER_HOLD_MS·LASER_FADE_MS와 같다).
     laserHold := Max(0, Min(3000, IniRead(SETTINGS_PATH, "Draw", "LaserHold", 500)))
     laserFade := Max(100, Min(3000, IniRead(SETTINGS_PATH, "Draw", "LaserFade", 500)))
@@ -385,7 +385,7 @@ lastY := 0
 dragStartX := 0
 dragStartY := 0
 dragShapeMode := ""
-dragPenKind := "" ; 도형이 아닌 특수 펜: "laser"(사라지는 펜) | "rainbow"(무지개 펜) | ""(보통 펜)
+dragPenKind := "" ; 도형이 아닌 특수 펜: "laser"(레이저 펜) | "rainbow"(무지개 펜) | ""(보통 펜)
 dragOnOtherWindow := false ; 현재 드래그가 판서 오버레이가 아닌 다른 창(위젯/캡처 도구 등) 위에서 시작돼 판서를 건너뛰어야 하는지
 erasing := false ; 오른쪽 버튼으로 지우는 중인지
 lastShapeBox := [] ; 직전 미리보기 프레임이 그린 범위 (그 자리만 되돌리고 다시 합성하면 된다)
@@ -699,13 +699,13 @@ ClearBackBuffer()
 drawGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x8080000", "FocusDraw-Draw")
 drawGui.Show("x" vx " y" vy " w" vw " h" vh " Hide")
 
-; ================= 사라지는 펜 (A를 누르고 긋기) =================
+; ================= 레이저 펜 (A를 누르고 긋기) =================
 ; 파워포인트의 "레이저 포인터"처럼 보이게 한다 — 설명하면서 잠깐 가리키는 선이다.
 ;   - 선은 **밝은 심지 + 둘레의 빛 번짐** 세 겹으로 그려 빛나 보이게 한다
 ;   - **점마다 따로 나이를 먹는다.** 그어진 지 laserHold가 지나면 laserFade에 걸쳐
 ;     가늘어지며 사라진다. 그래서 움직이는 동안에는 혜성처럼 꼬리가 뒤따라오고,
 ;     멈추면 꼬리가 커서 쪽으로 줄어들며 없어진다
-;   - 사라지는 펜을 고른 동안에는 커서 자리에 **빛나는 점**이 뜬다 (레이저 점)
+;   - 레이저 펜을 고른 동안에는 커서 자리에 **빛나는 점**이 뜬다 (레이저 점)
 ; 판서 그림과는 **다른 창**에 그린다 — 같은 그림에 그으면 사라질 때 그 아래 있던 글씨를
 ; 되살려야 하고, 실행 취소 기록도 엉킨다. 이 창은 판서 층 바로 위에 뜨고, 클릭은 그대로
 ; 통과시킨다(E0x20). 색은 지금 쓰는 펜을 따른다(기본 빨강이 파워포인트와 같다).
@@ -1219,7 +1219,7 @@ LaserEnd() {
     }
 }
 
-; 사라지는 펜을 고르면 레이저 점을 띄우기 시작한다 (SetPenKind에서 부른다)
+; 레이저 펜을 고르면 레이저 점을 띄우기 시작한다 (SetPenKind에서 부른다)
 LaserKeyDown() {
     global drawOn
     if (drawOn && EnsureLaserCanvas())
@@ -1252,7 +1252,7 @@ LaserTick() {
             MouseGetPos(&mx, &my)
         dotW := Max(activeDrawThickness, LASER_MIN_WIDTH)
     }
-    ; 사라지는 펜을 고른 동안에는 이 타이머가 계속 돈다. 남은 꼬리가 없고 점도 그대로면 다시
+    ; 레이저 펜을 고른 동안에는 이 타이머가 계속 돈다. 남은 꼬리가 없고 점도 그대로면 다시
     ; 그릴 것이 없으므로 바로 돌아간다 — 가만히 두는 동안 16ms마다 같은 그림을 그리지 않게.
     dotKey := dotOn ? mx "," my "," dotW "," activeDrawColor "," dotGlow : ""
     if (laserStrokes.Length = 0 && dotOn && dotKey = lastDot && IsObject(laserLastBox))
@@ -2442,7 +2442,7 @@ TwoFingerUndo() {
     abortedInk := penStroke && undoStack.Length > 0 && undoStack[undoStack.Length].Count > 0
     if penStroke {
         penStroke := false
-        LaserEnd() ; 사라지는 펜이었으면 그 자국은 저절로 사라진다 (실행 취소 기록에도 없다)
+        LaserEnd() ; 레이저 펜이었으면 그 자국은 저절로 사라진다 (실행 취소 기록에도 없다)
         if penErasing {
             penErasing := false
             penEraserWide := false
@@ -2594,7 +2594,7 @@ OnPointerUpdate(wp, lp, msg, hwnd) {
         if (dragPenKind != "laser")
             for tp in PointerTrail(wp & 0xFFFF, pt[1], pt[2])
                 StrokeMove(tp[1], tp[2])
-        StrokeMove(pt[1], pt[2]) ; 자유선·사라지는 펜·무지개 펜은 오는 대로 바로 긋는다
+        StrokeMove(pt[1], pt[2]) ; 자유선·레이저 펜·무지개 펜은 오는 대로 바로 긋는다
     }
     ; 도형은 여기서 그리지 않고 자리만 적어둔다 — DrawPoll이 10ms마다 마지막 자리로 다시 그린다.
     ; 도형은 한 번 그릴 때마다 전체를 다시 그리는데, 칠판은 포인터 메시지를 마우스보다 훨씬
@@ -2663,7 +2663,7 @@ OnPointerUp(wp, lp, msg, hwnd) {
         ; 도형은 10ms마다 그리므로, 손을 뗀 자리가 아직 안 그려졌을 수 있다
         if (dragShapeMode != "")
             StrokeMove(penLastX, penLastY)
-        LaserEnd() ; 사라지는 펜으로 긋던 중이면 이제부터 사라지기 시작한다
+        LaserEnd() ; 레이저 펜으로 긋던 중이면 이제부터 사라지기 시작한다
     }
     penStroke := false
     if penErasing {
@@ -2687,7 +2687,7 @@ StrokeBegin(x, y) {
     freeDirX := 0, freeDirY := 0 ; 새 획은 이어받을 방향이 없다 (FreehandCurve)
     dragStartX := x, dragStartY := y
     ; 도형은 긋기 시작하는 순간 눌려 있던 키로 정한다. **특수 펜은 도형에도 그대로 적용된다**
-    ; (사용자 요청) — 무지개 펜이면 테두리를 따라 색이 바뀌고, 사라지는 펜이면 빛나는 도형이
+    ; (사용자 요청) — 무지개 펜이면 테두리를 따라 색이 바뀌고, 레이저 펜이면 빛나는 도형이
     ; 손을 뗀 뒤 저절로 사라진다(LaserSetShape).
     dragShapeMode := CurrentShapeMode()
     dragPenKind := penKind
@@ -2696,7 +2696,7 @@ StrokeBegin(x, y) {
     if dragOnOtherWindow
         return ; 다른 창 위에서 시작된 드래그 — 아무것도 그리지 않는다
     if (dragPenKind = "laser") {
-        ; 사라지는 펜은 판서 그림을 건드리지 않으므로 실행 취소에 남기지 않는다
+        ; 레이저 펜은 판서 그림을 건드리지 않으므로 실행 취소에 남기지 않는다
         LaserBegin(x, y)
         return
     }
@@ -2789,7 +2789,7 @@ DrawPoll() {
     if (!leftDown && !rightDown) {
         drawing := false
         erasing := false
-        LaserEnd() ; 사라지는 펜으로 긋던 중이면 이제부터 사라지기 시작한다
+        LaserEnd() ; 레이저 펜으로 긋던 중이면 이제부터 사라지기 시작한다
         return
     }
 
@@ -3226,7 +3226,7 @@ ToggleDraw(*) {
     erasing := false
     if drawOn {
         drawGui.Show("NA")
-        ; 사라지는 펜의 창은 판서 층 **바로 위**에 둔다 (그래서 판서 층 다음에 띄운다)
+        ; 레이저 펜의 창은 판서 층 **바로 위**에 둔다 (그래서 판서 층 다음에 띄운다)
         laserGui.Show("NA")
         ; 오버레이가 화면 전체를 덮지만, 판서를 끌 수단은 남아 있어야 하므로 위젯만 위로 올린다
         WinSetAlwaysOnTop(true, widget)
@@ -3949,10 +3949,10 @@ OpenSettingsWindow(*) {
     AddSliderRow(settingsGui, 118, "투명도", 0, 100, DrawOpacity, "%", (v) => DrawOpacity := v, 5)
     AddSliderRow(settingsGui, 150, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
 
-    ; --- 사라지는 펜 (레이저, A) --- 맥 판과 같은 설정 항목이다([Draw] LaserHold·LaserFade·LaserGlow).
+    ; --- 레이저 펜 (레이저, A) --- 맥 판과 같은 설정 항목이다([Draw] LaserHold·LaserFade·LaserGlow).
     ; 줄 이름이 왼쪽 칸(70px)에 들어가도록 "레이저"는 상자 제목으로 올린다.
     settingsGui.AddGroupBox("x22 y184 w436 h124", "레이저 펜 (A)")
-    AddSliderRow(settingsGui, 206, "머묾", 0, 3000, laserHold, "ms", (v) => laserHold := v, 100)
+    AddSliderRow(settingsGui, 206, "유지됨", 0, 3000, laserHold, "ms", (v) => laserHold := v, 100)
     AddSliderRow(settingsGui, 240, "사라짐", 100, 3000, laserFade, "ms", (v) => laserFade := v, 100)
     AddSliderRow(settingsGui, 274, "빛 번짐", 0, 200, laserGlow, "%", (v) => laserGlow := v, 10)
 
@@ -4066,56 +4066,113 @@ OpenSettingsWindow(*) {
 ; 맞아서, 배율 125%/150%로 쓰는 화면에서도 그림이 부풀려지지 않고 또렷하게 나온다.
 shortcutGui := ""
 hShortcutBmp := 0
-; 그림 아래에 붙는 "지금 설정된 색" 띠의 높이
-GUIDE_STRIP_H := 104
+; 그림은 파일이라 설정 창에서 바꾼 색을 알 수 없다. 그래서 **창을 열 때마다 키 위 색 막대만 지금 설정
+; 색으로 다시 칠한다** (맥 판의 키 위 막대와 같다). 그림을 새로 만들지 않아도 키 위 색은 늘 실제와 맞는다.
+;
+; 막대는 키 위쪽 둥근 모서리에 맞게 잘려 있어 사각형으로 덮으면 모서리가 번진다. 그래서 1번 키의
+; 막대(빨강)를 본보기로 삼아 픽셀마다 "막대가 차지한 비율 a"를 구하고(막대 색 D와 테두리·바탕색 B의
+; 섞임으로 본다), 다른 키는 p + a·(새 색 − D)로 고쳐 가장자리의 테두리와 겹친 부분도 자연스럽게 한다.
+; 막대 맨 아랫줄은 12% 어두운 선이라 새 색도 같은 비율로 어둡게 한다.
+; 좌표는 shortcuts.png(1200×860)에 맞춘 값이다. 그림을 바꾸면 크기가 달라져 이 칠하기는 건너뛴다
+; (안내 그림은 그대로 보이고, 색 막대만 그림에 있는 기본 색으로 남는다).
+GUIDE_IMG_W := 1200
+GUIDE_IMG_H := 860
+GUIDE_BAR_W := 62 ; 키 바깥 테두리부터 오른쪽 테두리까지
+GUIDE_BAR_H := 9  ; 키 맨 위 테두리 줄(1)부터 막대 맨 아랫줄(8)까지
+; 숫자키 1~9, 0이 놓인 줄의 왼쪽 x (맨 위 y=127)
+GUIDE_DIGIT_X := [145, 212, 279, 346, 412, 479, 546, 613, 679, 746]
+; 칠판 W·E·R이 놓인 줄 (맨 위 y=207)
+GUIDE_BOARD_X := Map("W", 213, "E", 280, "R", 347)
 
-; 그림은 파일이라 설정 창에서 바꾼 색을 알 수 없다. 그래서 **색만은 창을 열 때마다 지금 값으로
-; 그려서** 그림 아래에 붙인다 — 그림을 새로 만들지 않아도 눈에 보이는 색은 항상 실제와 맞는다.
-; 키보드에 놓인 순서대로 1~9 / 0번(기본 색) / 칠판 W·E·R을 늘어놓고, 투명도를 낮춰둔 것은 아래에 %를 적는다.
-AddGuideColorStrip(gui, width, top, bgColor) {
-    global DRAW_COLORS, DRAW_ALPHAS, BOARD_KEYS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS, drawColor
-    ; 그림 바탕이 어두우면 글자를 밝게 뒤집는다 (밝기는 사람 눈에 맞춘 가중치로 잰다)
-    lum := (((bgColor >> 16) & 0xFF) * 299 + ((bgColor >> 8) & 0xFF) * 587 + (bgColor & 0xFF) * 114) // 1000
-    fg := (lum < 128) ? "FFFFFF" : "1C1C1E"
-    dim := (lum < 128) ? "AAAAB2" : "8E8E93"
+PaintGuideBars(pBmp, imgW, imgH) {
+    global GUIDE_IMG_W, GUIDE_IMG_H, GUIDE_BAR_W, GUIDE_BAR_H, GUIDE_DIGIT_X, GUIDE_BOARD_X
+    global DRAW_COLORS, DRAW_ALPHAS, DRAW_COLOR_DEFAULTS, drawColor
+    global BOARD_KEYS, BOARD_COLORS, BOARD_ALPHAS, BOARD_COLOR_DEFAULTS
+    if (imgW != GUIDE_IMG_W || imgH != GUIDE_IMG_H)
+        return
+    rect := Buffer(16, 0)
+    NumPut("int", 0, "int", 0, "int", imgW, "int", imgH, rect)
+    data := Buffer(32, 0) ; BitmapData: Width, Height, Stride, PixelFormat, Scan0, Reserved
+    if DllCall("gdiplus\GdipBitmapLockBits", "ptr", pBmp, "ptr", rect, "uint", 3, "int", 0x26200A, "ptr", data) ; 3 = 읽기+쓰기
+        return
+    scan0 := NumGet(data, 16, "ptr")
+    stride := NumGet(data, 8, "int")
 
-    items := []
-    loop DRAW_COLORS.Length
-        items.Push({key: String(A_Index), color: DRAW_COLORS[A_Index], alpha: DRAW_ALPHAS[A_Index]})
-    items.Push({key: "0", color: drawColor, alpha: 100})
-    for index, pair in BOARD_KEYS {
-        if (BOARD_COLOR_DEFAULTS[index] < 0) ; Q(투명)는 보여줄 색이 없다
-            continue
-        items.Push({key: StrUpper(pair[1]), color: BOARD_COLORS[index], alpha: BOARD_ALPHAS[index]})
-    }
-
-    lbl := gui.AddText("x0 y" (top + 6) " w" width " Center", "지금 설정된 색 — 설정 창에서 바꾸면 여기에 그대로 나타납니다")
-    lbl.SetFont("s9 c" dim)
-
-    cell := Max(34, Min(64, (width - 40) // items.Length))
-    startX := (width - cell * items.Length) // 2
-    rowY := top + 30
-    for index, it in items {
-        x := startX + (index - 1) * cell
-        ; 견본은 설정 창과 같은 방식 — 색이 확실히 반영되는 Progress를 꽉 채우고 회색 테두리를 두른다
-        gui.AddProgress("x" (x + 4) " y" rowY " w" (cell - 8) " h24 Range0-100 -Smooth c808080", 100)
-        gui.AddProgress("x" (x + 5) " y" (rowY + 1) " w" (cell - 10) " h22 Range0-100 -Smooth c" HexColor(it.color), 100)
-        k := gui.AddText("x" x " y" (rowY + 28) " w" cell " Center", it.key)
-        k.SetFont("s10 Bold c" fg)
-        if (it.alpha < 100) {
-            p := gui.AddText("x" x " y" (rowY + 48) " w" cell " Center", it.alpha "%")
-            p.SetFont("s8 c" dim)
+    ; 1번 키(빨강 막대)에서 픽셀마다의 막대 비율 a를 구한다
+    bw := GUIDE_BAR_W, bh := GUIDE_BAR_H
+    tplA := []
+    border := [0x7F, 0xB4, 0xE8], bg := [0xF4, 0xF4, 0xF6]
+    tplB := [] ; 섞여 있는 상대(테두리 또는 바탕)의 색
+    loop bh {
+        dy := A_Index - 1
+        sh := (dy = bh - 1) ? 0.88 : 1
+        loop bw {
+            dx := A_Index - 1
+            o := scan0 + (127 + dy) * stride + (145 + dx) * 4
+            pr := NumGet(o, 2, "uchar"), pg := NumGet(o, 1, "uchar"), pb := NumGet(o, 0, "uchar")
+            bestErr := 1e18, bestA := 0, bestB := bg
+            for B in [border, bg] {
+                ; 픽셀 = a·D + (1−a)·B 가 되는 a (D는 빨강 255,0,0)
+                dr := 255 * sh - B[1], dg := 0 - B[2], db := 0 - B[3]
+                den := dr * dr + dg * dg + db * db
+                a := Max(0, Min(1, ((pr - B[1]) * dr + (pg - B[2]) * dg + (pb - B[3]) * db) / den))
+                er := pr - (a * 255 * sh + (1 - a) * B[1]), eg := pg - (1 - a) * B[2], eb := pb - (1 - a) * B[3]
+                err := er * er + eg * eg + eb * eb
+                if (err < bestErr)
+                    bestErr := err, bestA := a, bestB := B
+            }
+            tplA.Push(bestA), tplB.Push(bestB)
         }
     }
+
+    ; 칠할 키들: [x, y, 옛 색(그림에 그려진 기본 색, -1이면 바탕과 섞어 칠함), 새 색, 투명도%]
+    jobs := []
+    loop 9
+        jobs.Push([GUIDE_DIGIT_X[A_Index], 127, DRAW_COLOR_DEFAULTS[A_Index], DRAW_COLORS[A_Index], DRAW_ALPHAS[A_Index]])
+    jobs.Push([GUIDE_DIGIT_X[10], 127, -1, drawColor, 100]) ; 0번은 기본 색 — 그림에는 줄무늬로 그려져 있다
+    for index, pair in BOARD_KEYS {
+        k := StrUpper(pair[1])
+        if (BOARD_COLOR_DEFAULTS[index] >= 0 && GUIDE_BOARD_X.Has(k))
+            jobs.Push([GUIDE_BOARD_X[k], 207, BOARD_COLOR_DEFAULTS[index], BOARD_COLORS[index], BOARD_ALPHAS[index]])
+    }
+    for job in jobs {
+        x0 := job[1], y0 := job[2], oldC := job[3], newC := job[4], al := job[5] / 100
+        ; 투명도를 낮춘 색은 흰 키 위에서 옅게 보인다 (맥 판과 같다)
+        nr := ((newC >> 16) & 255) * al + 255 * (1 - al)
+        ng := ((newC >> 8) & 255) * al + 255 * (1 - al)
+        nb := (newC & 255) * al + 255 * (1 - al)
+        orr := (oldC >= 0) ? (oldC >> 16) & 255 : 0, og := (oldC >= 0) ? (oldC >> 8) & 255 : 0, ob := (oldC >= 0) ? oldC & 255 : 0
+        loop bh {
+            dy := A_Index - 1
+            sh := (dy = bh - 1) ? 0.88 : 1
+            loop bw {
+                dx := A_Index - 1
+                n := dy * bw + dx + 1
+                a := tplA[n]
+                if (a = 0)
+                    continue
+                o := scan0 + (y0 + dy) * stride + (x0 + dx) * 4
+                if (oldC >= 0) {
+                    r := NumGet(o, 2, "uchar") + a * (nr - orr) * sh
+                    g := NumGet(o, 1, "uchar") + a * (ng - og) * sh
+                    b := NumGet(o, 0, "uchar") + a * (nb - ob) * sh
+                } else {
+                    B := tplB[n]
+                    r := a * nr * sh + (1 - a) * B[1]
+                    g := a * ng * sh + (1 - a) * B[2]
+                    b := a * nb * sh + (1 - a) * B[3]
+                }
+                NumPut("uchar", Max(0, Min(255, Round(b))), o, 0)
+                NumPut("uchar", Max(0, Min(255, Round(g))), o, 1)
+                NumPut("uchar", Max(0, Min(255, Round(r))), o, 2)
+            }
+        }
+    }
+    DllCall("gdiplus\GdipBitmapUnlockBits", "ptr", pBmp, "ptr", data)
 }
 
-; 원본 그림을 dstW×dstH 크기로 곱게 줄여 HBITMAP으로 돌려준다. 실패하면 0.
-ScaledHBitmapFromFile(path, dstW, dstH) {
-    pSrc := 0
-    DllCall("gdiplus\GdipLoadImageFromFile", "wstr", path, "ptr*", &pSrc)
-    if !pSrc
-        return 0
-
+; 그림(GDI+ 비트맵)을 dstW×dstH 크기로 곱게 줄여 HBITMAP으로 돌려준다. 실패하면 0.
+ScaledHBitmapFromImage(pSrc, dstW, dstH) {
     pDst := 0
     DllCall("gdiplus\GdipCreateBitmapFromScan0", "int", dstW, "int", dstH, "int", 0, "int", 0x26200A, "ptr", 0, "ptr*", &pDst) ; 32bppARGB
     pGraphics := 0
@@ -4128,12 +4185,11 @@ ScaledHBitmapFromFile(path, dstW, dstH) {
     hBmp := 0
     DllCall("gdiplus\GdipCreateHBITMAPFromBitmap", "ptr", pDst, "ptr*", &hBmp, "uint", 0xFFFFFFFF) ; 배경 흰색(알파 있는 그림용)
     DllCall("gdiplus\GdipDisposeImage", "ptr", pDst)
-    DllCall("gdiplus\GdipDisposeImage", "ptr", pSrc)
     return hBmp
 }
 
 ShowShortcutGuide(*) {
-    global shortcutGui, hShortcutBmp, SHORTCUT_IMAGE_PATH, GUIDE_STRIP_H
+    global shortcutGui, hShortcutBmp, SHORTCUT_IMAGE_PATH
 
     ; 이미 떠 있으면 앞으로 가져오기만 한다.
     if shortcutGui && WinExist("ahk_id " shortcutGui.Hwnd) {
@@ -4150,30 +4206,32 @@ ShowShortcutGuide(*) {
     imgW := 0, imgH := 0
     DllCall("gdiplus\GdipGetImageWidth", "ptr", pImg, "uint*", &imgW)
     DllCall("gdiplus\GdipGetImageHeight", "ptr", pImg, "uint*", &imgH)
-    ; 아래에 붙일 색 띠가 그림과 이어져 보이도록, 그림 왼쪽 아래 구석 색을 띠의 바탕으로 쓴다.
-    ; 어떤 그림을 넣든 알아서 어울린다 (검정 바탕 그림이면 띠도 검정이 된다).
+    ; 창 바탕은 그림 왼쪽 아래 구석 색으로 둔다 (어떤 그림을 넣든 가장자리가 어울린다).
     stripBg := 0xFFFFFF
     argb := 0
     if !DllCall("gdiplus\GdipBitmapGetPixel", "ptr", pImg, "int", 2, "int", Max(0, imgH - 3), "uint*", &argb)
         stripBg := argb & 0xFFFFFF
+    ; 픽셀을 고칠 수 있게 32비트 사본을 만들고, 키 위 색 막대를 지금 설정 색으로 칠한다
+    pBase := 0
+    DllCall("gdiplus\GdipCloneBitmapAreaI", "int", 0, "int", 0, "int", imgW, "int", imgH, "int", 0x26200A, "ptr", pImg, "ptr*", &pBase)
     DllCall("gdiplus\GdipDisposeImage", "ptr", pImg)
+    if !pBase {
+        MsgBox("단축키 안내 그림을 불러오지 못했습니다.`n`n" SHORTCUT_IMAGE_PATH, "Focus & Draw - 단축키", "Icon!")
+        return
+    }
+    PaintGuideBars(pBase, imgW, imgH)
 
-    ; 작업표시줄을 뺀 화면 안에 창틀과 색 띠까지 들어가도록, 여백을 조금 두고 비율을 구한다.
+    ; 작업표시줄을 뺀 화면 안에 창틀까지 들어가도록, 여백을 조금 두고 비율을 구한다.
     ; (1보다 크면 1로 — 원본보다 키우지 않는다)
     MonitorGetWorkArea(, &waL, &waT, &waR, &waB)
     maxW := (waR - waL) - 60
-    maxH := (waB - waT) - 80 - GUIDE_STRIP_H
+    maxH := (waB - waT) - 80
     scale := Min(1.0, maxW / imgW, maxH / imgH)
     dstW := Max(1, Round(imgW * scale))
     dstH := Max(1, Round(imgH * scale))
 
-    if (scale = 1.0) {
-        ; 화면에 그대로 들어가면 다시 그릴 이유가 없다 — 원본을 그대로 쓴다.
-        imgType := 0
-        hShortcutBmp := LoadPicture(SHORTCUT_IMAGE_PATH, "GDI+", &imgType)
-    } else {
-        hShortcutBmp := ScaledHBitmapFromFile(SHORTCUT_IMAGE_PATH, dstW, dstH)
-    }
+    hShortcutBmp := ScaledHBitmapFromImage(pBase, dstW, dstH)
+    DllCall("gdiplus\GdipDisposeImage", "ptr", pBase)
     if !hShortcutBmp {
         MsgBox("단축키 안내 그림을 불러오지 못했습니다.`n`n" SHORTCUT_IMAGE_PATH, "Focus & Draw - 단축키", "Icon!")
         return
@@ -4188,10 +4246,9 @@ ShowShortcutGuide(*) {
     shortcutGui.BackColor := HexColor(stripBg)
     shortcutGui.SetFont("s10", "Malgun Gothic")
     shortcutGui.AddPicture("x0 y0 w" dstW " h" dstH, "HBITMAP:" hShortcutBmp)
-    AddGuideColorStrip(shortcutGui, dstW, dstH, stripBg)
     shortcutGui.OnEvent("Close", (*) => CloseShortcutGuide())
     shortcutGui.OnEvent("Escape", (*) => CloseShortcutGuide())
-    shortcutGui.Show("w" dstW " h" (dstH + GUIDE_STRIP_H) " Center")
+    shortcutGui.Show("w" dstW " h" dstH " Center")
 }
 
 ; 창을 없애고 그림 자원도 함께 돌려준다. 다시 열 때는 처음부터 새로 만든다 — 자주 있는
