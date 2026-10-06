@@ -271,10 +271,9 @@ WriteSettings() {
     IniWrite(DrawOpacity, SETTINGS_PATH, "Draw", "Opacity")
     IniWrite(EraserStep, SETTINGS_PATH, "Draw", "EraserStep")
     IniWrite(HexColor(drawColor), SETTINGS_PATH, "Draw", "Color")
-    ; 레이저 세 값은 파일에 없고 기본값이면 쓰지 않는다 — 맥 판과 같은 규칙이다(쓰지 않은 줄은 기본값으로 읽힌다).
-    WriteIfChanged(laserHold, 500, "Draw", "LaserHold")
-    WriteIfChanged(laserFade, 500, "Draw", "LaserFade")
-    WriteIfChanged(laserGlow, 100, "Draw", "LaserGlow")
+    IniWrite(laserHold, SETTINGS_PATH, "Draw", "LaserHold")
+    IniWrite(laserFade, SETTINGS_PATH, "Draw", "LaserFade")
+    IniWrite(laserGlow, SETTINGS_PATH, "Draw", "LaserGlow")
     IniWrite(showWidget ? 1 : 0, SETTINGS_PATH, "Common", "ShowWidget")
     IniWrite(showTrayIcons ? 1 : 0, SETTINGS_PATH, "Common", "ShowTrayIcons")
     IniWrite(widgetScale, SETTINGS_PATH, "Common", "WidgetScale")
@@ -294,13 +293,6 @@ WriteSettings() {
     try IniDelete(SETTINGS_PATH, "Draw", "EraserSize")
     SavePalette()
     return true
-}
-
-; 값이 기본값과 다르거나 파일에 이미 그 줄이 있을 때만 적는다
-WriteIfChanged(value, def, section, key) {
-    global SETTINGS_PATH
-    if (value != def || IniRead(SETTINGS_PATH, section, key, "") != "")
-        IniWrite(value, SETTINGS_PATH, section, key)
 }
 
 ; 설정 파일에 적힌 색을 읽는다. 사람이 ini를 잘못 고쳐 색이 아닌 글자가 들어 있어도
