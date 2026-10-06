@@ -19,6 +19,7 @@ struct SettingKey {
     let mac: String       // 맥 판에서의 뜻
     let read: (Settings) -> Double
     let write: (Settings, Double) -> Void
+    var belowIsDefault = false  // .int에서 범위 아래 값·정수가 아닌 값을 끝값이 아니라 기본값으로 본다 (숫자키 굵기: ahk와 같음)
 
     var id: String { "\(section).\(key)" }
 
@@ -27,6 +28,7 @@ struct SettingKey {
         switch kind {
         case .int(let r):
             guard let v = text.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }), v.isFinite else { return nil }
+            if belowIsDefault, v < r.lowerBound || v != v.rounded() { return nil }
             return max(r.lowerBound, min(r.upperBound, v))
         case .flag:
             return text.map { $0.trimmingCharacters(in: .whitespaces) == "1" ? 1 : 0 }
@@ -95,6 +97,9 @@ enum SettingsSchema {
         for i in 0..<9 {
             t.append(color("DrawKeys", "Color\(i + 1)", \.drawKeyColors[i], DRAW_COLORS[i]))
             t.append(num("DrawKeys", "Opacity\(i + 1)", \.drawKeyAlphas[i], 100, 5...100))
+            var step = num("DrawKeys", "Step\(i + 1)", \.drawKeySteps[i], Double(DRAW_KEY_STEP_DEFAULT), 1...Double(STEP_MAX))
+            step.belowIsDefault = true // 0 이하·글자는 5단계 ("0 = 유지"는 쓰지 않는다, 선생님 결정)
+            t.append(step)
         }
         for (i, k) in ["W", "E", "R"].enumerated() {
             t.append(color("Boards", "Color\(k)", \.boardColors[i], BOARD_COLORS[i]))
@@ -108,9 +113,6 @@ enum SettingsSchema {
     static let positionKeys: [(section: String, key: String)] = [("Common", "WidgetX"), ("Common", "WidgetY")]
 
     // Windows 판만 쓰는 키: 맥은 읽지도 지우지도 않는다(IniFile이 그대로 보존한다)
-    // 맥에서 먼저 넣은 키 (Windows 판은 mac/design/windows-todo.md를 보고 같은 이름으로 따라온다).
-    // 파일에 없고 기본값이면 쓰지 않는다 — Windows 파일에 맥 전용 줄을 공연히 늘리지 않는다 ([Hotkeys]와 같은 규칙).
-    static let macFirst: Set<String> = ["Draw.LaserHold", "Draw.LaserFade", "Draw.LaserGlow"]
     static let windowsOnly: Set<String> = ["Highlight.HideCursor"]
     // ahk가 예전 파일을 읽으려고 받아 주는 옛 키
     static let windowsLegacy: Set<String> = ["Common.Color", "Draw.Thickness", "Draw.EraserSize"]

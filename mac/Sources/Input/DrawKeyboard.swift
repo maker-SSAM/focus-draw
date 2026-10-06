@@ -33,6 +33,7 @@ extension DrawController {
             if let d = DrawController.digitKeys[k] {
                 if d == 0 { rgb = config.drawColor; alpha = 1 } else {
                     rgb = config.drawKeyColors[d - 1]; alpha = CGFloat(config.drawKeyAlphas[d - 1]) / 100
+                    penStep = config.drawKeySteps[d - 1] // 굵기도 그 숫자키의 단계로 (0은 굵기를 그대로 둔다 — Windows와 같음)
                 }
                 pen = .normal
                 rainbowColor = false

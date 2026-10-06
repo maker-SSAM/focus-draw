@@ -74,7 +74,15 @@ enum SettingsTests {
                       && s.rclickColor == 0x0020FF && s.boardColors == [0xFFFFFF, 0x14472F, 0x000000] && s.widgetX == 1759 && s.widgetY == 992
                       && s.showWidget && s.drawKeyColors == Settings.defaultDrawKeys,
                       "size \(s.spotSize) x \(s.widgetX ?? -1) y \(s.widgetY ?? -1)")
-                check("아무것도 안 바꾸고 저장하면 파일이 한 바이트도 안 바뀜", s.save(to: path) == nil && bytes(path) == original)
+                // 모든 항목을 기본값이어도 쓰므로(Windows 판과 같은 규칙) 옛 파일에 없던 항목만 더해진다
+                let added = ["Draw|LaserHold|500", "Draw|LaserFade|500", "Draw|LaserGlow|100", "Hotkeys|SpotlightAlt|^!1", "Hotkeys|DrawAlt|^!2"]
+                    + (1...9).map { "DrawKeys|Step\($0)|5" }
+                let first = s.save(to: path) == nil ? entries(ini(path)) : []
+                check("아무것도 안 바꾸고 저장: 원래 줄은 그대로, 없던 항목(레이저 3·맥 단축키 2·숫자키 굵기 9)만 기본값으로 더해짐",
+                      first.filter { !added.contains($0) } == entries(ini(src)) && Set(first).isSuperset(of: added) && first.count == entries(ini(src)).count + added.count,
+                      "\(first.count)")
+                let once = bytes(path)
+                check("한 번 저장한 파일을 다시 저장하면 한 바이트도 안 바뀜", s.save(to: path) == nil && bytes(path) == once)
 
                 s.spotSize = 150; s.drawColor = 0x00FF00
                 check("설정을 바꿔 저장", s.save(to: path) == nil)
@@ -84,8 +92,8 @@ enum SettingsTests {
                       && after?.value("Common", "ShowTrayIcons") == "0")
                 check("저장 뒤 바뀐 값은 반영, 나머지 항목·순서는 그대로",
                       after?.value("Highlight", "Size") == "150" && after?.value("Draw", "Color") == "00FF00"
-                      && entries(after).count == entries(ini(src)).count
-                      && zip(entries(after), entries(ini(src))).filter { $0 != $1 }.count == 2)
+                      && entries(after).count == first.count
+                      && zip(entries(after), first).filter { $0 != $1 }.count == 2)
                 check("저장 뒤에도 UTF-16 LE·BOM·CRLF 그대로", after?.format == .utf16LE && after?.hasBOM == true
                       && !(String(data: bytes(path)!.dropFirst(2), encoding: .utf16LittleEndian) ?? "").replacingOccurrences(of: "\r\n", with: "").contains("\n"))
 

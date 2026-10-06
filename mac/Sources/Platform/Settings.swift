@@ -50,6 +50,7 @@ final class Settings: ObservableObject {
     // [DrawKeys] 1~9, [Boards] W/E/R
     var drawKeyColors: [UInt32] = Settings.defaultDrawKeys
     var drawKeyAlphas: [Double] = Array(repeating: 100, count: 9)
+    var drawKeySteps: [Double] = Array(repeating: Double(DRAW_KEY_STEP_DEFAULT), count: 9) // 숫자키를 누르면 이 굵기 단계로
     var boardColors: [UInt32] = Settings.defaultBoardColors
     var boardAlphas: [Double] = [100, 100, 100]
 
@@ -177,13 +178,8 @@ final class Settings: ObservableObject {
     func save(to url: URL = Settings.path) -> SaveError? {
         if writeBlocked { return .blocked }
         var f = Settings.readIni(url).ini ?? IniFile()
-        for (s, k, v) in pairs() {
-            // [Hotkeys]는 기본값이고 파일에도 없으면 쓰지 않는다 (Windows 파일에 맥 전용 줄을 공연히 늘리지 않는다)
-            if s == "Hotkeys", f.value(s, k) == nil, v == SettingsSchema.hotkeyDefaults[k] { continue }
-            if SettingsSchema.macFirst.contains("\(s).\(k)"), f.value(s, k) == nil,
-               let key = SettingsSchema.keys.first(where: { $0.section == s && $0.key == k }), v == key.format(key.defaultValue) { continue }
-            f.set(s, k, v)
-        }
+        // 기본값이어도 모두 쓴다 (Windows 판과 같은 규칙 — 두 판의 설정 파일을 똑같이)
+        for (s, k, v) in pairs() { f.set(s, k, v) }
         if let x = widgetX, let y = widgetY {
             f.set("Common", "WidgetX", String(Int(x.rounded()))); f.set("Common", "WidgetY", String(Int(y.rounded())))
         }
@@ -223,7 +219,7 @@ final class Settings: ObservableObject {
 extension DrawConfig {
     init(_ s: Settings) {
         self.init(drawOpacity: s.drawOpacity, drawColor: s.drawColor, drawStep: Int(s.drawStep), eraserStep: Int(s.eraserStep),
-                  drawKeyColors: s.drawKeyColors, drawKeyAlphas: s.drawKeyAlphas,
+                  drawKeyColors: s.drawKeyColors, drawKeyAlphas: s.drawKeyAlphas, drawKeySteps: s.drawKeySteps.map { Int($0) },
                   boardColors: s.boardColors, boardAlphas: s.boardAlphas,
                   laserHold: s.laserHold, laserFade: s.laserFade, laserGlow: s.laserGlow)
     }

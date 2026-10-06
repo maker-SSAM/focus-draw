@@ -14,7 +14,7 @@ enum SettingsSchemaTests {
 
         // ---- 표 자체 ----
         check("항목표: 키가 겹치지 않고 절·키가 모두 있음 (\(keys.count)개)",
-              Set(keys.map(\.id)).count == keys.count && keys.count == 22 + 18 + 6 + 3 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
+              Set(keys.map(\.id)).count == keys.count && keys.count == 22 + 27 + 6 + 3 && keys.allSatisfy { !$0.section.isEmpty && !$0.key.isEmpty })
         do {
             let f = Settings()
             let bad = keys.filter { $0.read(f) != $0.defaultValue }.map(\.id)
@@ -63,6 +63,12 @@ enum SettingsSchemaTests {
             let s = Settings(); s.load(from: path)
             check("잘못된 값: 범위 밖은 끝값, 숫자가 아니면 기본값, 색이 범위 밖이면 기본값",
                   s.spotSize == 200 && s.spotOpacity == 40 && s.spotColor == 0xFF0000, "\(s.spotSize) \(s.spotOpacity) \(s.spotColor)")
+            let steps = "[DrawKeys]\nStep1=0\nStep2=-3\nStep3=abc\nStep4=3.5\nStep5=99\nStep6=7\n"
+            let sp = dir.appendingPathComponent("steps.ini")
+            try? steps.write(to: sp, atomically: true, encoding: .utf8)
+            let st = Settings(); st.load(from: sp)
+            check("숫자키 굵기: 0 이하·글자·소수는 5단계, 10 넘으면 10, 맞는 값은 그대로 (ahk와 같음)",
+                  Array(st.drawKeySteps.prefix(7)) == [5, 5, 5, 5, 10, 7, 5], "\(st.drawKeySteps)")
             check("잘못된 단축키(⌃·⌥ 없는 글자, 못 알아보는 표기)는 기본값, 올바른 것은 받아들임",
                   s.hotkeys["Draw"] == "F9" && s.hotkeys["Spotlight"] == "F8" && s.hotkeys["DrawAlt"] == "^!9", "\(s.hotkeys)")
         }
@@ -100,12 +106,13 @@ enum SettingsSchemaTests {
         read.formUnion(matches("ReadIniColor\\(\"(\\w+)\", \"(\\w+)\"[,)]").map { "\($0[0]).\($0[1])" })
         let positions = Set(SettingsSchema.positionKeys.map { "\($0.section).\($0.key)" })
         let known = Set(keys.filter { !indexed.contains($0.section) }.map(\.id))
-        let missing = known.subtracting(read).subtracting(SettingsSchema.macFirst).sorted()
+        let missing = known.subtracting(read).sorted()
         let extra = read.subtracting(known).subtracting(positions).subtracting(SettingsSchema.windowsOnly).subtracting(SettingsSchema.windowsLegacy).sorted()
         check("Windows와 같은 키 목록: 표의 키가 모두 ahk에 있음", missing.isEmpty, missing.joined(separator: ", "))
         check("Windows와 같은 키 목록: ahk가 읽는 키가 모두 표·위젯 자리·Windows 전용 목록에 있음", extra.isEmpty, extra.joined(separator: ", "))
-        check("Windows와 같은 키 목록: 숫자키 색·칠판 색 (DrawKeys Color/Opacity + 번호, Boards Color/Opacity + W·E·R)",
+        check("Windows와 같은 키 목록: 숫자키 색·칠판 색 (DrawKeys Color/Opacity/Step + 번호, Boards Color/Opacity + W·E·R)",
               text.contains("\"DrawKeys\", \"Color\" A_Index") && text.contains("\"DrawKeys\", \"Opacity\" A_Index")
+              && text.contains("\"DrawKeys\", \"Step\" A_Index")
               && text.contains("\"Boards\", \"Color\" key") && text.contains("\"Boards\", \"Opacity\" key"))
 
         var compared = 0, wrong: [String] = []
@@ -126,7 +133,7 @@ enum SettingsSchemaTests {
             if k.defaultValue != Double(UInt32(m[2], radix: 16)!) { wrong.append("\(k.id) 기본색 \(m[2])") }
         }
         // 굵기 단계는 ahk에서 줄이 나뉘어 있고 기본값이 이름 붙은 상수(DEFAULT_*_STEP)다
-        for (id, name) in [("Draw.ThicknessStep", "DEFAULT_DRAW_STEP"), ("Draw.EraserStep", "DEFAULT_ERASER_STEP")] {
+        for (id, name) in [("Draw.ThicknessStep", "DEFAULT_DRAW_STEP"), ("Draw.EraserStep", "DEFAULT_ERASER_STEP"), ("DrawKeys.Step1", "DRAW_STEP_DEFAULT")] {
             guard let v = matches("\\b\(name) := (\\d+)").first.flatMap({ Double($0[0]) }), let k = SettingsSchema.keys.first(where: { $0.id == id }) else {
                 wrong.append("\(id) 기본값을 못 찾음"); continue
             }

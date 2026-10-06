@@ -101,6 +101,7 @@ struct DrawConfig: Equatable {
     var eraserStep = 5
     var drawKeyColors: [UInt32] = DRAW_COLORS
     var drawKeyAlphas: [Double] = Array(repeating: 100, count: 9)
+    var drawKeySteps: [Int] = Array(repeating: DRAW_KEY_STEP_DEFAULT, count: 9)
     var boardColors: [UInt32] = BOARD_COLORS
     var boardAlphas: [Double] = [100, 100, 100]
     var laserHold: Double = LASER_HOLD * 1000   // ms

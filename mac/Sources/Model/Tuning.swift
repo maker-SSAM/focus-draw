@@ -7,6 +7,7 @@ import Foundation
 // ---------- 펜·지우개 굵기 (단계 1~STEP_MAX) ----------
 // 한 단계마다 비율만큼 커진다: 펜 3 · 3.9 · 5.1 … 31.8px, 지우개 10 · 15 · 23 … 384px
 let STEP_MAX = 10
+let DRAW_KEY_STEP_DEFAULT = 5   // 숫자키 1~9의 굵기 단계 기본값 ([DrawKeys] Step1~9, ahk DRAW_STEP_DEFAULT)
 let PEN_BASE_PX: CGFloat = 3.0, PEN_STEP_RATIO: CGFloat = 1.3
 let ERASER_BASE_PX: CGFloat = 10.0, ERASER_STEP_RATIO: CGFloat = 1.5
 
@@ -30,8 +31,7 @@ var BOARD_COLORS: [UInt32] { BOARD_KEYS.compactMap(\.rgb) } // W·E·R의 기본
 let LASER_HOLD: TimeInterval = 0.5      // 그어진 뒤 그대로 있는 시간 (ahk의 LASER_HOLD_MS)
 let LASER_FADE: TimeInterval = 0.5      // 그 뒤 사라지는 데 걸리는 시간
 let LASER_MIN_WIDTH: CGFloat = 8        // 펜을 가늘게 해도 레이저는 이만큼은 굵게 (너무 가늘면 빛나 보이지 않는다)
-// [굵기 배율, 진하기, 흰색 섞는 정도] — 바깥의 옅은 번짐부터 가운데 흰 심지까지
-let LASER_LAYERS: [(CGFloat, CGFloat, CGFloat)] = [(3.0, 0.16, 0), (1.7, 0.40, 0), (0.75, 1.0, 0), (0.3, 0.9, 0.6)]
+// 빛 겹(번짐·본체·흰 심)은 Render/Renderer.swift의 makeLaserGlowLayers
 
 // ---------- 무지개 펜 ----------
 let RAINBOW_CYCLE_PX: CGFloat = 700     // 이만큼 그으면 색이 한 바퀴

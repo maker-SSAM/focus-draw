@@ -159,6 +159,23 @@ import AppKit
             c.handleKey(18, [], isRepeat: false, source: "hk") // 1: 일반 펜으로 되돌림
         }
 
+        // 숫자키별 굵기 ([DrawKeys] Step1~9): 숫자키를 누르면 그 단계로, 0은 굵기를 그대로, 다시 켜면 설정 굵기로
+        do {
+            let c = d.draw.controller
+            let saved = c.config
+            c.config.drawKeySteps[2] = 8; c.config.drawKeySteps[0] = 2
+            c.handleKey(20, [], isRepeat: false, source: "hk") // 3
+            let after3 = c.penStep
+            c.handleKey(29, [], isRepeat: false, source: "hk") // 0
+            let after0 = c.penStep
+            c.handleKey(18, [], isRepeat: false, source: "hk") // 1
+            let after1 = c.penStep
+            c.resetTemporaries()
+            check("숫자키별 굵기: 3 → 8단계, 0은 그대로, 1 → 2단계, 다시 켜면 설정 굵기",
+                  after3 == 8 && after0 == 8 && after1 == 2 && c.penStep == c.config.drawStep, "\(after3) \(after0) \(after1) \(c.penStep)")
+            c.config = saved
+        }
+
         // H2: 위젯을 숨긴 채 드로잉을 두 번 켜고 꺼도 계속 숨어 있어야 한다
         Settings.shared.showWidget = false
         d.applySettings()

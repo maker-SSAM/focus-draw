@@ -24,7 +24,7 @@ extension Golden {
             s.stroke(s.wiggle(40, 45, 240, amp: 18))                         // 빨강
             s.key(K.n4); s.stroke(s.wiggle(40, 100, 240, amp: 18))          // 초록
             s.key(K.n5); for _ in 0..<3 { s.key(K.plus) }; s.stroke(s.wiggle(40, 160, 240, amp: 18)) // 굵은 파랑
-            s.key(K.n1); for _ in 0..<4 { s.key(K.minus) }
+            s.key(K.n1); s.key(K.minus)                                      // 숫자키가 굵기를 5로 돌리므로 한 번만 → 4
             s.stroke([s.P(300, 40), s.P(300, 160), s.P(270, 40)])            // 가는 빨강
         }
         add("pen-free", size: small, penFree)
@@ -82,7 +82,7 @@ extension Golden {
             Settings.shared.drawKeyAlphas[4] = 50
             s.key(K.n1); s.key(K.plus); s.key(K.plus); s.key(K.plus)
             s.stroke([s.P(80, 120), s.P(560, 120)])
-            s.key(K.n5)
+            s.key(K.n5); s.key(K.plus); s.key(K.plus); s.key(K.plus)        // 숫자키가 굵기를 5로 돌리므로 다시 8로
             s.stroke([s.P(280, 40), s.P(280, 340)])
             s.stroke([s.P(360, 50), s.P(440, 330)])
         }

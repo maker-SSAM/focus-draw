@@ -102,7 +102,7 @@ func tint(_ c: CGColor, _ mix: CGFloat) -> CGColor {
 }
 
 // 빛 번짐: 바깥쪽을 겹친 층 몇 장이 아니라 촘촘한 층 여러 장으로 그려서 가장자리가 계단 없이 부드럽게 옅어진다.
-// (굵기 배율, 진하기, 흰빛 섞기). 바깥에서 안쪽으로 갈수록 좁고 진하다. 붓 동그라미(BrushCursor)도 이 층을 쓴다. (옛 LASER_LAYERS는 Windows 판과 같은 값을 확인하는 점검에만 남겨 둔다)
+// (굵기 배율, 진하기, 흰빛 섞기). 바깥에서 안쪽으로 갈수록 좁고 진하다. 붓 동그라미(BrushCursor)도 이 층을 쓴다. Windows 판 LaserLayers()와 같은 식 (GoldenChecks가 견준다)
 // glow: 빛 번짐 정도 (설정 [Draw] LaserGlow / 100). 1 = 기본, 0 = 번짐 없이 본체와 흰 심만, 2 = 두 배로 넓게.
 func makeLaserGlowLayers(_ glow: CGFloat) -> [(CGFloat, CGFloat, CGFloat)] {
     var l: [(CGFloat, CGFloat, CGFloat)] = []

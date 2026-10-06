@@ -19,7 +19,7 @@ enum SettingsLayout {
         var note: String? = nil
         let fields: [Field]
     }
-    struct KeyRow { let label: String; let color: String; let opacity: String }
+    struct KeyRow { let label: String; let color: String; let opacity: String; var step: String? = nil }
 
     static let focus: [Panel] = [
         Panel(title: "포커스 하이라이트", fields: [
@@ -43,12 +43,12 @@ enum SettingsLayout {
         Field(id: "Draw.ThicknessStep", label: "드로잉 굵기", suffix: "단계"),
         Field(id: "Draw.Opacity", label: "전체 진하기", suffix: "%", step: 5),
         Field(id: "Draw.EraserStep", label: "지우개 크기", suffix: "단계"),
-        Field(id: "Draw.LaserHold", label: "레이저 머묾", suffix: "ms", step: 100),
+        Field(id: "Draw.LaserHold", label: "레이저 유지됨", suffix: "ms", step: 100),
         Field(id: "Draw.LaserFade", label: "레이저 사라짐", suffix: "ms", step: 100),
         Field(id: "Draw.LaserGlow", label: "레이저 빛 번짐", suffix: "%", step: 10)])
 
     static let drawKeys: [KeyRow] =
-        (1...9).map { KeyRow(label: "\($0)", color: "DrawKeys.Color\($0)", opacity: "DrawKeys.Opacity\($0)") }
+        (1...9).map { KeyRow(label: "\($0)", color: "DrawKeys.Color\($0)", opacity: "DrawKeys.Opacity\($0)", step: "DrawKeys.Step\($0)") }
         + ["W", "E", "R"].map { KeyRow(label: "\($0) 칠판", color: "Boards.Color\($0)", opacity: "Boards.Opacity\($0)") }
 
     static let widget = Panel(title: "위젯", toggle: nil, fields: [
@@ -63,7 +63,7 @@ enum SettingsLayout {
         var ids = Set<String>()
         for g in focus { ids.formUnion(g.fields.map(\.id)); if let t = g.toggle { ids.insert(t) } }
         ids.formUnion(draw.fields.map(\.id))
-        for r in drawKeys { ids.insert(r.color); ids.insert(r.opacity) }
+        for r in drawKeys { ids.insert(r.color); ids.insert(r.opacity); if let s = r.step { ids.insert(s) } }
         ids.formUnion(widget.fields.map(\.id)); ids.insert(widgetShow); ids.insert(trayShow)
         return ids
     }
@@ -156,6 +156,24 @@ struct NumberRow: View {
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
             Text(f.suffix).frame(width: 32, alignment: .leading).foregroundStyle(.secondary)
         }
+    }
+}
+
+// 숫자키 굵기 칸: 숫자 + 위아래 화살표 (Windows 판과 같은 모양). 슬라이더 줄 오른쪽에 붙는다.
+private struct StepBox: View {
+    static let width: CGFloat = 44 + 8 + 16 // 숫자 칸 + 간격 + 화살표
+    let id: String
+    @ObservedObject private var settings = Settings.shared
+    var body: some View {
+        let value = valueBinding(id)
+        HStack(spacing: 8) {
+            NumberBox(value: value)
+                .frame(width: 44, height: 28)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .textBackgroundColor)))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.4)))
+            Stepper("", value: value, in: 1...Double(STEP_MAX), step: 1).labelsHidden()
+        }
+        .help("이 숫자키를 누르면 바뀌는 굵기 단계")
     }
 }
 
@@ -470,7 +488,7 @@ struct SettingsView: View {
     private var drawing: some View {
         Page {
             GroupBoxView(g: SettingsLayout.draw)
-            Card(title: "숫자키 색 · 칠판 (색과 진하기 5~100%)") {
+            Card(title: "숫자키 · 칠판 (색, 진하기 5~100%, 숫자키 굵기 1~\(STEP_MAX)단계)") {
                 VStack(spacing: 8) {
                     ForEach(SettingsLayout.drawKeys, id: \.color) { r in
                         if r.color == "Boards.ColorW" { Divider() } // 숫자키와 칠판 사이
@@ -478,6 +496,7 @@ struct SettingsView: View {
                             Text(r.label).frame(width: 48, alignment: .leading)
                             ColorField("", id: r.color, compact: true)
                             NumberRow(SettingsLayout.Field(id: r.opacity, label: "", suffix: "%", step: 5))
+                            if let s = r.step { StepBox(id: s) } else { Color.clear.frame(width: StepBox.width, height: 1) } // 칠판 줄도 칸을 맞춘다
                         }
                     }
                 }

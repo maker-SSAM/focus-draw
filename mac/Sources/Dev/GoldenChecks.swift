@@ -163,8 +163,14 @@ extension Golden {
             check("ahk와 같음: LASER_HOLD·FADE·MIN_WIDTH",
                   ahkNumber("LASER_HOLD_MS") == LASER_HOLD * 1000 && ahkNumber("LASER_FADE_MS") == LASER_FADE * 1000
                   && ahkNumber("LASER_MIN_WIDTH") == Double(LASER_MIN_WIDTH))
-            check("ahk와 같음: LASER_LAYERS", ahkArray("LASER_LAYERS") == LASER_LAYERS.flatMap { [Double($0.0), Double($0.1), Double($0.2)] },
-                  "\(ahkArray("LASER_LAYERS") ?? [])")
+            // 레이저 빛 겹: ahk LaserLayers()가 makeLaserGlowLayers와 같은 식을 쓰는가 (9겹 번짐 + 본체 + 흰 심)
+            let ahkLaser = ["loop 9", "u := (A_Index - 1) / 8", "1 + 2 * (1 - u) * g", "(0.045 + 0.10 * u * u) * Min(1, g)",
+                            "cache.Push([0.75, 1.0, 0])", "cache.Push([0.3, 0.9, 0.6])"].filter { !text.contains($0) }
+            let l1 = makeLaserGlowLayers(1), l0 = makeLaserGlowLayers(0), l2 = makeLaserGlowLayers(2)
+            check("ahk와 같음: 레이저 빛 겹 (LaserLayers: 9겹 1+2·(1−u)·g, (0.045+0.10·u²)·min(1,g), 본체·흰 심)",
+                  ahkLaser.isEmpty && l1.count == 11 && l1.first?.0 == 3 && abs((l1.first?.1 ?? 0) - 0.045) < 1e-9 && l1[8].0 == 1
+                  && l0.count == 2 && l2.first?.0 == 5 && l1.suffix(2).map(\.0) == [0.75, 0.3] && l1.suffix(2).map(\.2) == [0, 0.6],
+                  ahkLaser.joined(separator: " / "))
             check("ahk와 같음: 펜·지우개 기준값·단계·무지개 한 바퀴",
                   ahkNumber("PEN_BASE_PX") == 3 && ahkNumber("PEN_STEP_RATIO") == 1.3 && ahkNumber("ERASER_BASE_PX") == 10
                   && ahkNumber("ERASER_STEP_RATIO") == 1.5 && ahkNumber("STEP_MAX") == Double(STEP_MAX)
