@@ -52,7 +52,7 @@ mac/build.sh
 
 문제가 생기면 메뉴 막대(또는 위젯 오른쪽 클릭) › **진단 기록**을 켜 두세요. `~/Library/Logs/Focus & Draw/diag.log`에 창·키·화면 상태가 남습니다(입력한 글자는 남지 않음).
 
-Windows 판과 무엇이 같고 다른지는 **[PARITY.md](PARITY.md)** (기능 144개 차이표)에 있습니다.
+Windows 판과 무엇이 같고 다른지는 **[PARITY.md](../docs/PARITY.md)** (기능 144개 차이표)에 있습니다.
 
 ## 다른 맥에 나눠줄 때
 

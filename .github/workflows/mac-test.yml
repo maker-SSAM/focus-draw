@@ -1,4 +1,5 @@
 # 맥용 Focus & Draw 자동 점검: mac/ 아래가 바뀐 push마다 macOS 15·26·인텔에서 그림 기준 점검과 글 점검을 돈다.
+# 맥 점검은 공용 그림(shared/)과 Windows 판(windows/focus-draw.ahk)도 견주므로 그 둘이 바뀌어도 돈다.
 # 화면이 없는 컴퓨터에서 도므로 창이 필요한 --selftest는 건너뛴다 (FD_HEADLESS=1).
 # 실패하면 차이 그림과 축소 모음(mac/build/test-out)을 결과물로 남긴다.
 name: mac-test
@@ -7,6 +8,8 @@ on:
   push:
     paths:
       - 'mac/**'
+      - 'shared/**'
+      - 'windows/focus-draw.ahk'
       - '.github/workflows/mac-test.yml'
   workflow_dispatch:
 

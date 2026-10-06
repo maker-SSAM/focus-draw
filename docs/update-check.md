@@ -28,7 +28,7 @@
 
 ## 버전 파일
 
-GitHub "Latest" 릴리스는 한 판만 가리킬 수 있고(지금 `RELEASE.md`는 Latest를 윈도우로 지킨다), 두 판이 다른 날에 나올 수 있다. 그래서 릴리스 목록 대신 **저장소 맨 위의 글 파일 하나**를 읽는다.
+GitHub "Latest" 릴리스는 한 판만 가리킬 수 있고(지금 `mac/RELEASE.md`는 Latest를 윈도우로 지킨다), 두 판이 다른 날에 나올 수 있다. 그래서 릴리스 목록 대신 **저장소 맨 위의 글 파일 하나**를 읽는다.
 
 - 위치: `version.txt` (저장소 맨 위, master) → `https://raw.githubusercontent.com/maker-SSAM/focus-draw/master/version.txt`
 - 모양: `이름=값` 줄 (AutoHotkey에 JSON 읽기가 없어 가장 단순한 모양으로). 모르는 줄과 `;` 주석은 무시.
@@ -52,4 +52,4 @@ GitHub "Latest" 릴리스는 한 판만 가리킬 수 있고(지금 `RELEASE.md`
 
 - 맥도 **2.0.0**으로 맞춘다. 두 판을 함께 진행해 같은 날 **한 릴리스 `v2.0.0`**에 두 zip을 올린다(맥 1.0은 따로 내지 않는다). 그래서 위 예시의 두 주소가 같다.
 - 그 뒤로도 두 판을 함께 내면 번호가 같게 유지된다. 한 판만 고쳐 내는 일이 생기면 `version.txt`의 그 판 줄만 바꾸면 된다(파일은 두 판 번호가 달라도 동작한다).
-- 2.0 전 맥 시험판(베타 2 `mac-v0.9.0` 등)은 지금 `RELEASE.md`대로 시험판·Latest 아님으로 올린다. 2.0 정식 배포 절차는 `stages.md`의 S12.
+- 2.0 전 맥 시험판(베타 2 `mac-v0.9.0` 등)은 지금 `mac/RELEASE.md`대로 시험판·Latest 아님으로 올린다. 2.0 정식 배포 절차는 `mac/design/stages.md`의 S12.

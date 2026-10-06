@@ -7,14 +7,16 @@
 
 **내려받기: https://github.com/maker-SSAM/focus-draw/releases/latest** — `Focus-Draw-<버전>.zip`을 받아 압축을 풀고 `focus-draw.exe`를 실행하세요. (Windows 10 / 11)
 
-![Focus & Draw — 수업용 화면 강조 · 드로잉 도구](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C/01-%EC%86%8C%EA%B0%9C.png)
+![Focus & Draw — 수업용 화면 강조 · 드로잉 도구](windows/%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C/01-%EC%86%8C%EA%B0%9C.png)
 
-한눈에 보는 소개 그림 7장은 [소개자료](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C) 폴더에 있습니다. 동료 선생님께 그대로 보내셔도 됩니다.
+한눈에 보는 소개 그림 7장은 [소개자료](windows/%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C) 폴더에 있습니다. 동료 선생님께 그대로 보내셔도 됩니다.
+
+저장소 폴더: `windows/`(Windows 판) · `mac/`(맥 판, 준비 중) · `shared/`(두 판 공용 그림) · `docs/`(두 판 공통 문서).
 
 ## 준비물
 
 배포용 `focus-draw.exe`를 받았다면 아무것도 설치할 필요 없이 바로 실행하면 됩니다.
-소스(`focus-draw.ahk`)로 직접 실행하려면 AutoHotkey v2가 필요합니다.
+소스(`windows/focus-draw.ahk`)로 직접 실행하려면 AutoHotkey v2가 필요합니다.
 
 - https://www.autohotkey.com/ 에서 v2 다운로드 후 설치
 
@@ -79,7 +81,7 @@
 
 원하면 메뉴를 거치지 않고 **클릭 한 번으로 바로 켜고 끌 수 있는 전용 아이콘 2개**(강조/드로잉)를 추가로 켤 수 있습니다. 기본은 꺼져 있고, 설정 창의 "위젯" 탭에서 "작업표시줄 아이콘 활성화"를 체크하면 나타납니다. 처음 켜면 작업표시줄 숨김 아이콘(^) 안에 들어있으니, 꺼내서 작업표시줄에 고정하거나 "항상 표시"로 설정해두면 다음 실행부터 계속 보입니다. 이 설정은 PC별로 한 번만 해두면 유지됩니다. 켜져 있는 기능의 아이콘은 파란색으로 표시됩니다.
 
-(아이콘 그림은 `icon_spotlight.png`, `icon_draw.png`, `settings.png` 파일을 사용합니다 — 소스로 실행할 때는 `focus-draw.ahk`와 같은 폴더에 있어야 합니다. exe로 컴파일하면 이 파일들이 exe 안에 함께 포함되어 별도로 들고 다닐 필요는 없습니다.)
+(아이콘 그림은 `icon_spotlight.png`, `icon_draw.png`, `settings.png` 파일을 사용합니다 — 맥 판과 같이 쓰는 그림이라 저장소의 `shared/` 폴더에 있고, 소스로 실행할 때는 저장소의 폴더 구조(`windows/`와 `shared/`가 나란히)를 그대로 두면 됩니다. exe로 컴파일하면 이 파일들이 exe 안에 함께 포함되어 별도로 들고 다닐 필요는 없습니다.)
 
 ### 단축키로 조작
 어디서나 쓸 수 있는 단축키는 두 개입니다.
@@ -223,7 +225,7 @@
 
 ## 배포용 exe 만들기 (다른 선생님 PC에 설치 없이 배포)
 
-AutoHotkey v2에 포함된 컴파일러 **Ahk2Exe**로 만듭니다. 설치 폴더에 `Compiler\Ahk2Exe.exe`가 없으면 `AutoHotkey\UX\install-ahk2exe.ahk`를 실행해 먼저 설치합니다. 그 다음 프로젝트 폴더에서:
+AutoHotkey v2에 포함된 컴파일러 **Ahk2Exe**로 만듭니다. 설치 폴더에 `Compiler\Ahk2Exe.exe`가 없으면 `AutoHotkey\UX\install-ahk2exe.ahk`를 실행해 먼저 설치합니다. 그 다음 저장소의 `windows/` 폴더에서:
 
 ```
 "C:\Program Files\AutoHotkey\Compiler\Ahk2Exe.exe" /in focus-draw.ahk /out focus-draw.exe /base "C:\Program Files\AutoHotkey\v2\AutoHotkey64.exe"
@@ -231,7 +233,7 @@ AutoHotkey v2에 포함된 컴파일러 **Ahk2Exe**로 만듭니다. 설치 폴�
 
 생성된 `focus-draw.exe` 하나만 있으면, 받는 PC에 AutoHotkey가 설치되어 있지 않아도 바로 실행됩니다. 압축(UPX 등) 옵션은 백신 오탐이 늘어나므로 쓰지 않습니다.
 
-아이콘 PNG 5개와 단축키 안내 그림(`shortcuts.png`)은 `FileInstall`로 exe 안에 함께 들어갑니다. **컴파일할 때 이 파일들이 `focus-draw.ahk`와 같은 폴더에 있어야 합니다.** 안내 그림을 바꾸려면 `shortcuts.png`를 덮어쓰고 다시 컴파일하면 됩니다 — 프로그램이 화면 크기에 맞춰 알아서 줄여 띄우므로 크기는 자유롭지만, **가로형으로 1600×900px 안팎**이 교실 화면(1920×1080)에서 가장 또렷합니다(원본보다 크게 늘리지는 않습니다). 지금 들어 있는 그림은 `shortcuts-guide.html`로 만든 것이고, 그 파일 맨 위 주석에 PNG를 다시 뽑는 명령이 적혀 있습니다.
+아이콘 PNG 5개와 단축키 안내 그림(`shortcuts.png`)은 `FileInstall`로 exe 안에 함께 들어갑니다. **컴파일할 때 아이콘 PNG는 `shared/`, 안내 그림은 `windows/`에 있어야 합니다(저장소 구조 그대로).** 안내 그림을 바꾸려면 `shortcuts.png`를 덮어쓰고 다시 컴파일하면 됩니다 — 프로그램이 화면 크기에 맞춰 알아서 줄여 띄우므로 크기는 자유롭지만, **가로형으로 1600×900px 안팎**이 교실 화면(1920×1080)에서 가장 또렷합니다(원본보다 크게 늘리지는 않습니다). 지금 들어 있는 그림은 `shortcuts-guide.html`로 만든 것이고, 그 파일 맨 위 주석에 PNG를 다시 뽑는 명령이 적혀 있습니다.
 
 ### 전달할 때는 폴더로 묶어서
 
@@ -251,7 +253,7 @@ Focus & Draw/
 
 (`배포용/` 폴더는 `.gitignore`에 있습니다 — 전달할 때마다 exe와 안내문을 복사해 새로 만들면 됩니다.)
 
-프로그램 아이콘과 이름, 버전은 `focus-draw.ahk` 맨 위의 `;@Ahk2Exe-...` 주석 줄이 정합니다. 이 줄들은 컴파일할 때만 읽히므로 `.ahk`로 그냥 실행할 때는 아무 영향이 없습니다. 아이콘을 바꾸려면 `icon.png`를 교체한 뒤 여러 크기(16~256px)를 담은 `focus-draw.ico`로 다시 변환해 덮어쓰고 컴파일하면 됩니다.
+프로그램 아이콘과 이름, 버전은 `focus-draw.ahk` 맨 위의 `;@Ahk2Exe-...` 주석 줄이 정합니다. 이 줄들은 컴파일할 때만 읽히므로 `.ahk`로 그냥 실행할 때는 아무 영향이 없습니다. 아이콘을 바꾸려면 `shared/icon.png`를 교체한 뒤 여러 크기(16~256px)를 담은 `focus-draw.ico`로 다시 변환해 덮어쓰고 컴파일하면 됩니다.
 
 버전을 올릴 때는 두 곳을 같이 고쳐야 합니다. 파일 속성에 쓰이는 `;@Ahk2Exe-SetVersion`과, 트레이 툴팁·설정 창에 표시되는 `APP_VERSION` 값입니다. 앞의 것은 주석이라 프로그램이 읽을 수 없어 같은 숫자를 두 번 적습니다.
 

@@ -43,10 +43,12 @@ done
 lipo -create -output "$APP/Contents/MacOS/FocusDraw" "${BINS[@]}"
 
 cp Info.plist "$APP/Contents/"
-for f in icon_spotlight_dark.png icon_draw_dark.png icon_menubar.png settings.png icon.png; do
-  [ -f "$ROOT/$f" ] || { echo "빌드 실패: 그림 파일이 없음: $ROOT/$f"; exit 1; }
+# 두 판이 같이 쓰는 그림은 저장소의 shared/, 맥만 쓰는 메뉴 막대 아이콘은 mac/에 있다
+SHARED="$ROOT/shared"
+for f in "$SHARED/icon_spotlight_dark.png" "$SHARED/icon_draw_dark.png" "$SHARED/settings.png" "$SHARED/icon.png" icon_menubar.png; do
+  [ -f "$f" ] || { echo "빌드 실패: 그림 파일이 없음: $f"; exit 1; }
 done
-cp "$ROOT/icon_spotlight_dark.png" "$ROOT/icon_draw_dark.png" "$ROOT/icon_menubar.png" "$ROOT/settings.png" "$APP/Contents/Resources/"
+cp "$SHARED/icon_spotlight_dark.png" "$SHARED/icon_draw_dark.png" icon_menubar.png "$SHARED/settings.png" "$APP/Contents/Resources/"
 
 # 앱 아이콘 (mac/icon-mac.png → AppIcon.icns). Windows용 icon.png는 가장자리까지 꽉 차서 맥 Dock·Launchpad에서 다른 앱보다 커 보이므로,
 # 맥 아이콘 규격대로 1024 캔버스에 824(약 80%)로 앉히고 둘레를 투명하게 둔 맥 전용 원본을 쓴다.
@@ -116,7 +118,7 @@ fi
 # 그림 기준 점검: Tests/golden의 기준 그림과 견주고 글 점검(단언)을 돈다. 창이 필요 없다.
 # 인자: 앱 경로, 결과 폴더, (선택) --update-goldens
 run_golden() {
-  "$1/Contents/MacOS/FocusDraw" --golden "$2" --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" --fixtures Tests/fixtures ${3:+"$3"}
+  "$1/Contents/MacOS/FocusDraw" --golden "$2" --goldens Tests/golden --ahk "$ROOT/windows/focus-draw.ahk" --fixtures Tests/fixtures ${3:+"$3"}
 }
 if [ "$MODE" = --update-goldens ]; then
   run_golden "build/Focus & Draw.app" build/test-out --update-goldens
@@ -140,7 +142,7 @@ if [ "$MODE" = --test ]; then
     cp "$STAGE/FocusDraw-intel" "$IAPP/Contents/MacOS/FocusDraw"
     codesign --force --deep --sign - "$IAPP"
     set +e
-    IOUT=$(arch -x86_64 "$IAPP/Contents/MacOS/FocusDraw" --golden build/test-out-intel --goldens Tests/golden --ahk "$ROOT/focus-draw.ahk" --fixtures Tests/fixtures 2>&1)
+    IOUT=$(arch -x86_64 "$IAPP/Contents/MacOS/FocusDraw" --golden build/test-out-intel --goldens Tests/golden --ahk "$ROOT/windows/focus-draw.ahk" --fixtures Tests/fixtures 2>&1)
     IRC=$?
     set -e
     if [ $IRC -ne 0 ]; then echo "인텔(Rosetta) 그림 점검 실패:"; echo "$IOUT"; exit 1; fi

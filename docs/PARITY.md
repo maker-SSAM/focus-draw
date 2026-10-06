@@ -1,8 +1,8 @@
 # Windows ↔ 맥 차이표 (PARITY)
 
 > Windows v1.0.0의 기능 144개를 맥에서 어떻게 하고 있는지 한 줄씩 적은 표. 맥 세션이 단계를 끝낼 때마다 해당 줄을 고친다.
-> 원자료: [design/review-2026-09-28/windows-inventory.md](design/review-2026-09-28/windows-inventory.md) (영어, 줄마다 자세한 Windows·맥 설명)
-> 결정 번호는 [ROADMAP.md](ROADMAP.md), D번호는 [design/SPIKES.md](design/SPIKES.md).
+> 원자료: [design/review-2026-09-28/windows-inventory.md](../mac/design/review-2026-09-28/windows-inventory.md) (영어, 줄마다 자세한 Windows·맥 설명)
+> 결정 번호는 [ROADMAP.md](../mac/ROADMAP.md), D번호는 [design/SPIKES.md](../mac/design/SPIKES.md).
 
 **맥 상태**: `완료` · `S○`(그 단계에서 함) · `일부러 다름`(이유가 있어 다르게 둠) · `불가능`(이유와 대안을 적음) · `해당 없음`(Windows 전용) · `선생님 결정`(코드와 README가 달라 정해야 함)
 

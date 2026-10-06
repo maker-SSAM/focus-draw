@@ -1,6 +1,6 @@
 # 특수 펜·단축키 개선 계획 (2026-10-05, 선생님 요청)
 
-맥 세션에서 하고, Windows가 따라갈 것은 [windows-todo.md](windows-todo.md)에 줄을 남긴다. 한 묶음씩 세션을 나눈다.
+맥 세션에서 하고, Windows가 따라갈 것은 [windows-todo.md](../../docs/windows-todo.md)에 줄을 남긴다. 한 묶음씩 세션을 나눈다.
 
 ## 묶음 A: 레이저·무지개 그리기 (지금 진행)
 1. **레이저 테두리 정교하게** (2026-10-05 맥 구현·선생님 확인: 번짐·빨리 긋기·굵기 최대 개선, 줄기 시작할 때 smoothstep 적용은 선생님 재확인 대기) — 움직임(머묾 → 사라짐)은 그대로. 기준 그림은 [images/laser-before.png](images/laser-before.png)

@@ -3,7 +3,7 @@
 
 ; ================= 컴파일(Ahk2Exe) 설정 =================
 ; 아래 줄들은 평범한 주석이라 .ahk로 그냥 실행할 때는 아무 영향이 없고, Ahk2Exe로 exe를
-; 만들 때만 읽힌다. focus-draw.ico는 icon.png를 16~256px 여러 크기로 담아 변환한 파일이다
+; 만들 때만 읽힌다. focus-draw.ico는 ..\shared\icon.png를 16~256px 여러 크기로 담아 변환한 파일이다
 ; (작업표시줄·바탕화면·파일 탐색기가 상황에 따라 다른 크기를 골라 쓰기 때문에 여러 크기가 필요).
 ; 컴파일된 exe는 이 아이콘을 파일 아이콘이자 트레이 아이콘으로 함께 사용한다.
 ;@Ahk2Exe-SetMainIcon focus-draw.ico
@@ -39,11 +39,12 @@ SETTINGS_PATH := A_ScriptDir "\settings.ini"
 
 ; 컴파일된 exe에도 아이콘 파일이 그대로 들어가도록 FileInstall로 함께 담고, 실행 시 임시 폴더로 꺼내 쓴다.
 ; (위젯/트레이 아이콘 둘 다 이 경로를 쓰므로 다른 UI보다 먼저 준비해둔다)
-FileInstall("icon_spotlight.png", A_Temp "\tt_icon_spotlight.png", true)
-FileInstall("icon_draw.png", A_Temp "\tt_icon_draw.png", true)
-FileInstall("icon_spotlight_dark.png", A_Temp "\tt_icon_spotlight_dark.png", true)
-FileInstall("icon_draw_dark.png", A_Temp "\tt_icon_draw_dark.png", true)
-FileInstall("Settings.png", A_Temp "\tt_icon_settings.png", true)
+; 아이콘 그림은 맥 판과 같이 쓰므로 저장소의 shared 폴더에 있다 (이 스크립트 기준 ..\shared).
+FileInstall("..\shared\icon_spotlight.png", A_Temp "\tt_icon_spotlight.png", true)
+FileInstall("..\shared\icon_draw.png", A_Temp "\tt_icon_draw.png", true)
+FileInstall("..\shared\icon_spotlight_dark.png", A_Temp "\tt_icon_spotlight_dark.png", true)
+FileInstall("..\shared\icon_draw_dark.png", A_Temp "\tt_icon_draw_dark.png", true)
+FileInstall("..\shared\settings.png", A_Temp "\tt_icon_settings.png", true)
 ; 설정 창의 "드로잉 모드 단축키 보기" 버튼이 띄우는 안내 그림. 아이콘과 달리 화면에 그대로 보여주기만
 ; 하므로 색을 입히거나 하지 않는다. (그림을 바꾸려면 shortcuts.png만 갈아끼우면 된다)
 FileInstall("shortcuts.png", A_Temp "\tt_shortcuts.png", true)

@@ -212,7 +212,7 @@
 - 빌드가 성공했을 때만 `build/`를 교체한다.
 - 인텔 조각은 **Rosetta가 이미 깔려 있을 때만** `arch -x86_64`로 돌린다. Rosetta 설치는 선생님 결정이다.
 
-**차이표 `mac/PARITY.md`**
+**차이표 `docs/PARITY.md`** (처음엔 `mac/PARITY.md`, 2026-10-07 옮김)
 - `design/review-2026-09-28/windows-inventory.md`의 144개로 시작한다.
 - 줄마다 적을 것:
   - 맥 상태: 완료 / S○ / 일부러 다름 / 불가능+이유
@@ -856,7 +856,7 @@
 - **[새 Haiku 세션] 배포**: `RELEASE.md`대로 한다.
   - 버전 2.0.0, `--test`(서명했으면 `--sign`), zip(`Focus-Draw-2.0.0-mac.zip`, 2.0.0이라 이름에 test 없음), 한국어 릴리스 노트
   - 윈도우 세션이 만든 윈도우 2.0.0 zip과 **한 릴리스 `v2.0.0`**(Latest, 시험판 아님)에 함께 올린다. 태그 `v2.0.0`은 두 판이 모두 들어간 커밋에.
-  - 마지막에 저장소 맨 위 `version.txt`의 `windows`·`mac`을 둘 다 2.0.0, 주소는 `v2.0.0` 릴리스로 ([update-check.md](update-check.md)).
+  - 마지막에 저장소 맨 위 `version.txt`의 `windows`·`mac`을 둘 다 2.0.0, 주소는 `v2.0.0` 릴리스로 ([update-check.md](../../docs/update-check.md)).
   - 선생님 승인 뒤 게시하고 링크를 확인한다.
 
 ### 완료 조건

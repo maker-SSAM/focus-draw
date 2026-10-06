@@ -13,13 +13,14 @@
 $ErrorActionPreference = 'Stop'
 $here  = $PSScriptRoot
 $root  = Split-Path $here
+$shared = Join-Path (Split-Path $root) 'shared'  # 맥 판과 같이 쓰는 그림 (icon*.png, settings.png)
 $edge  = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 $scale = '1.5'  # 1600x900 → 2400x1350. 메신저로 보내도 글씨가 또렷하게
 $names = @('01-소개', '02-두-프로그램을-하나로', '03-위젯', '04-개인화', '05-단축키', '06-전자칠판', '07-시작하기')
 
 function Find-Picture($name) {
     $stem = [IO.Path]::GetFileNameWithoutExtension($name)
-    foreach ($folder in $here, $root) {
+    foreach ($folder in $here, $root, $shared) {
         foreach ($cand in $name, "$stem.jpg", "$stem.jpeg") {
             $p = Join-Path $folder $cand
             if (Test-Path -LiteralPath $p) { return $p }
