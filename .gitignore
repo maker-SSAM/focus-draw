@@ -22,3 +22,7 @@ mac/build/
 # Claude Code: PC별 개인 설정과 임시 작업 사본은 공유하지 않음
 .claude/settings.local.json
 .claude/worktrees/
+
+# OS 찌꺼기 (OneDrive는 윈도우로 동기화하지 않음)
+.DS_Store
+Thumbs.db
