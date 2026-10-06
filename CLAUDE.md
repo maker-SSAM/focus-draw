@@ -25,6 +25,7 @@ Windows 판(`focus-draw.ahk`)과 맥 판(`mac/`)을 한 저장소에서 같이 �
 - 두 PC에서 동시에 작업하지 않는다. git을 쓰기 전에 동기화(초록 체크)를 확인한다.
 - 프로젝트 폴더는 Finder에서 "항상 이 기기에 유지"로 둔다.
 - `…-컴퓨터이름` 같은 충돌 사본이 보이면 그 세션에서 멈추고 알린다.
+- PC 간 일회성 요청·결과는 루트(`Claude-code/`)의 `HANDOFF.md`에 `[focus-draw]` 태그로 주고받는다(이 저장소에 HANDOFF 파일을 만들지 않는다). Windows 판에도 넣어야 할 기능 목록은 `mac/design/windows-todo.md`에 쌓고, HANDOFF에서는 그 항목을 가리키기만 한다.
 - 빌드는 임시 폴더에서 조립한다(서명 문제 방지) — `mac/build.sh`가 이미 그렇게 한다.
 
 ## 맥 세션 금지 사항
