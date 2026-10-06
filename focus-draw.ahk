@@ -437,7 +437,7 @@ shapeKeyHeld := Map()
 ; 잠깐 쓰려고 바꾼 값이 그대로 굳어버리고, 설정 창의 슬라이더 표시와도 어긋나기 때문이다.
 ; activeDrawStep/activeEraserStep이 실제 값이고, ...Thickness/...Size는 거기서 환산한 픽셀값이다.
 activeDrawColor := drawColor
-activeDrawAlpha := 100 ; 지금 긋는 선의 불투명도(%) — 숫자키로 색을 고를 때 그 색의 값으로 바뀐다
+activeDrawAlpha := StartAlpha(100) ; 지금 긋는 선의 불투명도(%, 절대값) — 숫자키로 색을 고를 때 그 색의 값으로 바뀐다
 activeDrawStep := DrawStep
 activeEraserStep := EraserStep
 activeDrawThickness := PenPx(DrawStep)
@@ -1581,9 +1581,7 @@ UpdateDrawCursorForWindow(winUnder) {
     }
 }
 
-; 지름은 선 굵기 그대로, 색도 그대로, 투명도는 판서 오버레이와 똑같이 **창 전체에 한 번**
-; 곱하는 방식으로 준다(픽셀은 불투명하게 그리고 PushCanvasToWindow의 constAlpha로 곱한다).
-; 오버레이가 선을 화면에 올리는 방식과 같아야 눈에 보이는 결과가 같아지기 때문이다.
+; 지름은 선 굵기 그대로, 색과 투명도도 그어질 선 그대로 보여준다.
 RedrawBrushCursor() {
     global brushGui, brushCanvas, brushPad, brushMode, activeDrawColor, activeDrawThickness, rainbowColor
     ; 펜은 그어질 선 그대로, 지우개는 지워질 범위 그대로 — 둘 다 실제 크기를 보여준다.
@@ -1628,17 +1626,15 @@ RedrawBrushCursor() {
 ; 좌표를 주면 그 자리로, 안 주면 마우스 커서 자리로 옮긴다. 터치·펜은 진짜 커서가 늦게
 ; 따라오므로 포인터 메시지에서 받은 좌표를 직접 넘겨준다.
 MoveBrushCursor(px := "", py := "") {
-    global drawOn, brushGui, brushCanvas, brushPad, brushMode, DrawOpacity
+    global drawOn, brushGui, brushCanvas, brushPad, brushMode
     if (!drawOn || !IsObject(brushCanvas) || !brushCanvas.graphics)
         return
     if (px = "" || py = "")
         MouseGetPos(&mx, &my)
     else
         mx := px, my := py
-    ; 펜은 그어질 선과 같은 투명도로 보여줘야 결과가 예상된다. 지우개 테두리는 안내선이라
-    ; 판서 투명도와 상관없이 또렷하게 둔다.
-    alpha := (brushMode = "eraser") ? 255 : Max(0, Min(255, Round(DrawOpacity * 255 / 100)))
-    PushCanvasToWindow(brushGui.Hwnd, brushCanvas, mx - brushPad, my - brushPad, alpha)
+    ; 펜의 투명도는 원을 그릴 때 이미 색에 담겨 있다(ActiveARGB). 지우개 테두리는 안내선이라 또렷하게 둔다.
+    PushCanvasToWindow(brushGui.Hwnd, brushCanvas, mx - brushPad, my - brushPad, 255)
 }
 
 ; UpdateLayeredWindow은 부를 때마다 창 전체(가상 화면 전체 크기)를 합성하기 때문에,
@@ -1655,7 +1651,7 @@ ulwPtSrc := Buffer(8, 0) ; 항상 (0,0) — memDC 전체가 소스
 ulwBlend := Buffer(4, 0)
 NumPut("UChar", 0, ulwBlend, 0)   ; AC_SRC_OVER
 NumPut("UChar", 0, ulwBlend, 1)   ; flags
-NumPut("UChar", Round(DrawOpacity * 255 / 100), ulwBlend, 2) ; SourceConstantAlpha — 판서 전체 불투명도
+NumPut("UChar", 255, ulwBlend, 2) ; SourceConstantAlpha — 판 전체에는 곱하지 않는다(투명도는 획마다 — StartAlpha 참고)
 NumPut("UChar", 1, ulwBlend, 3)   ; AC_SRC_ALPHA
 ulwDirtyRect := Buffer(16, 0)
 ulwInfo := Buffer(80, 0) ; UPDATELAYEREDWINDOWINFO (x64)
@@ -1683,12 +1679,13 @@ UpdateOverlay(minX := -1, minY := -1, maxX := -1, maxY := -1) {
 }
 UpdateOverlay()
 
-; 판서 전체의 불투명도를 바꾼다. UpdateLayeredWindow의 SourceConstantAlpha는 이미 그려둔
-; 그림 전체에 곱해지는 값이라, 픽셀을 다시 그리지 않고 이 값만 바꿔도 화면에 바로 반영된다.
-UpdateDrawOpacity() {
-    global ulwBlend, DrawOpacity
-    NumPut("UChar", Round(DrawOpacity * 255 / 100), ulwBlend, 2)
-    UpdateOverlay()
+; 설정 창의 드로잉 "투명도"(DrawOpacity)는 **긋기 시작할 때의 선 투명도**다. 예전에는 판서 전체에 곱했는데,
+; 그러면 50%로 두고 마우스 휠을 100%까지 올려도 결과는 여전히 50%였다. 휠 숫자는 **절대값**이어야 하므로
+; 판에는 곱하지 않고, 드로잉을 켜거나 숫자키를 누를 때 이 값을 그 색의 투명도(keyAlpha, %)에 곱한
+; 값으로 시작한다. 휠은 그 뒤 숫자를 그대로 바꾼다. 5% 아래로는 내리지 않는다(AdjustDrawAlpha와 같다).
+StartAlpha(keyAlpha) {
+    global DrawOpacity
+    return Max(5, Min(100, Round(DrawOpacity * keyAlpha / 100)))
 }
 
 ; GDI로 그린 픽셀은 알파 값이 채워지지 않으므로, 그린 영역만 알파를 255로 채워준다.
@@ -3218,7 +3215,7 @@ ToggleDraw(*) {
     penKind := ""
     rainbowColor := false
     activeDrawColor := drawColor
-    activeDrawAlpha := 100
+    activeDrawAlpha := StartAlpha(100)
     activeDrawStep := DrawStep
     activeEraserStep := EraserStep
     activeDrawThickness := PenPx(DrawStep)
@@ -3305,13 +3302,13 @@ SetDrawColor(index) {
     rainbowColor := false ; 무지개도 풀린다 — 그 뒤 A는 이 색의 레이저
     if (index = 0) {
         activeDrawColor := drawColor
-        activeDrawAlpha := 100
+        activeDrawAlpha := StartAlpha(100)
         RedrawBrushCursor()
         return
     }
     if (index >= 1 && index <= DRAW_COLORS.Length) {
         activeDrawColor := DRAW_COLORS[index]
-        activeDrawAlpha := DRAW_ALPHAS[index]
+        activeDrawAlpha := StartAlpha(DRAW_ALPHAS[index])
         activeDrawStep := DRAW_STEPS[index] ; 굵기도 그 숫자키의 단계로
         activeDrawThickness := PenPx(activeDrawStep)
         RedrawBrushCursor()
@@ -3807,10 +3804,9 @@ ResetAllSettings() {
     ApplySpotlightAppearance()
     UpdateSpotlightColor()
     RedrawSpotlight()
-    UpdateDrawOpacity()
     UpdateCursorHiddenState()
     activeDrawColor := drawColor
-    activeDrawAlpha := 100
+    activeDrawAlpha := StartAlpha(100)
     BuildWidget() ; 크기·배경색이 그림에 합성되어 있어 다시 만들어야 한다
     SetWidgetVisible(showWidget)
     MoveWidgetToDefaultPos()
@@ -3950,7 +3946,7 @@ OpenSettingsWindow(*) {
     ; 켤 때마다 이 값으로 초기화된다.
     AddColorRow(settingsGui, 52, "Draw", "기본 색상")
     AddSliderRow(settingsGui, 86, "드로잉 굵기", 1, 10, DrawStep, "단계", (v) => DrawStep := v)
-    AddSliderRow(settingsGui, 118, "투명도", 0, 100, DrawOpacity, "%", (v) => (DrawOpacity := v, UpdateDrawOpacity()), 5)
+    AddSliderRow(settingsGui, 118, "투명도", 0, 100, DrawOpacity, "%", (v) => DrawOpacity := v, 5)
     AddSliderRow(settingsGui, 150, "지우개 크기", 1, 10, EraserStep, "단계", (v) => EraserStep := v)
 
     ; --- 사라지는 펜 (레이저, A) --- 맥 판과 같은 설정 항목이다([Draw] LaserHold·LaserFade·LaserGlow).
