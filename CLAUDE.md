@@ -30,6 +30,10 @@ docs/     두 판 공통 문서: PARITY.md(차이표), windows-todo.md(판 사�
 - **자동 업데이트·자동 확인·알림은 넣지 않는다.** 자세한 동작은 [docs/update-check.md](docs/update-check.md).
 - 맥 판도 곧 GitHub에 배포한다. **맥도 2.0.0으로 맞추고, 두 판을 함께 진행해 한 릴리스 `v2.0.0`에 두 zip을 올린다**(맥 1.0은 따로 내지 않는다).
 
+## 2.0 뒤에 넣을 기능 (2026-10-09 기록)
+
+- 확대·핀홀 조명·타이머·위젯 펼치기 계획과 조언은 [docs/next-features.md](docs/next-features.md). **맥 판(2.0.0)을 출시한 뒤에 시작한다**(선생님 결정). 그 전에는 손대지 않는다.
+
 ## git
 
 - `.git/config`에 `core.autocrlf`는 **절대 설정하지 않는다** — OneDrive로 Windows PC와 공유되어 그쪽 CRLF 규칙을 깬다.
