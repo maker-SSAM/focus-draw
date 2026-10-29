@@ -23,21 +23,22 @@
 
 - [x] `windows/focus-draw.ahk` 11행 `SetVersion`·27행 `APP_VERSION` → `2.0.0` (맥에서 고침, 2026-10-29)
 - [x] `windows/소개자료/slides.html` "버전 2.0.0"·"Focus &amp; Draw 2.0.0" (글만. 그림은 아래 윈도우 몫)
-- [ ] `[윈도우]` `windows/소개자료/build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0" → 2.0.0)
-- [ ] `[윈도우]` `windows/읽어주세요.txt`에 맥 안내 한 줄 (문구는 `docs/windows-todo.md` "2.0.0 배포" 줄, CRLF+BOM 그대로)
-- [ ] `[윈도우]` exe 컴파일 → 실행 확인(점검 4번 ini 이상값, 새 버전 확인 글자·[받으러 가기]·제작자 링크) → `windows/배포용/`에서 `Focus-Draw-2.0.0.zip`(폴더 `Focus & Draw/` 안에 exe·읽어주세요)
+- [x] `[윈도우]` `windows/소개자료/build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0" → 2.0.0)
+- [x] `[윈도우]` `windows/읽어주세요.txt`에 맥 안내 한 줄 (문구는 `docs/windows-todo.md` "2.0.0 배포" 줄, CRLF+BOM 그대로)
+- [x] `[윈도우]` exe 컴파일 → 실행 확인(점검 4번 ini 이상값, 새 버전 확인 글자·[받으러 가기]·제작자 링크) → `windows/배포용/`에서 `Focus-Draw-2.0.0.zip`(폴더 `Focus & Draw/` 안에 exe·읽어주세요) (윈도우 2026-10-29)
 - [x] `mac/Info.plist` 2.0.0 / 6, `mac/맥용 읽어주세요.txt`·`mac/beta/한장안내.txt`(CRLF+BOM 그대로) 2.0.0 정식 문구
 - [x] `mac/build.sh` 28행: 2.0.0이면 저절로 `Focus-Draw-2.0.0-mac.zip` (고칠 것 없음)
 - [x] 루트 `README.md`: 내려받기 두 줄(`v2.0.0` 각 zip 주소), "맥에서 쓰기" 절, 결정 6·12 문구, 새 버전 확인·제작자 링크 (점검 2번, S12)
 - [x] `docs/PARITY.md` 마무리, 릴리스 노트 초안 `docs/release-notes-2.0.0.md`
-- [ ] **게시 (선생님 승인 뒤)**: 두 zip이 다 모이면, 두 판이 모두 들어간 커밋에 태그 `v2.0.0` →
+- [x] **게시 (선생님 승인 뒤)**: 두 zip이 다 모이면, 두 판이 모두 들어간 커밋에 태그 `v2.0.0` →
   ```
   git push origin master v2.0.0
   gh release create v2.0.0 mac/build/Focus-Draw-2.0.0-mac.zip "windows/배포용/Focus-Draw-2.0.0.zip" \
     --latest --title "Focus & Draw 2.0.0 (Windows · 맥)" --notes-file docs/release-notes-2.0.0.md
   ```
-- [ ] 게시 직후 README 내려받기 두 줄의 링크를 각 zip 주소(`releases/download/v2.0.0/Focus-Draw-2.0.0.zip`, `…-mac.zip`)로 바꿔 push (게시 전에는 없는 파일이라 `releases/latest`로 둠)
-- [ ] **확인**: README의 두 내려받기 링크가 `curl -sIL`로 200, `gh release list`에서 Latest가 `v2.0.0`
-- [ ] **맨 마지막**: 저장소 맨 위 `version.txt`를 만들어 push (`docs/update-check.md` 모양: `windows=2.0.0`, `windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0`, `mac=`·`mac_url=` 같음). 그 뒤 두 판 설정 창에서 "최신 2.0.0 — 최신 버전입니다"가 나오는지
+- [x] 게시 직후 README 내려받기 두 줄의 링크를 각 zip 주소(`releases/download/v2.0.0/Focus-Draw-2.0.0.zip`, `…-mac.zip`)로 바꿔 push (게시 전에는 없는 파일이라 `releases/latest`로 둠)
+- [x] **확인**: README의 두 내려받기 링크가 `curl -sIL`로 200, `gh release list`에서 Latest가 `v2.0.0`
+- [x] (2026-10-30 윈도우에서 게시: 태그 `v2.0.0` = `b91755b`, Latest, 두 zip SHA-256 로컬과 같음, 링크 200)
+- [x] **맨 마지막**: 저장소 맨 위 `version.txt`를 만들어 push (`docs/update-check.md` 모양: `windows=2.0.0`, `windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0`, `mac=`·`mac_url=` 같음). 그 뒤 두 판 설정 창에서 "최신 2.0.0 — 최신 버전입니다"가 나오는지
 
 되돌리기: 수업 날 아침 문제가 생기면 이전 `mac-v…` 태그의 zip을 다시 받아 쓴다(태그와 zip은 지우지 않는다).

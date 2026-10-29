@@ -7,8 +7,8 @@
 
 **내려받기** (두 판 모두 2.0.0, 받는 곳: https://github.com/maker-SSAM/focus-draw/releases/latest)
 
-- **Windows 10 / 11** → [`Focus-Draw-2.0.0.zip`](https://github.com/maker-SSAM/focus-draw/releases/latest) — 압축을 풀고 `focus-draw.exe`를 실행하세요.
-- **맥 (macOS 15 이상)** → [`Focus-Draw-2.0.0-mac.zip`](https://github.com/maker-SSAM/focus-draw/releases/latest) — 압축을 풀고 앱을 "응용 프로그램" 폴더로 옮기세요. 처음 여는 방법과 Windows 판과 다른 점은 아래 **[맥에서 쓰기](#맥에서-쓰기)** 에 있습니다.
+- **Windows 10 / 11** → [`Focus-Draw-2.0.0.zip`](https://github.com/maker-SSAM/focus-draw/releases/download/v2.0.0/Focus-Draw-2.0.0.zip) — 압축을 풀고 `focus-draw.exe`를 실행하세요.
+- **맥 (macOS 15 이상)** → [`Focus-Draw-2.0.0-mac.zip`](https://github.com/maker-SSAM/focus-draw/releases/download/v2.0.0/Focus-Draw-2.0.0-mac.zip) — 압축을 풀고 앱을 "응용 프로그램" 폴더로 옮기세요. 처음 여는 방법과 Windows 판과 다른 점은 아래 **[맥에서 쓰기](#맥에서-쓰기)** 에 있습니다.
 
 아래 사용법은 Windows 판 기준입니다. 맥도 쓰는 법은 같고, 키 이름(`Ctrl` → `control`, `Ctrl+Z` → `⌘Z` 등)과 몇 가지가 다릅니다.
 
