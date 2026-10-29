@@ -71,6 +71,26 @@
   /* 오른쪽에 떨어져 있는 Delete 자리(실제 키보드에서도 Backspace 오른쪽 한 칸 건너에 있다) */
   .nav { margin-left:14px; }
 
+  /* 화살표 키: Delete 아래 빈 자리에 얹는다. 줄 안에 넣지 않고 띄워 두어야 다른 키의 자리가
+     그대로다 — 프로그램이 숫자키·칠판 키 막대를 이 그림의 좌표로 다시 칠한다(GUIDE_DIGIT_X 등). */
+  .kb { position:relative; }
+  .arrows {
+    position:absolute; right:14px; bottom:14px; width:calc(1.5 * var(--u) + .5 * var(--gap));
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:4px;
+  }
+  .arrows .key { height:46px; }
+  .arrows .key .cap { font-size:16px; }
+  .arrows .up { grid-column:2; grid-row:1; }
+  .arrows .left { grid-column:1; grid-row:2; }
+  .arrows .down { grid-column:2; grid-row:2; }
+  .arrows .right { grid-column:3; grid-row:2; }
+  .arrows-cap {
+    position:absolute; right:14px; bottom:120px; width:calc(1.5 * var(--u) + .5 * var(--gap));
+    text-align:center; font-size:11px; line-height:1.45; color:#43434a; letter-spacing:-.3px;
+  }
+  .arrows-cap b { font-weight:700; }
+  .on.g-alpha { border-color:#7cc7cd; box-shadow:0 0 0 1px #7cc7cd inset; }
+
   .on.g-color { border-color:#7fb4e8; box-shadow:0 0 0 1px #7fb4e8 inset; }
   .on.g-board { border-color:#66bf93; box-shadow:0 0 0 1px #66bf93 inset; }
   .on.g-shape { border-color:#b18ae0; box-shadow:0 0 0 1px #b18ae0 inset; }
@@ -114,13 +134,22 @@
     <span class="chip c-color">색 바꾸기<small>0 ~ 9 — 0은 설정 창의 기본 색</small></span>
     <span class="chip c-board">칠판<small>Q W E R</small></span>
     <span class="chip c-shape">도형<small>Z X C — 누른 채로 드래그</small></span>
-    <span class="chip c-size">선 굵기<small>&minus; &#43;</small></span>
+    <span class="chip c-size">선 굵기<small>&minus; &#43; &larr; &rarr;</small></span>
     <span class="chip c-clear">지우기<small>Delete · Esc</small></span>
-    <span class="chip c-alpha">투명도<small>마우스 휠 — 5%씩</small></span>
+    <span class="chip c-alpha">투명도<small>휠 &uarr; &darr; — 5%씩</small></span>
     <span class="chip c-pen">특수 펜<small>A S — 한 번 누르면 유지</small></span>
   </div>
 
   <div class="kb">
+
+    <!-- 화살표 묶음은 맨 앞에 둔다: 맨 뒤에 두면 마지막 줄이 :last-child가 아니게 되어 아래 간격이 붙는다 -->
+    <div class="arrows-cap"><b style="color:#a86612">&larr; &rarr;</b> 굵기<br><b style="color:#0e7c86">&uarr; &darr;</b> 투명도</div>
+    <div class="arrows">
+      <div class="key up on g-alpha bar-top"><span class="bar" style="background:#7cc7cd"></span><span class="cap">&uarr;</span></div>
+      <div class="key left on g-size bar-top"><span class="bar" style="background:#e0ac5e"></span><span class="cap">&larr;</span></div>
+      <div class="key down on g-alpha bar-top"><span class="bar" style="background:#7cc7cd"></span><span class="cap">&darr;</span></div>
+      <div class="key right on g-size bar-top"><span class="bar" style="background:#e0ac5e"></span><span class="cap">&rarr;</span></div>
+    </div>
 
     <div class="row">
       <div class="key k15 on g-clear bar-top"><span class="bar" style="background:#e08a7e"></span><span class="cap" style="font-size:14px">Esc</span><span class="note">지우고 끄기</span></div>
@@ -217,7 +246,7 @@
       <div class="line"><span class="act"><span class="kbd">A</span><span class="kbd">S</span> 한 번</span><span class="arrow">&rarr;</span><span class="what"><b>레이저 펜 · 무지개 펜</b></span></div>
       <div class="line"><span class="act">오른쪽 드래그</span><span class="arrow">&rarr;</span><span class="what"><b>지우개</b></span></div>
       <div class="line"><span class="act">오른쪽 버튼 + <span class="kbd">&minus;</span><span class="kbd">&#43;</span></span><span class="arrow">&rarr;</span><span class="what">지우개 <b>크기</b></span></div>
-      <div class="line"><span class="act"><b>휠</b> 위로 / 아래로</span><span class="arrow">&rarr;</span><span class="what"><b>투명도</b> 조절 (5%씩)</span></div>
+      <div class="line"><span class="act"><b>휠</b> 위아래 · <span class="kbd">&uarr;</span><span class="kbd">&darr;</span></span><span class="arrow">&rarr;</span><span class="what"><b>투명도</b> 조절 (5%씩)</span></div>
     </div>
 
     <div class="card">

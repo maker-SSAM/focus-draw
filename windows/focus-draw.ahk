@@ -3342,7 +3342,7 @@ ActiveARGB() {
     return (Round(Max(5, Min(100, activeDrawAlpha)) * 255 / 100) << 24) | activeDrawColor
 }
 
-; 드로잉 중 +(크게) / -(작게). 그냥 누르면 **펜 굵기**를, **오른쪽 버튼을 누른 채로** 누르면
+; 드로잉 중 +(크게) / -(작게), 화살표 → / ←도 같다. 그냥 누르면 **펜 굵기**를, **오른쪽 버튼을 누른 채로** 누르면
 ; **지우개 크기**를 바꾼다. 오른쪽 버튼을 누르고 있는 동안에는 커서가 지우개 테두리 원으로
 ; 바뀌어 있으므로, 바뀌는 크기가 그 자리에서 눈에 보인다.
 ; 색과 마찬가지로 설정값(DrawThickness / EraserSize)은 건드리지 않아, 드로잉을 껐다 켜면
@@ -5050,12 +5050,15 @@ Hotkey("0", MakeColorSetter(0), "Off")
 
 ; 선 굵기 조절. "+"는 키보드에서 Shift를 함께 눌러야 나오는 글자라, 굵게 하려고 Shift 없이
 ; 그 키를 눌러도(=) 되도록 둘 다 잡는다. 숫자 키패드가 있는 키보드도 함께 챙긴다.
-THICKNESS_KEYS := [["=", 1], ["+=", 1], ["NumpadAdd", 1], ["-", -1], ["NumpadSub", -1]]
+; 화살표 →/←도 굵게/가늘게(2026-10-30 사용자 요청). 드로잉 중에는 화살표가 뒤 프로그램(슬라이드
+; 넘기기 등)으로 가지 않게 되지만, 그래도 된다는 사용자 결정.
+THICKNESS_KEYS := [["=", 1], ["+=", 1], ["NumpadAdd", 1], ["Right", 1], ["-", -1], ["NumpadSub", -1], ["Left", -1]]
 for pair in THICKNESS_KEYS
     Hotkey(pair[1], MakeThicknessSetter(pair[2]), "Off")
 
 ; 마우스 휠 = 지금 긋는 색의 투명도. 드로잉 중에만 잡으므로 평소 스크롤은 그대로다.
-ALPHA_WHEEL_KEYS := [["WheelUp", 1], ["WheelDown", -1]]
+; 화살표 ↑/↓도 휠 위/아래와 같다(2026-10-30 사용자 요청, 위 굵기 화살표와 함께).
+ALPHA_WHEEL_KEYS := [["WheelUp", 1], ["WheelDown", -1], ["Up", 1], ["Down", -1]]
 for pair in ALPHA_WHEEL_KEYS
     Hotkey(pair[1], MakeAlphaSetter(pair[2]), "Off")
 
@@ -5133,20 +5136,44 @@ IsSafeHotkey(combo) {
 ; 많아 목록으로 골라낼 수 없으므로, 어디서든 넘겨주고 우리도 함께 동작하게 했다(사용자 결정) —
 ; 한글에서 F8을 누르면 맞춤법 검사와 강조 켜기가 함께 일어난다. 강조는 다시 누르면 꺼지니 큰 문제가 아니다.
 ; 설정 창과 settings.ini에는 ~ 없이 적고, 실제로 등록할 때만 붙인다.
+;
+; **단, 브라우저가 앞에 있을 때는 넘기지 않는다**(2026-10-30). Edge는 F9가 "몰입형 리더",
+; 파이어폭스는 "읽기 보기"라, HTML 슬라이드에서 F9로 드로잉을 켜면 가끔(글 위주 페이지로 볼 때만)
+; 화면이 읽기 모드로 바뀌었다. 브라우저용 변형을 ~ 없이 따로 둔다 — ~는 변형마다 따로 붙는다
+; (AutoHotkey 문서: "the tilde prefix is allowed to be present on some of a hotkey's variants").
+; **순서가 중요하다**: ~ 붙은 전역 변형을 먼저 만들어야 한다. 브라우저 변형을 먼저 만들면 브라우저가
+; 아닐 때도 키를 삼켰다(키를 보내 시험 창이 받는지 봐서 확인 — 한글 F8 맞춤법 검사가 다시 막힌다).
+IsBrowserActive(*) {
+    static exes := ["msedge.exe", "chrome.exe", "firefox.exe", "whale.exe"]
+    for exe in exes
+        if WinActive("ahk_exe " exe)
+            return true
+    return false
+}
+
 RegisterHotkey(name, combo) {
     global HOTKEY_ACTIONS, hotkeyRegistered
     if hotkeyRegistered.Has(name) {
-        try Hotkey(hotkeyRegistered[name], , "Off")
+        old := hotkeyRegistered[name]
+        HotIf()
+        try Hotkey("~" old, , "Off")
+        HotIf(IsBrowserActive)
+        try Hotkey(old, , "Off")
         hotkeyRegistered.Delete(name)
     }
+    HotIf()
     if (combo = "")
         return false
+    ok := false
     try {
-        Hotkey("~" combo, HOTKEY_ACTIONS[name], "On")
-        hotkeyRegistered[name] := "~" combo
-        return true
+        Hotkey("~" combo, HOTKEY_ACTIONS[name], "On") ; 앞 프로그램에도 넘긴다 (반드시 먼저 — 위 설명)
+        HotIf(IsBrowserActive)
+        Hotkey(combo, HOTKEY_ACTIONS[name], "On") ; 브라우저: 삼킨다
+        hotkeyRegistered[name] := combo
+        ok := true
     }
-    return false ; 키 이름을 알아볼 수 없는 경우 등
+    HotIf() ; 실패했어도 다른 Hotkey() 호출이 브라우저 조건에 묶이지 않게 되돌린다
+    return ok ; 키 이름을 알아볼 수 없는 경우 등
 }
 
 ; 설정 창의 단축키 칸에서 값이 바뀌었을 때 불린다. 문제가 있으면 원래 조합으로 되돌리고
