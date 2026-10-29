@@ -34,6 +34,13 @@ docs/     두 판 공통 문서: PARITY.md(차이표), windows-todo.md(판 사�
 
 - 확대·핀홀 조명·타이머·위젯 펼치기 계획과 조언은 [docs/next-features.md](docs/next-features.md). **맥 판(2.0.0)을 출시한 뒤에 시작한다**(선생님 결정). 그 전에는 손대지 않는다.
 
+## 배포 (2.0.0부터, 2026-10-29)
+
+- 두 판은 **같은 번호로 한 릴리스**(`v2.0.0`처럼)에 두 zip을 함께 올린다. 태그는 두 판이 모두 들어간 커밋에, 배포마다 태그를 단다.
+- 맥만 따로 올리는 릴리스(시험판 `mac-v…`)는 **Latest로 하지 않는다**. Latest는 늘 두 zip이 다 든 릴리스.
+- 순서와 체크리스트는 [mac/RELEASE.md](mac/RELEASE.md). `version.txt`는 릴리스를 만든 뒤 맨 마지막에 고친다.
+- 기능은 [docs/PARITY.md](docs/PARITY.md)에 줄부터 만들고 한 판씩 옮긴다(한 세션 한 판이 원칙, 선생님이 허락하면 맥 세션이 `windows/`를 고칠 수 있다 — 실행 확인은 윈도우 PC 몫).
+
 ## git
 
 - `.git/config`에 `core.autocrlf`는 **절대 설정하지 않는다** — OneDrive로 Windows PC와 공유되어 그쪽 CRLF 규칙을 깬다.

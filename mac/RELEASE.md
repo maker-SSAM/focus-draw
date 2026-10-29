@@ -21,16 +21,22 @@
 
 2.0.0은 위 시험판 절차가 아니라 `design/stages.md` S12대로 낸다. 그때 숫자를 고칠 곳이 흩어져 있으니 이 목록을 하나씩 지운다. `[윈도우]` 줄은 윈도우 PC 세션이 고친다(파일 형식 — CRLF+BOM 등 — 은 그대로).
 
-- [ ] `[윈도우]` `windows/focus-draw.ahk` 11행 `;@Ahk2Exe-SetVersion 1.0.0` → `2.0.0`
-- [ ] `[윈도우]` `windows/focus-draw.ahk` 27행 `APP_VERSION := "1.0.0"` → `"2.0.0"` (위 줄과 늘 같이)
-- [ ] `[윈도우]` `windows/소개자료/slides.html` 313행 "버전 1.0.0", 735행 "Focus &amp; Draw 1.0.0" → `build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0"도 여기서 나온다)
-- [ ] `[윈도우]` `windows/읽어주세요.txt`: 버전 숫자는 없음(6행은 `releases/latest`). 맥 사용자 안내 한 줄만 S12대로 더한다
-- [ ] `mac/Info.plist` `CFBundleShortVersionString` → `2.0.0`, `CFBundleVersion` 1 올림
-- [ ] `mac/맥용 읽어주세요.txt` 1행 "맥용 시험판 0.5.0", 5행 "맥용 시험판", 43행 "시험판의 한계" 절 → 정식판 문구로
-- [ ] `mac/beta/한장안내.txt` 1행 "시험판 0.5.0" → 내보낼 버전 (CRLF+BOM 그대로, 점검 3번)
-- [ ] `mac/build.sh` 28행: 버전이 `0.*`일 때만 이름에 `-test`가 붙는다 → 2.0.0이면 저절로 `Focus-Draw-2.0.0-mac.zip`. 고칠 것 없음, zip 이름만 확인
-- [ ] 루트 `README.md` 8행 내려받기 줄을 "Windows / 맥" 두 줄로, 14행 "맥 판, 준비 중" 지우기 → 맥 설치 안내로 연결 (점검 2번, S12 README 절과 함께)
-- [ ] **새 버전 확인**(두 판, `docs/update-check.md`): 코드는 넣음(2026-10-29). 윈도우 실행 확인을 마쳤는지
-- [ ] **맨 마지막**: `v2.0.0` 릴리스를 만든 뒤 저장소 맨 위 `version.txt`(`windows=`·`mac=`·`_url`)를 만들어 push (`docs/update-check.md` 순서 — 파일을 먼저 올리면 없는 릴리스를 가리킨다)
+- [x] `windows/focus-draw.ahk` 11행 `SetVersion`·27행 `APP_VERSION` → `2.0.0` (맥에서 고침, 2026-10-29)
+- [x] `windows/소개자료/slides.html` "버전 2.0.0"·"Focus &amp; Draw 2.0.0" (글만. 그림은 아래 윈도우 몫)
+- [ ] `[윈도우]` `windows/소개자료/build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0" → 2.0.0)
+- [ ] `[윈도우]` `windows/읽어주세요.txt`에 맥 안내 한 줄 (문구는 `docs/windows-todo.md` "2.0.0 배포" 줄, CRLF+BOM 그대로)
+- [ ] `[윈도우]` exe 컴파일 → 실행 확인(점검 4번 ini 이상값, 새 버전 확인 글자·[받으러 가기]·제작자 링크) → `windows/배포용/`에서 `Focus-Draw-2.0.0.zip`(폴더 `Focus & Draw/` 안에 exe·읽어주세요)
+- [x] `mac/Info.plist` 2.0.0 / 6, `mac/맥용 읽어주세요.txt`·`mac/beta/한장안내.txt`(CRLF+BOM 그대로) 2.0.0 정식 문구
+- [x] `mac/build.sh` 28행: 2.0.0이면 저절로 `Focus-Draw-2.0.0-mac.zip` (고칠 것 없음)
+- [x] 루트 `README.md`: 내려받기 두 줄(`v2.0.0` 각 zip 주소), "맥에서 쓰기" 절, 결정 6·12 문구, 새 버전 확인·제작자 링크 (점검 2번, S12)
+- [x] `docs/PARITY.md` 마무리, 릴리스 노트 초안 `docs/release-notes-2.0.0.md`
+- [ ] **게시 (선생님 승인 뒤)**: 두 zip이 다 모이면, 두 판이 모두 들어간 커밋에 태그 `v2.0.0` →
+  ```
+  git push origin master v2.0.0
+  gh release create v2.0.0 mac/build/Focus-Draw-2.0.0-mac.zip "windows/배포용/Focus-Draw-2.0.0.zip" \
+    --latest --title "Focus & Draw 2.0.0 (Windows · 맥)" --notes-file docs/release-notes-2.0.0.md
+  ```
+- [ ] **확인**: README의 두 내려받기 링크가 `curl -sIL`로 200, `gh release list`에서 Latest가 `v2.0.0`
+- [ ] **맨 마지막**: 저장소 맨 위 `version.txt`를 만들어 push (`docs/update-check.md` 모양: `windows=2.0.0`, `windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0`, `mac=`·`mac_url=` 같음). 그 뒤 두 판 설정 창에서 "최신 2.0.0 — 최신 버전입니다"가 나오는지
 
 되돌리기: 수업 날 아침 문제가 생기면 이전 `mac-v…` 태그의 zip을 다시 받아 쓴다(태그와 zip은 지우지 않는다).
