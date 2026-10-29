@@ -3885,7 +3885,7 @@ AddHotkeyRow(gui, y, name) {
 OpenSettingsWindow(*) {
     global laserHold, laserFade, laserGlow
     global SpotSize, spotOpacity, SpotThickness, DrawOpacity, DrawStep, EraserStep, clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickColor, showWidget, showTrayIcons, widget, settingsGui, hideCursorOnHighlight, spotlightOn, APP_VERSION, drawOn, chkWidgetCtrl, widgetScale, widgetOpacity
-    global paletteBar, PALETTE_X, PALETTE_Y, PALETTE_W, PALETTE_H
+    global paletteBar, PALETTE_X, PALETTE_Y, PALETTE_W, PALETTE_H, lblUpdate
 
     ; 판서 모드는 화면 전체를 오버레이로 덮어서 "그리기 말고는 아무것도 클릭되지 않는" 상태로
     ; 만드는 게 목적이라, 설정 창도 그 아래에 깔려 조작할 수 없다. 설정 창을 띄우려고 했다는
