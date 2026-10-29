@@ -39,6 +39,7 @@
 - [x] 게시 직후 README 내려받기 두 줄의 링크를 각 zip 주소(`releases/download/v2.0.0/Focus-Draw-2.0.0.zip`, `…-mac.zip`)로 바꿔 push (게시 전에는 없는 파일이라 `releases/latest`로 둠)
 - [x] **확인**: README의 두 내려받기 링크가 `curl -sIL`로 200, `gh release list`에서 Latest가 `v2.0.0`
 - [x] (2026-10-30 윈도우에서 게시: 태그 `v2.0.0` = `b91755b`, Latest, 두 zip SHA-256 로컬과 같음, 링크 200)
+- [x] (2026-10-30 맥에서 같은 번호로 바꿔치기: 화살표 키·맥 진단 기록 메뉴 빼기·윈도우 브라우저 F8/F9. 태그 `v2.0.0` → `8d6fe0f`, `gh release upload … --clobber`, 맥 `99a44139…`, 윈도우 `c9b7c3a0…`, 받은 해시 같음, 링크 200)
 - [x] **맨 마지막**: 저장소 맨 위 `version.txt`를 만들어 push (`docs/update-check.md` 모양: `windows=2.0.0`, `windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0`, `mac=`·`mac_url=` 같음). 그 뒤 두 판 설정 창에서 "최신 2.0.0 — 최신 버전입니다"가 나오는지
 
 되돌리기: 수업 날 아침 문제가 생기면 이전 `mac-v…` 태그의 zip을 다시 받아 쓴다(태그와 zip은 지우지 않는다).
