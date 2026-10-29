@@ -11,7 +11,7 @@ enum KeyMap {
     struct DrawKey: Equatable {
         var combo: HotkeyNotation.Combo
         var release = false   // 뗄 때도 알려 준다 (Z X C: 누르고 있는 동안 도형)
-        var repeats = false   // 누르고 있으면 되풀이한다 (= + − 굵기)
+        var repeats = false   // 누르고 있으면 되풀이한다 (= + − ← → 굵기, ↑ ↓ 진하기)
     }
 
     static let escCode = 53
@@ -19,7 +19,7 @@ enum KeyMap {
     static let letters: [Int] = [12, 13, 14, 15, 0, 1]   // Q W E R A S
     static let edits: [Int] = [51, 117, escCode]         // delete, 앞으로 지우기, Esc
 
-    // 드로잉 묶음: 지금 47개
+    // 드로잉 묶음: 지금 53개
     static let drawKeys: [DrawKey] = {
         var k: [DrawKey] = []
         func add(_ code: Int, _ mods: Int = 0, release: Bool = false, repeats: Bool = false) {
@@ -29,6 +29,8 @@ enum KeyMap {
         for c in [6, 7, 8] { add(c, release: true); add(c, shiftKey, release: true) }         // Z X C (⇧와 함께 눌러도)
         for m in [0, shiftKey, optionKey, optionKey | shiftKey] { add(24, m, repeats: true) } // = +  (⌥: 지우개)
         for c in [27, 69, 78] { add(c, repeats: true); add(c, optionKey, repeats: true) }     // - 키패드+ 키패드-
+        for c in [123, 124] { add(c, repeats: true); add(c, optionKey, repeats: true) }       // ← → 굵기 (⌥: 지우개) — Windows와 같음
+        for c in [125, 126] { add(c, repeats: true) }                                         // ↓ ↑ 진하기 (휠과 같음)
         add(6, cmdKey); add(6, controlKey)                                                    // ⌘Z ⌃Z (실행 취소)
         return k
     }()

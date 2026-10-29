@@ -29,6 +29,10 @@ extension DrawController {
         case 15: board = 3; surface.invalidateAll(); updateCursor()        // R
         case 24, 69: adjustSize(+1, eraser: rightDown || optionHeld || f.contains(.option)) // = + (키패드 +)
         case 27, 78: adjustSize(-1, eraser: rightDown || optionHeld || f.contains(.option)) // - (키패드 -)
+        case 124: adjustSize(+1, eraser: rightDown || optionHeld || f.contains(.option))    // → (= 와 같음)
+        case 123: adjustSize(-1, eraser: rightDown || optionHeld || f.contains(.option))    // ← (− 와 같음)
+        case 126: stepAlpha(1); showAlpha()                                                 // ↑ (휠 위로 한 칸과 같음)
+        case 125: stepAlpha(-1); showAlpha()                                                // ↓
         default:
             if let d = DrawController.digitKeys[k] {
                 if d == 0 { rgb = config.drawColor; alpha = startAlpha(100) } else {
@@ -82,6 +86,10 @@ extension DrawController {
             scrollAccum -= dir
             stepAlpha(dir)
         }
+        showAlpha()
+    }
+
+    private func showAlpha() {
         showBadge("\(Int((alpha * 100).rounded()))%")
         updateCursor()
     }

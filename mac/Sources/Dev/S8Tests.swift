@@ -77,8 +77,8 @@ import AppKit
         // ---- S8b: 키보드 그림 ----
         do {
             let rows = KeyboardLayout.rows(Settings())
-            let caps = rows.flatMap { $0 }
-            let special: [String: Int] = ["−": 27, "=": 24, "delete": 51]
+            let caps = rows.flatMap { $0 }.flatMap { [$0] + $0.subs }   // 위아래 화살표처럼 쌓은 칸도
+            let special: [String: Int] = ["−": 27, "=": 24, "delete": 51, "←": 123, "→": 124, "↓": 125, "↑": 126]
             func code(_ label: String) -> Int? {
                 special[label] ?? HotkeyNotation.parse(label.lowercased()).map(\.code)
             }
@@ -86,8 +86,8 @@ import AppKit
             let activeBad = caps.filter { $0.active && !["shift", "control", "option", "esc"].contains($0.label) && !(code($0.label).map(drawCodes.contains) ?? false) }.map(\.label)
             let missing = KeyMap.digits.prefix(10).filter { c in !caps.contains { $0.active && code($0.label) == c } }
             check("키보드 그림: 쓰는 키로 표시한 칸은 모두 실제 드로잉 키 표에 있음", activeBad.isEmpty, activeBad.joined(separator: ", "))
-            check("키보드 그림: 숫자 0~9·칠판 Q W E R·펜 A S·도형 Z X C가 모두 있음",
-                  missing.isEmpty && ["Q", "W", "E", "R", "A", "S", "Z", "X", "C"].allSatisfy { l in caps.contains { $0.label == l && $0.active } })
+            check("키보드 그림: 숫자 0~9·칠판 Q W E R·펜 A S·도형 Z X C·화살표 ← → ↑ ↓가 모두 있음",
+                  missing.isEmpty && ["Q", "W", "E", "R", "A", "S", "Z", "X", "C", "←", "→", "↑", "↓"].allSatisfy { l in caps.contains { $0.label == l && $0.active } })
             let s = Settings(); s.drawKeyColors[2] = 0x123456
             check("키보드 그림: 3번 색을 바꾸면 그림의 색도 바뀜", KeyboardLayout.rows(s).flatMap { $0 }.first { $0.label == "3" }?.rgb == 0x123456)
             let n = KeyboardLayout.natural

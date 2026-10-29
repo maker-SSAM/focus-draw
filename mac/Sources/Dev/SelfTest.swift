@@ -368,6 +368,28 @@ import AppKit
         check("⌥= 단축키가 오면 바로 지우개 링과 새 크기", c.optionHeld && c.eraserStep == 6 && c.cursorImage?.size.width == ceil(eraserPx(6) + 4),
               "지우개 단계 \(c.eraserStep)")
         c.refreshOption(false)
+        // 화살표: → ← 굵기 (⌥와 함께면 지우개), ↑ ↓ 진하기 5% — Windows와 같음
+        do {
+            let p0 = c.penStep, e0 = c.eraserStep, a0 = c.alpha
+            c.handleKey(124, [], isRepeat: false, source: "hk"); c.handleKey(124, [], isRepeat: true, source: "hk")
+            let pUp = c.penStep
+            c.handleKey(123, [], isRepeat: false, source: "hk")
+            let pDown = c.penStep
+            c.handleKey(124, .option, isRepeat: false, source: "hk")
+            let eUp = c.eraserStep
+            c.refreshOption(false)
+            c.handleKey(125, [], isRepeat: false, source: "hk"); c.handleKey(125, [], isRepeat: true, source: "hk")
+            let aDown = c.alpha
+            c.handleKey(126, [], isRepeat: false, source: "hk")
+            let aUp = c.alpha
+            check("화살표 →/←는 굵기 한 단계, ⌥와 함께면 지우개 크기, ↓/↑는 진하기 5%",
+                  pUp == min(STEP_MAX, p0 + 2) && pDown == pUp - 1 && eUp == min(STEP_MAX, e0 + 1) && c.penStep == pDown
+                  && abs(aDown - max(0.05, a0 - 0.10)) < 1e-9 && abs(aUp - (aDown + 0.05)) < 1e-9,
+                  "굵기 \(p0)→\(pUp)→\(pDown) 지우개 \(e0)→\(eUp) 진하기 \(a0)→\(aDown)→\(aUp)")
+            d.draw.turnOff(.hotkey); d.draw.turnOn()
+            check("화살표로 바꾼 굵기·진하기는 임시: 드로잉을 다시 켜면 설정값", c.penStep == c.config.drawStep && abs(c.alpha - c.startAlpha(100)) < 1e-9,
+                  "굵기 \(c.penStep) 설정 \(c.config.drawStep), 진하기 \(c.alpha)")
+        }
         c.config.drawOpacity = 50
         c.handleKey(18, [], isRepeat: false, source: "hk")
         let a50 = centerAlpha(c.cursorImage)

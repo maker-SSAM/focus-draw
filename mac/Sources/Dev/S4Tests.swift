@@ -11,19 +11,23 @@ import Carbon
         // ---- 키 표 ----
         let draw = KeyMap.drawKeys.map(\.combo)
         let block = KeyMap.blockKeys(excluding: Set(appCombos))
-        check("키 표: 드로잉 키 47개, 서로 겹치지 않음", draw.count == 47 && Set(draw).count == 47, "\(draw.count)개")
+        check("키 표: 드로잉 키 53개, 서로 겹치지 않음", draw.count == 53 && Set(draw).count == 53, "\(draw.count)개")
         check("키 표: 막기 키에 ⌘·⌃ 조합이 없음 (캡처·Spotlight·데스크톱 전환을 지킴)",
               !block.contains { $0.mods & (cmdKey | controlKey) != 0 })
         check("키 표: 막기 키와 드로잉 키·앱 키가 겹치지 않고, 막기 키끼리도 겹치지 않음",
               Set(block).count == block.count && Set(block).isDisjoint(with: Set(draw)) && Set(block).isDisjoint(with: Set(appCombos)),
               "막기 \(block.count)개")
         func has(_ code: Int, _ mods: Int = 0) -> Bool { block.contains(.init(code: code, mods: mods)) }
-        check("키 표: 화살표·스페이스·return·tab·PageUp/Down·F키·키패드·글자가 × {없음,⇧,⌥,⌥⇧}로 막힘",
-              [123, 124, 125, 126, 49, 36, 48, 116, 121, 115, 119, 122, 111, 76, 65, 2, 5, 38, 40].allSatisfy { c in
+        check("키 표: 스페이스·return·tab·PageUp/Down·F키·키패드·글자가 × {없음,⇧,⌥,⌥⇧}로 막힘",
+              [49, 36, 48, 116, 121, 115, 119, 122, 111, 76, 65, 2, 5, 38, 40].allSatisfy { c in
                   KeyMap.blockMods.allSatisfy { has(c, $0) } },
               "")
+        check("키 표: 화살표 ← → ↑ ↓ 는 드로잉 키(굵기·진하기), ⌥← ⌥→ 는 지우개 크기, 나머지 화살표 조합은 막힘",
+              [123, 124, 125, 126].allSatisfy { draw.contains(.init(code: $0, mods: 0)) && has($0, shiftKey) && has($0, optionKey | shiftKey) }
+              && [123, 124].allSatisfy { draw.contains(.init(code: $0, mods: optionKey)) } && has(125, optionKey) && has(126, optionKey),
+              "")
         check("키 표: 드로잉 키(1·Q·A·Z·=·delete·Esc)는 막기에 없고, 다른 앱 조합도 뺌",
-              !has(18) && !has(12) && !has(0) && !has(6) && !has(24) && !has(51) && !has(53) && !has(100) /* F8 */ && !has(101) /* F9 */,
+              !has(18) && !has(12) && !has(0) && !has(6) && !has(24) && !has(51) && !has(53) && !has(123) && !has(126) && !has(100) /* F8 */ && !has(101) /* F9 */,
               "")
         check("키 표: ⌘Z·⌃Z는 실행 취소(드로잉 키), 그 밖의 ⌘·⌃ 조합은 그대로 지나감",
               draw.contains(.init(code: 6, mods: cmdKey)) && draw.contains(.init(code: 6, mods: controlKey))

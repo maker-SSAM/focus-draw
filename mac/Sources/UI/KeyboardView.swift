@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 // "드로잉 모드 단축키 보기": 맥 자판 그림. 줄마다 역할이 같다 — 숫자 줄 = 색, Q 줄 = 칠판, A 줄 = 특수 펜, Z 줄 = 도형.
+// 오른쪽 아래 화살표: ← → = 굵기, ↑ ↓ = 진하기 (Windows 그림의 Delete 아래 화살표 묶음과 같은 뜻).
 // 색은 늘 지금 설정의 색이다 (설정에서 3번을 바꾸고 다시 열면 새 색). 키 표(KeyMap)와 설정이 바뀌면 이 그림도 따라가도록
 // 역할 글은 한곳(KeyboardLayout)에 모았다.
 //
@@ -11,12 +12,13 @@ import SwiftUI
 
 enum KeyboardLayout {
     enum Group: CaseIterable {
-        case color, board, shape, size, clear, pen
-        var title: String { switch self { case .color: "색 바꾸기"; case .board: "칠판"; case .shape: "도형"; case .size: "선 굵기"; case .clear: "지우기"; case .pen: "특수 펜" } }
-        var keys: String { switch self { case .color: "0 ~ 9"; case .board: "Q W E R"; case .shape: "Z X C · ⇧ ⌃"; case .size: "− ="; case .clear: "delete · esc · ⌥"; case .pen: "A S" } }
+        case color, board, shape, size, alpha, clear, pen
+        var title: String { switch self { case .color: "색 바꾸기"; case .board: "칠판"; case .shape: "도형"; case .size: "선 굵기"; case .alpha: "진하기"; case .clear: "지우기"; case .pen: "특수 펜" } }
+        var keys: String { switch self { case .color: "0 ~ 9"; case .board: "Q W E R"; case .shape: "Z X C · ⇧ ⌃"; case .size: "− = ← →"; case .alpha: "↑ ↓"; case .clear: "delete · esc · ⌥"; case .pen: "A S" } }
         var tint: Color { switch self {
             case .color: Color(red: 0.25, green: 0.56, blue: 0.95); case .board: Color(red: 0.2, green: 0.7, blue: 0.45)
             case .shape: Color(red: 0.62, green: 0.4, blue: 0.9); case .size: Color(red: 0.92, green: 0.62, blue: 0.2)
+            case .alpha: Color(red: 0.2, green: 0.72, blue: 0.78)
             case .clear: Color(red: 0.95, green: 0.38, blue: 0.33); case .pen: Color(red: 0.9, green: 0.4, blue: 0.65) } }
     }
     enum Bar { case checker, laser, rainbow, line, wave, arrow, rect, ellipse, eraser }
@@ -38,7 +40,8 @@ enum KeyboardLayout {
             case "0", "1", "2", "3", "4", "5", "6", "7", "8", "9": return .color
             case "Q", "W", "E", "R": return .board
             case "Z", "X", "C", "shift", "control": return .shape
-            case "−", "=": return .size
+            case "−", "=", "←", "→": return .size
+            case "↑", "↓": return .alpha
             case "delete", "esc", "option": return .clear
             case "A", "S": return .pen
             default: return nil
@@ -73,7 +76,9 @@ enum KeyboardLayout {
         // 맨 아래 줄: ⌃ = 원, ⌥ = 지우개 (끌면서 함께 누르는 키)
         let r5: [Cap] = [mod("fn"), Cap(label: "control", role: "원", bar: .ellipse), Cap(label: "option", role: "지우개", bar: .eraser), mod("command", 1.25),
                          mod("space", 5), mod("command", 1.25), Cap(label: "option", role: "지우개", bar: .eraser),
-                         mod("←"), Cap(label: "", active: false, height: 1, subs: [Cap(label: "↑", active: false, height: 0.5), Cap(label: "↓", active: false, height: 0.5)]), mod("→")]
+                         Cap(label: "←", role: "가늘게"),
+                         Cap(label: "", active: false, height: 1, subs: [Cap(label: "↑", role: "진하게", height: 0.5), Cap(label: "↓", role: "연하게", height: 0.5)]),
+                         Cap(label: "→", role: "굵게")]
         return [fn, r1, r2, r3, r4, r5]
     }
     static let natural = CGSize(width: 980, height: 700)
@@ -145,6 +150,15 @@ private struct CapView: View {
         let h = unit * cap.height + (cap.height - 1) * 6
         if !cap.subs.isEmpty {
             VStack(spacing: 6) { ForEach(cap.subs) { CapView(cap: $0, unit: unit) } }
+        } else if cap.height <= 0.5 {
+            // 위아래 화살표처럼 낮은 칸: 글자와 역할을 옆으로 나란히
+            HStack(spacing: 3) {
+                Text(cap.label).font(.system(size: 13, weight: .semibold)).foregroundStyle(cap.active ? Color.primary : Color.secondary.opacity(0.6))
+                if !cap.role.isEmpty { Text(cap.role).font(.system(size: 9)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7) }
+            }
+            .frame(width: w, height: (unit - 6) / 2)
+            .background(RoundedRectangle(cornerRadius: 6).fill(cap.group.map { $0.tint.opacity(0.14) } ?? Color.white.opacity(cap.active ? 0.14 : 0.04)))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(cap.group.map { $0.tint.opacity(0.9) } ?? Color.primary.opacity(cap.active ? 0.35 : 0.12), lineWidth: cap.group == nil ? 1 : 1.5))
         } else {
         VStack(spacing: 2) {
             Text(cap.label).font(.system(size: cap.label.count > 1 && cap.label.first?.isASCII == true ? 12 : 15, weight: .semibold))
@@ -240,11 +254,11 @@ struct KeyboardView: View {
                     (["⌃", "+", "드래그"], "원"),
                     (["Z X C", "+", "드래그"], "직선 · 물결 · 화살표"),
                     (["Z X C", "+", "⇧", "+", "드래그"], "0° · 45° · 90°로 맞춤"),
-                    (["두 손가락 스크롤"], "진하게 · 연하게"),
+                    (["두 손가락 스크롤", "·", "↑ ↓"], "진하게 · 연하게"),
                 ])
                 GuideCard(title: "되돌리기 · 지우기", dot: Color(red: 0.95, green: 0.38, blue: 0.33), rows: [
                     (["⌥", "+", "드래그"], "지우개 (오른쪽 버튼 드래그도 같음)"),
-                    (["⌥", "+", "− ="], "지우개 크기"),
+                    (["⌥", "+", "− = ← →"], "지우개 크기"),
                     (["⌘", "+", "Z"], "실행 취소"),
                     (["delete"], "그린 것 전부 지우기"),
                     (["esc"], "지우고 드로잉 끄기"),
