@@ -417,9 +417,10 @@ import AppKit
             let w = snap.width, h = snap.height
             guard ref.width == w, ref.height == h else { return -1 }
             let a = pixels(snap, w, h), b = pixels(ref, w, h)
+            // 한 식으로 쓰면 옛 컴파일러(macos-15의 Xcode)가 형 추론 시간 초과로 멈춘다
+            func far(_ j: Int) -> Bool { abs(Int(a[j]) - Int(b[j])) > 4 }
             var n = 0
-            for i in stride(from: 0, to: a.count, by: 4) where abs(Int(a[i]) - Int(b[i])) > 4 || abs(Int(a[i + 1]) - Int(b[i + 1])) > 4
-                || abs(Int(a[i + 2]) - Int(b[i + 2])) > 4 || abs(Int(a[i + 3]) - Int(b[i + 3])) > 4 { n += 1 }
+            for i in stride(from: 0, to: a.count, by: 4) where far(i) || far(i + 1) || far(i + 2) || far(i + 3) { n += 1 }
             return n
         }
         let screen = NSScreen.screens[0].frame
