@@ -36,6 +36,7 @@
   gh release create v2.0.0 mac/build/Focus-Draw-2.0.0-mac.zip "windows/배포용/Focus-Draw-2.0.0.zip" \
     --latest --title "Focus & Draw 2.0.0 (Windows · 맥)" --notes-file docs/release-notes-2.0.0.md
   ```
+- [ ] 게시 직후 README 내려받기 두 줄의 링크를 각 zip 주소(`releases/download/v2.0.0/Focus-Draw-2.0.0.zip`, `…-mac.zip`)로 바꿔 push (게시 전에는 없는 파일이라 `releases/latest`로 둠)
 - [ ] **확인**: README의 두 내려받기 링크가 `curl -sIL`로 200, `gh release list`에서 Latest가 `v2.0.0`
 - [ ] **맨 마지막**: 저장소 맨 위 `version.txt`를 만들어 push (`docs/update-check.md` 모양: `windows=2.0.0`, `windows_url=https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0`, `mac=`·`mac_url=` 같음). 그 뒤 두 판 설정 창에서 "최신 2.0.0 — 최신 버전입니다"가 나오는지
 
