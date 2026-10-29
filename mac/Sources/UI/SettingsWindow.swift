@@ -413,6 +413,7 @@ struct SettingsView: View {
     @State private var hotkeyMessage: [String: String] = [:]
     @State private var saved = false
     @State private var login = LoginItem.state()
+    @ObservedObject private var update = UpdateCheck.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -456,11 +457,31 @@ struct SettingsView: View {
                 Button("모든 설정 초기화...", action: onResetAll)
             }
             Card(title: "정보") {
-                Text("Focus & Draw \(AppInfo.displayVersion)")
-                Text("제작 maker_SSAM · MIT 라이선스").foregroundStyle(.secondary)
+                Text("Focus & Draw")
+                HStack {
+                    Text("현재 \(AppInfo.displayVersion) · ") + updateText
+                    Spacer()
+                    Button("받으러 가기") { NSWorkspace.shared.open(update.downloadURL) }
+                }
+                HStack(spacing: 4) {
+                    Text("제작").foregroundStyle(.secondary)
+                    Link("maker_SSAM", destination: UpdateCheck.authorURL)
+                    Text("· MIT 라이선스").foregroundStyle(.secondary)
+                }
             }
         }
         .onAppear { login = LoginItem.state() }
+    }
+
+    // 설정 창을 열 때 읽은 최신 버전 (UpdateCheck)
+    private var updateText: Text {
+        switch update.status {
+        case .idle: return Text("최신 버전 확인 전").foregroundColor(.secondary)
+        case .checking: return Text("최신 버전 확인 중…").foregroundColor(.secondary)
+        case .latest(let v): return Text("최신 \(v) — 최신 버전입니다").foregroundColor(.secondary)
+        case .newer(let v, _): return Text("최신 \(v) — 새 버전이 있습니다").foregroundColor(.orange)
+        case .failed: return Text("최신 버전을 확인하지 못했습니다").foregroundColor(.secondary)
+        }
     }
 
     private func setLogin(_ on: Bool) {
@@ -592,6 +613,7 @@ enum HotkeyDisplay {
         }
         // 닫을 때 돌아갈 앞 앱을 기억한다 (이미 열려 있으면 처음 것을 그대로)
         if window?.isVisible != true {
+            UpdateCheck.shared.refresh() // 창을 열 때만 최신 버전을 읽는다 (docs/update-check.md)
             let front = NSWorkspace.shared.frontmostApplication
             previousApp = front?.processIdentifier == getpid() ? nil : front
         }

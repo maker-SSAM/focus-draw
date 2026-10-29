@@ -9,7 +9,7 @@ import SwiftUI
 enum AppInfo {
     // 버전은 Info.plist 한 곳에서만 읽는다
     static var version: String { (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "?" }
-    static var displayVersion: String { "\(version) (시험판)" }
+    static var displayVersion: String { version.hasPrefix("0.") ? "\(version) (시험판)" : version } // 0.x만 시험판
 }
 
 final class Settings: ObservableObject {

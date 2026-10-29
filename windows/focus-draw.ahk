@@ -26,6 +26,13 @@ OnExit((*) => DllCall("winmm\timeEndPeriod", "uint", 1))
 ; 프로그램 안에서 읽을 수 없어서, 아쉽지만 두 곳에 같은 숫자를 적어두는 수밖에 없다.
 APP_VERSION := "1.0.0"
 
+; 새 버전 확인 (docs/update-check.md). 설정 창을 열 때만 저장소 맨 위 version.txt 하나를 읽는다 —
+; 프로그램을 켤 때·수업 중에는 접속하지 않고 알림 창도 띄우지 않는다(선생님 결정 2026-10-29, 맥 판과 같음).
+UPDATE_FILE_URL := "https://raw.githubusercontent.com/maker-SSAM/focus-draw/master/version.txt"
+RELEASES_URL := "https://github.com/maker-SSAM/focus-draw/releases/latest"
+AUTHOR_URL := "https://maker-ssam.github.io/"
+updateReq := "", updateDeadline := 0, updateUrl := RELEASES_URL, lblUpdate := ""
+
 A_IconTip := "Focus & Draw v" APP_VERSION " - 마우스 강조 / 화면 드로잉"
 
 ; 컴파일된 exe는 위 SetMainIcon으로 넣은 아이콘을 트레이 아이콘으로도 그대로 쓰지만,
@@ -3891,6 +3898,7 @@ OpenSettingsWindow(*) {
 
     if SettingsWindowExists() {
         settingsGui.Show()
+        StartUpdateCheck()
         return
     }
 
@@ -4026,8 +4034,17 @@ OpenSettingsWindow(*) {
     ; "Focus & Draw"가 "Focus  Draw"로 나온다 (뒤 글자에 밑줄만 그어진다).
     lblVersion := settingsGui.AddText("x22 y500 w436 Center +0x80", "Focus & Draw 버전 " APP_VERSION)
     lblVersion.SetFont("s9 c999999")
+    ; 제작자 이름을 누르면 개인페이지가 열린다 (링크처럼 보이게 파란 밑줄 글씨)
     lblAuthor := settingsGui.AddText("x22 y520 w436 Center", "제작자: maker_SSAM")
-    lblAuthor.SetFont("s9 c999999")
+    lblAuthor.SetFont("s9 c0066CC underline")
+    lblAuthor.OnEvent("Click", (*) => Run(AUTHOR_URL))
+
+    ; 새 버전 확인: 창을 열 때 읽은 최신 버전을 지금 버전 옆에 적는다(StartUpdateCheck).
+    ; 단추는 늘 GitHub 받는 곳을 연다 — 새 버전이 있으면 그 릴리스, 아니면 최신 릴리스.
+    lblUpdate := settingsGui.AddText("x22 y420 w436 Center +0x80", "현재 " APP_VERSION " · 최신 버전 확인 중…")
+    lblUpdate.SetFont("s9 c666666")
+    btnDownload := settingsGui.AddButton("x180 y444 w120 h28", "받으러 가기")
+    btnDownload.OnEvent("Click", (*) => Run(updateUrl))
 
     tabs.UseTab("단축키")
     AddHotkeyRow(settingsGui, 50, "Spotlight")
@@ -4063,6 +4080,111 @@ OpenSettingsWindow(*) {
     tabs.OnEvent("Change", (ctrl, *) => ShowPalettePanel(ctrl.Text = "드로잉"))
 
     settingsGui.Show("w480 h628")
+    StartUpdateCheck()
+}
+
+; version.txt를 읽기 시작한다. 설정 창이 굳지 않게 비동기로 보내고 타이머로 살핀다(5초까지).
+StartUpdateCheck() {
+    global updateReq, updateDeadline, UPDATE_FILE_URL
+    if IsObject(updateReq) ; 이미 읽는 중
+        return
+    try {
+        req := ComObject("WinHttp.WinHttpRequest.5.1")
+        req.Open("GET", UPDATE_FILE_URL, true)
+        req.SetTimeouts(5000, 5000, 5000, 5000)
+        req.SetRequestHeader("Cache-Control", "no-cache")
+        req.Send()
+    } catch {
+        ShowUpdateResult("")
+        return
+    }
+    updateReq := req, updateDeadline := A_TickCount + 5000
+    ShowUpdateResult("", true)
+    SetTimer(PollUpdateCheck, 100)
+}
+
+PollUpdateCheck() {
+    global updateReq, updateDeadline
+    done := false, failed := false
+    try done := updateReq.WaitForResponse(0)
+    catch
+        failed := true ; 인터넷이 없거나 학교망이 막았다
+    if (!done && !failed && A_TickCount < updateDeadline)
+        return
+    SetTimer(PollUpdateCheck, 0)
+    text := ""
+    if (done && !failed) {
+        try {
+            if (updateReq.Status = 200)
+                text := updateReq.ResponseText
+        }
+    }
+    updateReq := ""
+    ShowUpdateResult(text)
+}
+
+; text: version.txt 내용("" = 읽지 못함). checking이면 아직 읽는 중
+ShowUpdateResult(text, checking := false) {
+    global lblUpdate, updateUrl, RELEASES_URL, APP_VERSION
+    color := "c666666"
+    if checking
+        msg := "최신 버전 확인 중…"
+    else if (text != "" && ParseVersionFile(text, &ver, &url)) {
+        if IsNewerVersion(ver, APP_VERSION)
+            msg := "최신 " ver " — 새 버전이 있습니다", color := "cD35400", updateUrl := url
+        else
+            msg := "최신 " ver " — 최신 버전입니다", updateUrl := RELEASES_URL
+    } else
+        msg := "최신 버전을 확인하지 못했습니다", updateUrl := RELEASES_URL
+    try { ; 그새 설정 창이 없어졌으면(모든 설정 초기화로 다시 만듦) 글자 칸이 없다
+        lblUpdate.Text := "현재 " APP_VERSION " · " msg
+        lblUpdate.SetFont(color)
+    }
+}
+
+; version.txt의 windows=·windows_url= 줄을 읽는다. `이름=값` 모양, 모르는 줄과 ; 주석은 무시.
+; 받는 곳은 이 저장소의 GitHub 주소만 쓴다(이상하면 최신 릴리스 쪽).
+ParseVersionFile(text, &ver, &url) {
+    global RELEASES_URL
+    ver := "", url := ""
+    loop parse text, "`n", "`r" {
+        line := Trim(A_LoopField)
+        if (line = "" || SubStr(line, 1, 1) = ";" || !(p := InStr(line, "=")))
+            continue
+        k := Trim(SubStr(line, 1, p - 1)), v := Trim(SubStr(line, p + 1))
+        if (k = "windows")
+            ver := v
+        else if (k = "windows_url")
+            url := v
+    }
+    if (InStr(url, "https://github.com/maker-SSAM/focus-draw/", true) != 1)
+        url := RELEASES_URL
+    return IsObject(VersionParts(ver))
+}
+
+; "2.10.0" → [2, 10, 0]. 숫자가 아닌 조각이 있으면 ""
+VersionParts(v) {
+    parts := []
+    for piece in StrSplit(v, ".") {
+        if !RegExMatch(piece, "^\d+$")
+            return ""
+        parts.Push(Integer(piece))
+    }
+    return parts
+}
+
+; a가 b보다 새 버전인가 (숫자 단위: 2.10.0 > 2.9.0, 2.0 = 2.0.0). 지금 버전이 더 높으면(개발판) 최신으로 본다.
+IsNewerVersion(a, b) {
+    x := VersionParts(a), y := VersionParts(b)
+    if (!IsObject(x) || !IsObject(y))
+        return false
+    loop Max(x.Length, y.Length) {
+        p := A_Index <= x.Length ? x[A_Index] : 0
+        q := A_Index <= y.Length ? y[A_Index] : 0
+        if (p != q)
+            return p > q
+    }
+    return false
 }
 
 ; ================= 단축키 안내 그림 =================
