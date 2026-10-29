@@ -24,4 +24,4 @@ Xcode 없이 명령줄 도구만 있으면 됩니다 (`xcode-select --install`).
 
 배포 순서는 [RELEASE.md](RELEASE.md)에 있습니다.
 
-문제가 생기면 메뉴 막대(또는 위젯 오른쪽 클릭) › **진단 기록**을 켜 두세요. `~/Library/Logs/Focus & Draw/diag.log`에 창·키·화면 상태가 남습니다(입력한 글자는 남지 않음).
+문제를 쫓을 때는 `"build/Focus & Draw.app/Contents/MacOS/FocusDraw" --diag`로 실행하세요. `~/Library/Logs/Focus & Draw/diag.log`에 창·키·화면 상태가 남습니다(입력한 글자는 남지 않음). 메뉴 막대의 "진단 기록" 항목은 개발용이라 2.0.0 교체본에서 뺐고, 사용자에게는 도움말 › **진단 정보 복사**만 부탁합니다.

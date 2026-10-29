@@ -199,6 +199,14 @@ import AppKit
         let diagURL = dir.appendingPathComponent("diag.log")
         try? FileManager.default.removeItem(at: diagURL)
         Log.start(at: diagURL, reason: "selftest")
+        do {
+            // 메뉴 막대 메뉴: "진단 기록" 두 줄은 뺐고(개발용, --diag로만), 도움말 › 진단 정보 복사는 남는다
+            let m = NSMenu()
+            d.fillMenu(m)
+            let titles = m.items.map(\.title), help = m.items.first { $0.title == "도움말" }?.submenu?.items.map(\.title) ?? []
+            check("메뉴: 진단 기록·진단 기록 폴더 열기가 없고, 도움말 › 진단 정보 복사는 있음",
+                  !titles.contains { $0.hasPrefix("진단 기록") } && help.contains("진단 정보 복사"), titles.joined(separator: " / "))
+        }
 
         // 판은 키 창이 되지 않는 비활성 패널, 드로잉 키는 켜 있는 동안만 전역 단축키
         func inkWindows() -> [NSWindow] { d.draw.inkWindowNumbers.compactMap { NSApp.window(withWindowNumber: $0) } }

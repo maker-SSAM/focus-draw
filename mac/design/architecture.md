@@ -37,7 +37,7 @@
 | `Platform/IniFile.swift` (AppKit 없음) | `IniFile` | 무손실 읽기·쓰기 (UTF-8/BOM/UTF-16, 모르는 절·키·주석·순서 보존) | `Settings.load/save` |
 | `Platform/SettingsSchema.swift` (AppKit 없음) | `SettingKey` 표 | 절·키·형식·기본값·범위·Windows 의미·맥 의미. 읽기·쓰기·초기화·호환 단언이 이 표 하나를 쓴다 | `Settings.swift` |
 | `Platform/Settings.swift` | `Settings` | 표 + 파일을 묶은 관찰 가능한 값. 그리기 코드는 **복사본**(`DrawConfig`)만 받는다 | `Settings.shared` |
-| `Platform/Log.swift` | `Log` | 진단 기록 (`--diag`, 메뉴) | `Diag.swift` |
+| `Platform/Log.swift` | `Log` | 진단 기록 (`--diag`로 실행할 때만) | `Diag.swift` |
 | `Dev/Bench.swift`, `Dev/SelfTest.swift` | 같은 이름 | `--bench`, `--selftest` | 같은 이름 |
 | `App/main.swift`, `App/AppDelegate.swift` | `AppDelegate` | 조립만 한다. 상태를 들지 않는다 | `main.swift` |
 

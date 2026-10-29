@@ -3,7 +3,7 @@ import Carbon
 
 // 진단 기록: ~/Library/Logs/Focus & Draw/diag.log
 // 스크린샷 없이도 "우리 창이 화면에 떠 있었는가, 키가 어디로 갔는가"를 나중에 읽을 수 있게 남긴다.
-//   켜기: FocusDraw --diag, 또는 메뉴 막대 › 진단 기록 (켜 두면 다시 실행해도 이어서 기록)
+//   켜기: FocusDraw --diag 로 실행할 때만 (개발용. 메뉴 막대의 "진단 기록" 항목은 2.0.0 교체본에서 뺐다 — 선생님 결정 2026-10-30)
 //   한 줄 = "시각 꼬리표 내용". 꼬리표: SESSION SYS SCREEN MARK EXP DRAW KEY HK CURSOR APP FRONT SPACE WIN POWER SAMPLE SPOT WIDGET
 //   키는 키 자리 번호(keyCode)만 적는다 — 무슨 글자를 쳤는지는 남기지 않는다.
 //   화면 기록 권한이 필요 없는 정보만 쓴다 (CGWindowList의 창 제목은 읽지 않는다).
@@ -41,10 +41,8 @@ enum Log {
     }()
 
     // ---------- 켜고 끄기 ----------
-    static var wanted: Bool {
-        get { UserDefaults.standard.bool(forKey: "diag.on") }
-        set { UserDefaults.standard.set(newValue, forKey: "diag.on") }
-    }
+    // 예전 메뉴로 켜 둔 "다시 실행해도 이어서 기록" 스위치. 이제 읽지 않고 지운다 — 남겨 두면 끌 방법 없이 기록이 쌓였을 것이다.
+    static func forgetMenuSwitch() { UserDefaults.standard.removeObject(forKey: "diag.on") }
 
     static func start(at url: URL = defaultURL, reason: String) {
         guard !isOn else { return }

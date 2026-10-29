@@ -47,8 +47,6 @@ extension AppDelegate {
         add("메뉴 막대 아이콘을 위젯처럼 표시", #selector(menuTray), on: Settings.shared.showTrayIcons)
         add("설정...", #selector(openSettings), key: ",")
         menu.addItem(.separator())
-        add("진단 기록", #selector(menuDiag), on: Log.isOn)
-        add("진단 기록 폴더 열기", #selector(menuDiagFolder))
         let help = NSMenuItem(title: "도움말", action: nil, keyEquivalent: "")
         let sub = NSMenu()
         let ver = NSMenuItem(title: "Focus & Draw \(AppInfo.displayVersion)", action: nil, keyEquivalent: "")
@@ -191,21 +189,4 @@ extension AppDelegate {
     }
 
     @objc func menuQuit() { NSApp.terminate(nil) }
-
-    // 켜 두면 앱을 다시 열어도 이어서 기록한다
-    @objc func menuDiag() {
-        if Log.isOn {
-            Log.wanted = false
-            Log.stop()
-        } else {
-            Log.wanted = true
-            Log.start(reason: "menu")
-            Log.setActive(state.drawOn || state.spotOn)
-        }
-    }
-
-    @objc func menuDiagFolder() {
-        try? FileManager.default.createDirectory(at: Log.folder, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(Log.folder)
-    }
 }

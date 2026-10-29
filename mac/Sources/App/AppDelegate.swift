@@ -46,8 +46,9 @@ import Combine
         if !normalRun {
             AppLog.folder = nil // 사용자 기록에는 적지 않는다
             Experiments.memoryOnly = [:]
-        } else if Log.wanted || args.contains("--diag") {
-            Log.start(reason: args.contains("--diag") ? "--diag" : "menu")
+        } else {
+            Log.forgetMenuSwitch()
+            if args.contains("--diag") { Log.start(reason: "--diag") }
         }
         Log.appState = { [weak self] in self?.diagState ?? "" }
         Log.inkWindowNumbers = { [weak self] in self?.draw.inkWindowNumbers ?? [] }
