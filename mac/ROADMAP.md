@@ -20,7 +20,7 @@
 
 | 세션 | 모델 · 노력 | 먼저 답해 둘 결정 |
 |---|---|---|
-| **베타 2** | Sonnet · 기본, 새 세션 | 첫마디: "mac/ROADMAP.md를 읽고 ○○ 진행해줘." 펜 개선 묶음 A·B는 끝났다(숫자키별 굵기·휠 투명도 절대값 2026-10-07). **단축키 그림 옵션 창(묶음 C)은 보류**(선생님 결정 2026-10-07 — [design/pen-improvements-plan.md](design/pen-improvements-plan.md) 6번, 먼저 시작하지 않는다). 다음 배포는 **베타 2를 건너뛰고 두 판 함께 2.0.0**(선생님 결정 2026-10-29 — [design/stages.md](design/stages.md) S12, 버전 올릴 곳은 [RELEASE.md](RELEASE.md) "2.0.0 버전 올릴 곳"). 그 전에 두 판에 "새 버전 확인" 단추([docs/update-check.md](../docs/update-check.md))와 윈도우 2.0 작업이 필요하다. Windows가 따라올 것은 [docs/windows-todo.md](../docs/windows-todo.md)에 쌓여 있다(Windows PC 세션에서 처리). 레이저 모양은 `FocusDraw --laserpic <폴더>`로 그림을 뽑아 본다(화면 캡처 불필요). 보류: 확대·타이머·핀조명(가능성만 확인), 노치 없는 맥 아이콘, 위젯 취소·지우기 버튼 |
+| **2.0 뒤** | Opus · 기본, 새 세션 | 첫마디: "HANDOFF/focus-draw.md를 보고 ○○ 진행해줘." **2.0.0은 두 판 함께 게시·바꿔치기까지 끝났다**(2026-10-30, 태그 `v2.0.0` = `8d6fe0f`, 맥 zip `99a44139…`). 다음 기능(확대·핀홀 조명·타이머·위젯 펼치기)은 [docs/next-features.md](../docs/next-features.md) — **선생님이 고를 때 시작**, 먼저 만들지 않는다. 새 기능은 [docs/PARITY.md](../docs/PARITY.md)에 줄부터 만들고 한 판씩, 배포는 [RELEASE.md](RELEASE.md)와 루트 CLAUDE.md "배포" 절(같은 번호 한 릴리스, `version.txt`는 맨 마지막). Windows가 따라올 것은 [docs/windows-todo.md](../docs/windows-todo.md). 레이저 모양은 `FocusDraw --laserpic <폴더>`, 상세 기록은 `--diag`로 실행. 보류: 단축키 그림 옵션 창(묶음 C), 노치 없는 맥 아이콘, 위젯 취소·지우기 버튼, S7 설문·Apple 서명 |
 
 **남은 디자인 메모**: 설정 창의 항목 이름 칸 폭(96)이 짧은 이름에서는 `−`까지 빈 칸이 남는다 — 거슬리면 줄인다. 색 칸은 맥 기본 색 칸(NSColorWell)이라 색 창 모양은 시스템 것이다. 위젯 버튼 테두리는 배경색의 50% 진하게(어두운 배경은 50% 연하게), 두께 1px 고정.
 
