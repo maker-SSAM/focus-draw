@@ -4,6 +4,7 @@
 제작: maker_SSAM · 무료 (MIT 라이선스)
 지원 환경: Windows 10 / 11
 최신 버전 내려받기: https://github.com/maker-SSAM/focus-draw/releases/latest
+맥을 쓰시면 같은 곳에서 Focus-Draw-2.0.0-mac.zip을 받으세요 (macOS 15 이상).
 소스 · 사용법: https://github.com/maker-SSAM/focus-draw
 
 
