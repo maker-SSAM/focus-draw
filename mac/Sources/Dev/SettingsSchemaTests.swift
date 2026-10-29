@@ -103,7 +103,7 @@ enum SettingsSchemaTests {
         }
         let indexed: Set<String> = ["DrawKeys", "Boards"]
         var read = Set(matches("IniRead\\(SETTINGS_PATH, \"(\\w+)\", \"(\\w+)\"\\s*[,)]").map { "\($0[0]).\($0[1])" })
-        read.formUnion(matches("ReadIniColor\\(\"(\\w+)\", \"(\\w+)\"[,)]").map { "\($0[0]).\($0[1])" })
+        read.formUnion(matches("ReadIni(?:Color|Num)\\(\"(\\w+)\", \"(\\w+)\"[,)]").map { "\($0[0]).\($0[1])" })
         let positions = Set(SettingsSchema.positionKeys.map { "\($0.section).\($0.key)" })
         let known = Set(keys.filter { !indexed.contains($0.section) }.map(\.id))
         let missing = known.subtracting(read).sorted()
@@ -116,18 +116,19 @@ enum SettingsSchemaTests {
               && text.contains("\"Boards\", \"Color\" key") && text.contains("\"Boards\", \"Opacity\" key"))
 
         var compared = 0, wrong: [String] = []
-        for m in matches("Max\\((-?\\d+), Min\\((-?\\d+|STEP_MAX), IniRead\\(SETTINGS_PATH, \"(\\w+)\", \"(\\w+)\", (-?\\d+)\\)") {
-            guard let k = SettingsSchema.key(m[2], m[3]), case .int(let r) = k.kind else { wrong.append("\(m[2]).\(m[3]) 표에 없음"); continue }
+        // ahk는 숫자를 ReadIniNum("절", "키", 아래, 위, 기본)으로 읽는다(글자·빈 값은 기본값 — 맥 parse와 같음)
+        for m in matches("ReadIniNum\\(\"(\\w+)\", \"(\\w+)\", (-?\\d+), (-?\\d+|STEP_MAX), (-?\\d+)\\)") {
+            guard let k = SettingsSchema.key(m[0], m[1]), case .int(let r) = k.kind else { wrong.append("\(m[0]).\(m[1]) 표에 없음"); continue }
             compared += 1
-            let hi = m[1] == "STEP_MAX" ? Double(STEP_MAX) : Double(m[1])!
-            if r.lowerBound != Double(m[0]) || r.upperBound != hi || k.defaultValue != Double(m[4]) { wrong.append("\(k.id) ahk \(m[0])~\(m[1]) 기본 \(m[4])") }
+            let hi = m[3] == "STEP_MAX" ? Double(STEP_MAX) : Double(m[3])!
+            if r.lowerBound != Double(m[2]) || r.upperBound != hi || k.defaultValue != Double(m[4]) { wrong.append("\(k.id) ahk \(m[2])~\(m[3]) 기본 \(m[4])") }
         }
         for m in matches("IniRead\\(SETTINGS_PATH, \"(\\w+)\", \"(\\w+)\", (\\d)\\) = 1") {
             guard let k = SettingsSchema.key(m[0], m[1]), case .flag = k.kind else { if !SettingsSchema.windowsOnly.contains("\(m[0]).\(m[1])") { wrong.append("\(m[0]).\(m[1]) 켬/끔 표에 없음") }; continue }
             compared += 1
             if k.defaultValue != Double(m[2]) { wrong.append("\(k.id) 기본 \(m[2])") }
         }
-        for m in matches("IniRead\\(SETTINGS_PATH, \"(\\w+)\", \"(\\w+)\", \"([0-9A-Fa-f]{6})\"\\)") {
+        for m in matches("ReadIniColor\\(\"(\\w+)\", \"(\\w+)\", 0x([0-9A-Fa-f]{6})\\)") {
             guard let k = SettingsSchema.key(m[0], m[1]), case .color = k.kind else { continue }
             compared += 1
             if k.defaultValue != Double(UInt32(m[2], radix: 16)!) { wrong.append("\(k.id) 기본색 \(m[2])") }

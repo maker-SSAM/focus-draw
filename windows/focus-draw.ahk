@@ -171,57 +171,59 @@ LoadSettings() {
     global spotColor, clickColor, drawColor, laserHold, laserFade, laserGlow
     global clickEffectEnabled, clickSpeed, clickOpacity, CLICK_ANIM_INTERVAL, rclickEffectEnabled, rclickThickness, rclickSpeed, rclickOpacity, RCLICK_ANIM_INTERVAL, rclickColor, showWidget, showTrayIcons, hideCursorOnHighlight, widgetScale, widgetBgColor, widgetOpacity, widgetX, widgetY
     global HOTKEY_DEFAULTS, hotkeyCombos, DEFAULT_DRAW_STEP, DEFAULT_ERASER_STEP
-    SpotSize := Max(30, Min(200, IniRead(SETTINGS_PATH, "Highlight", "Size", 130)))
+    SpotSize := ReadIniNum("Highlight", "Size", 30, 200, 130)
     ; 예전 버전은 투명도를 0~255로 저장했었다. 그 값이 남아있어도 안전하게 0~100으로 잘려 들어가도록 한다.
-    spotOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "Opacity", 40)))
-    SpotThickness := Max(2, Min(12, IniRead(SETTINGS_PATH, "Highlight", "RingThickness", 7)))
+    spotOpacity := ReadIniNum("Highlight", "Opacity", 0, 100, 40)
+    SpotThickness := ReadIniNum("Highlight", "RingThickness", 2, 12, 7)
     clickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "ClickEffect", 1) = 1
-    clickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "ClickSpeed", 26)))
-    clickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "ClickOpacity", 50)))
+    clickSpeed := ReadIniNum("Highlight", "ClickSpeed", 1, 30, 26)
+    clickOpacity := ReadIniNum("Highlight", "ClickOpacity", 0, 100, 50)
     CLICK_ANIM_INTERVAL := 41 - clickSpeed ; 1(40ms, 예전보다 더 느린 옵션)~30(11ms, 예전 "20" 정도의 체감 속도가 새 최대)
     hideCursorOnHighlight := IniRead(SETTINGS_PATH, "Highlight", "HideCursor", 1) = 1
     ; 오른쪽 클릭 효과는 나중에 붙인 기능이라 **기본은 꺼둔다** — 쓰던 분들 화면이 업데이트만으로
     ; 달라지면 안 된다. 나머지 값은 왼쪽 클릭의 기본값과 같게 맞춰, 켜는 순간 익숙한 모습이 되게 한다.
     rclickEffectEnabled := IniRead(SETTINGS_PATH, "Highlight", "RClickEffect", 0) = 1
-    rclickThickness := Max(2, Min(12, IniRead(SETTINGS_PATH, "Highlight", "RClickThickness", 7)))
-    rclickSpeed := Max(1, Min(30, IniRead(SETTINGS_PATH, "Highlight", "RClickSpeed", 26)))
-    rclickOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Highlight", "RClickOpacity", 50)))
+    rclickThickness := ReadIniNum("Highlight", "RClickThickness", 2, 12, 7)
+    rclickSpeed := ReadIniNum("Highlight", "RClickSpeed", 1, 30, 26)
+    rclickOpacity := ReadIniNum("Highlight", "RClickOpacity", 0, 100, 50)
     RCLICK_ANIM_INTERVAL := 41 - rclickSpeed
-    DrawOpacity := Max(0, Min(100, IniRead(SETTINGS_PATH, "Draw", "Opacity", 100)))
+    DrawOpacity := ReadIniNum("Draw", "Opacity", 0, 100, 100)
     ; 굵기와 지우개 크기는 1~10단계로 다룬다(위 StepToPx 참고). 읽는 순서는 세 단계다 —
     ; (1) 새 항목이 있으면 그대로, (2) 없고 옛 픽셀값이 남아 있으면 가장 가까운 단계로 변환,
     ; (3) 둘 다 없으면(= 처음 받아 쓰는 PC) 아래 기본 단계.
     legacyThickness := IniRead(SETTINGS_PATH, "Draw", "Thickness", "")
     legacyEraser := IniRead(SETTINGS_PATH, "Draw", "EraserSize", "")
-    DrawStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "ThicknessStep"
-        , legacyThickness != "" ? PxToStep(legacyThickness, PEN_BASE_PX, PEN_STEP_RATIO) : DEFAULT_DRAW_STEP)))
-    EraserStep := Max(1, Min(STEP_MAX, IniRead(SETTINGS_PATH, "Draw", "EraserStep"
-        , legacyEraser != "" ? PxToStep(legacyEraser, ERASER_BASE_PX, ERASER_STEP_RATIO) : DEFAULT_ERASER_STEP)))
+    DrawStep := ReadIniNum("Draw", "ThicknessStep", 1, STEP_MAX
+        , IsNumber(legacyThickness) ? PxToStep(legacyThickness, PEN_BASE_PX, PEN_STEP_RATIO) : DEFAULT_DRAW_STEP)
+    EraserStep := ReadIniNum("Draw", "EraserStep", 1, STEP_MAX
+        , IsNumber(legacyEraser) ? PxToStep(legacyEraser, ERASER_BASE_PX, ERASER_STEP_RATIO) : DEFAULT_ERASER_STEP)
     ; 레이저 펜(레이저): 그어진 뒤 그대로 있는 시간(ms), 그 뒤 사라지는 데 걸리는 시간(ms), 빛 번짐(%).
     ; 맥 판과 같은 이름·범위다 (기본값은 LASER_HOLD_MS·LASER_FADE_MS와 같다).
-    laserHold := Max(0, Min(3000, IniRead(SETTINGS_PATH, "Draw", "LaserHold", 500)))
-    laserFade := Max(100, Min(3000, IniRead(SETTINGS_PATH, "Draw", "LaserFade", 500)))
-    laserGlow := Max(0, Min(200, IniRead(SETTINGS_PATH, "Draw", "LaserGlow", 100)))
+    laserHold := ReadIniNum("Draw", "LaserHold", 0, 3000, 500)
+    laserFade := ReadIniNum("Draw", "LaserFade", 100, 3000, 500)
+    laserGlow := ReadIniNum("Draw", "LaserGlow", 0, 200, 100)
     ; 색은 포인터/클릭효과/드로잉이 각각 따로 갖는다. 예전 버전은 셋이 같은 색([Common] Color)을
     ; 썼으므로, 새 항목이 아직 없으면 그 값을 세 곳의 기본값으로 쓴다 — 쓰던 사람이 업데이트해도
     ; 화면이 갑자기 달라지지 않는다.
-    legacyColor := IniRead(SETTINGS_PATH, "Common", "Color", "FF0000")
-    spotColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "Color", legacyColor))
-    clickColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "ClickColor", legacyColor))
+    legacyColor := ReadIniColor("Common", "Color", 0xFF0000)
+    spotColor := ReadIniColor("Highlight", "Color", legacyColor)
+    clickColor := ReadIniColor("Highlight", "ClickColor", legacyColor)
     ; 오른쪽은 기본을 **파랑**으로 둔다. 왼쪽(빨강)과 색이 달라야 어느 버튼을 눌렀는지
     ; 학생이 구분할 수 있고, 그게 좌·우를 따로 둔 이유이기도 하다.
-    rclickColor := Integer("0x" IniRead(SETTINGS_PATH, "Highlight", "RClickColor", "0020FF"))
-    drawColor := Integer("0x" IniRead(SETTINGS_PATH, "Draw", "Color", legacyColor))
+    rclickColor := ReadIniColor("Highlight", "RClickColor", 0x0020FF)
+    drawColor := ReadIniColor("Draw", "Color", legacyColor)
     showWidget := IniRead(SETTINGS_PATH, "Common", "ShowWidget", 1) = 1
     showTrayIcons := IniRead(SETTINGS_PATH, "Common", "ShowTrayIcons", 0) = 1
     ; 위젯 크기는 100%가 기준. 빔프로젝터로 크게 띄우거나 고해상도 노트북에서 작게 보일 때 쓴다.
-    widgetScale := Max(60, Min(250, IniRead(SETTINGS_PATH, "Common", "WidgetScale", 100)))
-    widgetBgColor := Integer("0x" IniRead(SETTINGS_PATH, "Common", "WidgetColor", "F2F2F2"))
+    widgetScale := ReadIniNum("Common", "WidgetScale", 60, 250, 100)
+    widgetBgColor := ReadIniColor("Common", "WidgetColor", 0xF2F2F2)
     ; 위젯이 수업 화면을 가리는 게 신경 쓰일 때 쓴다. 너무 낮추면 눌러야 할 버튼이 안 보여서 20%까지만.
-    widgetOpacity := Max(20, Min(100, IniRead(SETTINGS_PATH, "Common", "WidgetOpacity", 100)))
+    widgetOpacity := ReadIniNum("Common", "WidgetOpacity", 20, 100, 100)
     ; 위젯을 옮겨둔 자리. 한 번도 안 옮겼으면 빈 값이고, 그때는 화면 오른쪽 아래에서 시작한다.
     widgetX := IniRead(SETTINGS_PATH, "Common", "WidgetX", "")
     widgetY := IniRead(SETTINGS_PATH, "Common", "WidgetY", "")
+    if (!IsNumber(widgetX) || !IsNumber(widgetY)) ; 숫자가 아닌 자리는 안 옮긴 것으로 본다
+        widgetX := "", widgetY := ""
     ; 저장된 단축키가 이상하면(사람이 ini를 잘못 고쳤다거나) 기본값으로 돌려서, 단축키가
     ; 하나도 안 먹는 상태로 시작하는 일이 없게 한다.
     for name, def in HOTKEY_DEFAULTS {
@@ -296,12 +298,25 @@ WriteSettings() {
     return true
 }
 
+; 설정 파일에 적힌 숫자를 읽는다. 사람이 ini를 잘못 고쳐 글자·빈 값이 들어 있으면 기본값,
+; 범위 밖이면 가까운 끝값으로 본다 — 맥 판(SettingsSchema.parse)과 같은 규칙이다.
+; 맥 점검이 ReadIniNum(절, 키, 아래, 위, 기본) 줄 모양에서 범위·기본값을 읽어 견주므로 이 모양을 지킨다.
+ReadIniNum(section, key, lo, hi, fallback) {
+    global SETTINGS_PATH
+    raw := IniRead(SETTINGS_PATH, section, key, "")
+    return IsNumber(raw) ? Max(lo, Min(hi, Number(raw))) : fallback
+}
+
 ; 설정 파일에 적힌 색을 읽는다. 사람이 ini를 잘못 고쳐 색이 아닌 글자가 들어 있어도
-; 프로그램이 멈추지 않고 기본값으로 넘어가게 한다.
+; 프로그램이 멈추지 않고 기본값으로 넘어가게 한다. 앞의 #·0x는 떼고 읽는다(맥 판과 같음).
 ReadIniColor(section, key, fallback) {
     global SETTINGS_PATH
     raw := IniRead(SETTINGS_PATH, section, key, "")
-    if (raw = "")
+    if (SubStr(raw, 1, 1) = "#")
+        raw := SubStr(raw, 2)
+    else if (SubStr(raw, 1, 2) = "0x")
+        raw := SubStr(raw, 3)
+    if (raw = "" || StrLen(raw) > 6)
         return fallback
     try {
         v := Integer("0x" raw)
@@ -321,7 +336,7 @@ LoadPalette() {
     loop DRAW_COLORS.Length {
         DRAW_COLORS[A_Index] := ReadIniColor("DrawKeys", "Color" A_Index, DRAW_COLOR_DEFAULTS[A_Index])
         ; 0%까지 내려가면 "안 그려지는 펜"이 되어 고장으로 보인다. 5%를 바닥으로 둔다.
-        DRAW_ALPHAS[A_Index] := Max(5, Min(100, IniRead(SETTINGS_PATH, "DrawKeys", "Opacity" A_Index, 100)))
+        DRAW_ALPHAS[A_Index] := ReadIniNum("DrawKeys", "Opacity" A_Index, 5, 100, 100)
         ; 숫자가 아닌 글자가 들어 있으면 기본값(5단계)으로 본다.
         step := IniRead(SETTINGS_PATH, "DrawKeys", "Step" A_Index, DRAW_STEP_DEFAULT)
         DRAW_STEPS[A_Index] := (IsInteger(step) && step >= 1) ? Min(STEP_MAX, Integer(step)) : DRAW_STEP_DEFAULT ; 0 이하(시험판이 쓰던 값)도 기본값
@@ -331,7 +346,7 @@ LoadPalette() {
             continue
         key := StrUpper(BOARD_KEYS[A_Index][1])
         BOARD_COLORS[A_Index] := ReadIniColor("Boards", "Color" key, BOARD_COLOR_DEFAULTS[A_Index])
-        BOARD_ALPHAS[A_Index] := Max(5, Min(100, IniRead(SETTINGS_PATH, "Boards", "Opacity" key, 100)))
+        BOARD_ALPHAS[A_Index] := ReadIniNum("Boards", "Opacity" key, 5, 100, 100)
     }
 }
 
