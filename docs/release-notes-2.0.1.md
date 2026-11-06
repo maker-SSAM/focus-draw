@@ -13,4 +13,7 @@
 - Windows: 프로그램을 끄고 예전 폴더의 `focus-draw.exe`만 바꿔 넣으면 `settings.ini`(색·크기·단축키)가 그대로 이어집니다
 - 맥: 맥 판은 오류와 관계없어 꼭 바꾸지 않으셔도 됩니다
 
+### 1.0을 쓰고 계셨다면
+- 2.0에서 달라진 점과 옮기는 방법은 [2.0.0 릴리스 노트](https://github.com/maker-SSAM/focus-draw/releases/tag/v2.0.0)에 있습니다. 내려받기는 이 2.0.1을 쓰시면 됩니다
+
 제작 maker_SSAM · MIT 라이선스

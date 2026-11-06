@@ -1,4 +1,4 @@
-# Focus & Draw — 맥 판 (2.0.0)
+# Focus & Draw — 맥 판 (2.0.1)
 
 Windows 판(`windows/focus-draw.ahk`)과 같은 쓰임새를 Swift로 다시 만든 맥 판입니다. 2.0.0부터 Windows 판과 같은 번호로, 한 릴리스(`v2.0.0`)에 함께 나갑니다.
 macOS 15 Sequoia 이상(15에서 확인), 애플 실리콘(M1~)과 인텔 맥 모두에서 돌아갑니다. macOS 13·14는 확인한 적이 없어 지원한다고 말하지 않습니다.

@@ -1,7 +1,7 @@
 # Windows ↔ 맥 차이표 (PARITY)
 
 > Windows v1.0.0의 기능 144개를 맥에서 어떻게 하고 있는지 한 줄씩 적은 표. 맥 세션이 단계를 끝낼 때마다 해당 줄을 고친다.
-> **Mac 2.0.0 = Windows 2.0.0** (2026-10-29). 모든 줄이 `완료` · `일부러 다름` · `불가능` · `해당 없음` 중 하나다. 새 기능은 이 표에 줄부터 만들고, 한 판에 먼저 넣으면 다른 판 할 일을 [windows-todo.md](windows-todo.md)에 남긴다.
+> **Mac 2.0.1 = Windows 2.0.1** (2026-11-06). 모든 줄이 `완료` · `일부러 다름` · `불가능` · `해당 없음` 중 하나다. 새 기능은 이 표에 줄부터 만들고, 한 판에 먼저 넣으면 다른 판 할 일을 [windows-todo.md](windows-todo.md)에 남긴다.
 > 참고: Windows 쪽 아이디어였던 "획 통째로 지우기"·"무늬 칠판"은 맥이 획을 목록으로 들고 있어 맥에서 더 쉽다.
 > 원자료: [design/review-2026-09-28/windows-inventory.md](../mac/design/review-2026-09-28/windows-inventory.md) (영어, 줄마다 자세한 Windows·맥 설명)
 > 결정 번호는 [ROADMAP.md](../mac/ROADMAP.md), D번호는 [design/SPIKES.md](../mac/design/SPIKES.md).
