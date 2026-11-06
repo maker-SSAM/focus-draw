@@ -5089,6 +5089,10 @@ for pair in PEN_KIND_KEYS
 SetDrawModeHotkeys(state) {
     global DRAW_COLORS, SHAPE_HOLD_KEYS, shapeKeyHeld, THICKNESS_KEYS, BOARD_KEYS, ALPHA_WHEEL_KEYS
     global PEN_KIND_KEYS, HOLD_KEY_PREFIXES
+    ; 브라우저용 단축키(RegisterHotkey)로 시작된 스레드는 그 HotIf 조건을 물려받는다. 아래 키들은 조건
+    ; 없이 등록했으므로 조건을 풀지 않으면 "Nonexistent hotkey variant (HotIf)" 오류로 멈춘다(2026-11-06 제보).
+    ; HotIf는 스레드마다 따로라 여기서 풀어도 다른 곳에 번지지 않는다.
+    HotIf()
     for pair in PEN_KIND_KEYS
         for prefix in HOLD_KEY_PREFIXES
             Hotkey(prefix pair[1], state)
