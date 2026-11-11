@@ -22,8 +22,8 @@
 2.0.0은 위 시험판 절차가 아니라 `design/stages.md` S12대로 낸다. 그때 숫자를 고칠 곳이 흩어져 있으니 이 목록을 하나씩 지운다. `[윈도우]` 줄은 윈도우 PC 세션이 고친다(파일 형식 — CRLF+BOM 등 — 은 그대로).
 
 - [x] `windows/focus-draw.ahk` 11행 `SetVersion`·27행 `APP_VERSION` → `2.0.0` (맥에서 고침, 2026-10-29)
-- [x] `windows/소개자료/slides.html` "버전 2.0.0"·"Focus &amp; Draw 2.0.0" (글만. 그림은 아래 윈도우 몫)
-- [x] `[윈도우]` `windows/소개자료/build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0" → 2.0.0)
+- [x] `소개자료/slides.html` "버전 2.0.0"·"Focus &amp; Draw 2.0.0" (글만. 그림은 아래 윈도우 몫)
+- [x] `[윈도우]` `소개자료/build.ps1`로 그림을 다시 뽑는다(`소개자료-한장.png` 아래 "1.0.0" → 2.0.0)
 - [x] `[윈도우]` `windows/읽어주세요.txt`에 맥 안내 한 줄 (문구는 `docs/windows-todo.md` "2.0.0 배포" 줄, CRLF+BOM 그대로)
 - [x] `[윈도우]` exe 컴파일 → 실행 확인(점검 4번 ini 이상값, 새 버전 확인 글자·[받으러 가기]·제작자 링크) → `windows/배포용/`에서 `Focus-Draw-2.0.0.zip`(폴더 `Focus & Draw/` 안에 exe·읽어주세요) (윈도우 2026-10-29)
 - [x] `mac/Info.plist` 2.0.0 / 6, `mac/맥용 읽어주세요.txt`·`mac/beta/한장안내.txt`(CRLF+BOM 그대로) 2.0.0 정식 문구

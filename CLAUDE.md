@@ -5,7 +5,9 @@ Windows 판과 맥 판을 한 저장소에서 같이 관리한다. 두 판은 �
 
 ```
 README.md, LICENSE, CLAUDE.md, .github/, (2.0 때) version.txt   ← 저장소 공용
-windows/  Windows 판: focus-draw.ahk, .ico, NOTES.md, 읽어주세요.txt, 터치펜-확인.ahk, shortcuts.*, 소개자료/
+소개자료/ 소개 그림 7장·한 장 요약·썸네일과 만드는 도구(slides.html, build.ps1 — 윈도우 PC에서 실행). 2026-11-11 windows/에서 옮김
+배포용/   최신 두 zip을 모아 두는 곳(git 밖, .gitignore의 배포용/·*.zip). 새 판을 내면 바꿔 넣는다
+windows/  Windows 판: focus-draw.ahk, .ico, NOTES.md, 읽어주세요.txt, 터치펜-확인.ahk, shortcuts.*
 mac/      맥 판: Sources, Tests, build.sh, design/, ROADMAP …
 shared/   두 판이 같이 쓰는 그림: icon*.png, settings.png (ahk는 FileInstall로 ..\shared\…, 맥은 build.sh가 복사)
 docs/     두 판 공통 문서: PARITY.md(차이표), windows-todo.md(판 사이 할 일), update-check.md …
@@ -16,7 +18,7 @@ docs/     두 판 공통 문서: PARITY.md(차이표), windows-todo.md(판 사�
 - **맥 세션**은 `mac/**`를 고친다. **Windows 세션**은 `windows/**`를 고친다.
 - `shared/`·`docs/`·저장소 공용 파일은 어느 세션이든 고칠 수 있다. 단 `shared/`의 그림을 바꾸면 두 판 모두 다시 확인한다.
 - 맥 세션은 `windows/focus-draw.ahk`·`windows/NOTES.md`를 읽기만, 그것도 `grep -n 이름` 뒤 앞뒤 40줄만 읽는다.
-- `windows/읽어주세요.txt`, `windows/소개자료/build.ps1`, `windows/터치펜-확인.ahk`는 줄바꿈(CRLF/mixed)과 인코딩(UTF-8 BOM)이 맥과 달라도 **맥 세션에서 손대거나 되돌리지 않는다**.
+- `windows/읽어주세요.txt`, `소개자료/build.ps1`, `windows/터치펜-확인.ahk`는 줄바꿈(CRLF/mixed)과 인코딩(UTF-8 BOM)이 맥과 달라도 **맥 세션에서 손대거나 되돌리지 않는다**.
 
 ## 설정 파일은 두 판이 같게 (배포판 2.0 목표, 2026-10-06 결정)
 

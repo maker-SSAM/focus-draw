@@ -12,11 +12,11 @@
 
 아래 사용법은 Windows 판 기준입니다. 맥도 쓰는 법은 같고, 키 이름(`Ctrl` → `control`, `Ctrl+Z` → `⌘Z` 등)과 몇 가지가 다릅니다.
 
-![Focus & Draw — 수업용 화면 강조 · 드로잉 도구](windows/%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C/01-%EC%86%8C%EA%B0%9C.png)
+![Focus & Draw — 수업용 화면 강조 · 드로잉 도구](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C/01-%EC%86%8C%EA%B0%9C.png)
 
-한눈에 보는 소개 그림 7장은 [소개자료](windows/%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C) 폴더에 있습니다. 동료 선생님께 그대로 보내셔도 됩니다.
+한눈에 보는 소개 그림 7장은 [소개자료](%EC%86%8C%EA%B0%9C%EC%9E%90%EB%A3%8C) 폴더에 있습니다. 동료 선생님께 그대로 보내셔도 됩니다.
 
-저장소 폴더: `windows/`(Windows 판) · `mac/`(맥 판) · `shared/`(두 판 공용 그림) · `docs/`(두 판 공통 문서). 쓰는 분은 이 README만 보시면 됩니다 — 나머지 폴더의 `design/`·`spikes/`·`NOTES.md` 같은 문서는 만드는 과정의 기록입니다.
+저장소 폴더: `windows/`(Windows 판) · `mac/`(맥 판) · `shared/`(두 판 공용 그림) · `docs/`(두 판 공통 문서) · `소개자료/`(소개 그림). 쓰는 분은 이 README만 보시면 됩니다 — 나머지 폴더의 `design/`·`spikes/`·`NOTES.md` 같은 문서는 만드는 과정의 기록입니다.
 
 ## 준비물
 

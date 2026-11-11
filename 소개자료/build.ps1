@@ -5,22 +5,23 @@
 # Windows에 늘 있는 PowerShell과 Edge만 쓴다(예전 build.py는 파이썬이 없는 PC에서 돌지 않았다).
 #
 # slides.html의 {{파일이름}} 자리에 그림을 data URI로 끼워 넣은 뒤(Edge는 file:// 그림을 CSS 마스크로
-# 쓰지 못한다), Edge 헤드리스로 장마다 PNG를 찍는다. 그림은 이 폴더에서 먼저, 없으면 상위(프로젝트)
-# 폴더에서 찾는다. {{?파일이름}}은 "있으면 쓰는" 자리다 — 없으면 빈칸이 된다.
+# 쓰지 못한다), Edge 헤드리스로 장마다 PNG를 찍는다. 그림은 이 폴더에서 먼저, 없으면 windows/와
+# shared/(아이콘·설정 그림)에서 찾는다. {{?파일이름}}은 "있으면 쓰는" 자리다 — 없으면 빈칸이 된다.
 #   1장(표지)과 썸네일의 칠판 화면: 이 폴더의 "1번-화면.png"(또는 .jpg) — 제작자가 직접 시연하고 캡처한 그림.
-#   5장의 단축키 그림: 프로젝트 폴더의 shortcuts.png (설정 창이 띄우는 것과 같은 그림)
+#   5장의 단축키 그림: windows/shortcuts.png (설정 창이 띄우는 것과 같은 그림)
 
 $ErrorActionPreference = 'Stop'
 $here  = $PSScriptRoot
-$root  = Split-Path $here
-$shared = Join-Path (Split-Path $root) 'shared'  # 맥 판과 같이 쓰는 그림 (icon*.png, settings.png)
+$root  = Split-Path $here  # 저장소 맨 위 (이 폴더는 2026-11-11 windows/에서 맨 위로 옮김)
+$windows = Join-Path $root 'windows'  # 윈도우 판 그림 (shortcuts.png)
+$shared = Join-Path $root 'shared'  # 맥 판과 같이 쓰는 그림 (icon*.png, settings.png)
 $edge  = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
 $scale = '1.5'  # 1600x900 → 2400x1350. 메신저로 보내도 글씨가 또렷하게
 $names = @('01-소개', '02-두-프로그램을-하나로', '03-위젯', '04-개인화', '05-단축키', '06-전자칠판', '07-시작하기')
 
 function Find-Picture($name) {
     $stem = [IO.Path]::GetFileNameWithoutExtension($name)
-    foreach ($folder in $here, $root, $shared) {
+    foreach ($folder in $here, $windows, $shared) {
         foreach ($cand in $name, "$stem.jpg", "$stem.jpeg") {
             $p = Join-Path $folder $cand
             if (Test-Path -LiteralPath $p) { return $p }
